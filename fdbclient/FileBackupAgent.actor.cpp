@@ -2892,7 +2892,6 @@ namespace fileBackup {
 					wait(tr->onError(e));
 				}
 			}
-			TraceEvent("FileRestoreLogCheckpoint1");
 
 			state Key mutationLogPrefix = restore.mutationLogPrefix();
 			state Reference<IAsyncFile> inFile = wait(bc->readFile(logFile.fileName));
@@ -2913,15 +2912,9 @@ namespace fileBackup {
 
 					state int i = start;
 					state int txBytes = 0;
-					TraceEvent("FileRestoreLogCheckpoint2")
-						.detail("I", i)
-						.detail("End", end);
 					for(; i < end && txBytes < dataSizeLimit; ++i) {
 						Key k = data[i].key.withPrefix(mutationLogPrefix);
 						ValueRef v = data[i].value;
-						TraceEvent("FileRestoreTrackKV")
-							.detail("K", k)
-							.detail("V", v);
 						tr->set(k, v);
 						txBytes += k.expectedSize();
 						txBytes += v.expectedSize();
@@ -2932,7 +2925,6 @@ namespace fileBackup {
 					wait(taskBucket->keepRunning(tr, task));
 					wait( checkLock );
 
-					TraceEvent("FileRestoreLogCheckpoint3");
 					// Add to bytes written count
 					restore.bytesWritten().atomicOp(tr, txBytes, MutationRef::Type::AddValue);
 
@@ -3178,9 +3170,6 @@ namespace fileBackup {
 						break;
 
 					if(f.isRange) {
-						// if (incrementalBackupOnly.get().present() && incrementalBackupOnly.get().get()) {
-						// 	continue;
-						// }
 						addTaskFutures.push_back(RestoreRangeTaskFunc::addTask(tr, taskBucket, task,
 							f, j, std::min<int64_t>(f.blockSize, f.fileSize - j),
 							TaskCompletionKey::joinWith(allPartsDone)));
@@ -3469,7 +3458,6 @@ namespace fileBackup {
 					wait(tr->onError(e));
 				}
 			}
-			TraceEvent("RestoreCheckpoint1");
 			state Future<Optional<bool>> logsOnly = restore.incrementalBackupOnly().get(tr);
 			wait(success(logsOnly));
 			state bool incremental = false;
@@ -3482,9 +3470,6 @@ namespace fileBackup {
 				beginVer = restorable.get().snapshot.beginVersion;
 			}
 
-			TraceEvent("RestoreCheckpoint2")
-				.detail("BeginVer", beginVer)
-				.detail("Incremental", incremental);
 			if(!restorable.present())
 				throw restore_missing_data();
 
@@ -3562,12 +3547,21 @@ namespace fileBackup {
 			restore.stateEnum().set(tr, ERestoreState::RUNNING);
 
 			// Set applyMutation versions
+
 			restore.setApplyBeginVersion(tr, firstVersion);
 			restore.setApplyEndVersion(tr, firstVersion);
 
 			// Apply range data and log data in order
 			wait(success(RestoreDispatchTaskFunc::addTask(tr, taskBucket, task, 0, "", 0, CLIENT_KNOBS->RESTORE_DISPATCH_BATCH_SIZE)));
 
+			state Future<Optional<bool>> logsOnly = restore.incrementalBackupOnly().get(tr);
+			wait(success(logsOnly));
+			if (logsOnly.isReady() && logsOnly.get().present() && logsOnly.get().get()) {
+				// If this is an incremental restore, we need to set the applyMutationsMapPrefix
+				// to the earliest log version so no mutations are missed
+				Value versionEncoded = BinaryWriter::toValue(Params.firstVersion().get(task), Unversioned());
+				wait(krmSetRange(tr, restore.applyMutationsMapPrefix(), normalKeys, versionEncoded));
+			}
 			wait(taskBucket->finish(tr, task));
 			return Void();
 		}
@@ -3957,7 +3951,7 @@ public:
 		for (index = 0; index < restoreRanges.size(); index++) {
 			KeyRange restoreIntoRange = KeyRangeRef(restoreRanges[index].begin, restoreRanges[index].end).removePrefix(removePrefix).withPrefix(addPrefix);
 			Standalone<RangeResultRef> existingRows = wait(tr->getRange(restoreIntoRange, 1));
-			if (existingRows.size() > 0) {
+			if (existingRows.size() > 0 && !incrementalBackupOnly) {
 				throw restore_destination_not_empty();
 			}
 		}
@@ -4503,6 +4497,10 @@ public:
 		printf("Backup Description\n%s", desc.toString().c_str());
 		if(targetVersion == invalidVersion && desc.maxRestorableVersion.present())
 			targetVersion = desc.maxRestorableVersion.get();
+
+		if (targetVersion == invalidVersion && incrementalBackupOnly && desc.maxLogEnd.present()) {
+			targetVersion = desc.maxLogEnd.get() - 1;
+		}
 
 		Optional<RestorableFileSet> restoreSet = wait(bc->getRestoreSet(targetVersion, {}, incrementalBackupOnly));
 
