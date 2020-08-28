@@ -285,7 +285,8 @@ public:
 	// restoring to the given version is not possible.
 	virtual Future<Optional<RestorableFileSet>> getRestoreSet(Version targetVersion,
 	                                                          VectorRef<KeyRangeRef> keyRangesFilter = {},
-	                                                          bool logsOnly = false) = 0;
+	                                                          bool logsOnly = false,
+	                                                          Version beginVersion = -1) = 0;
 
 	// Get an IBackupContainer based on a container spec string
 	static Reference<IBackupContainer> openContainer(std::string url);
