@@ -122,6 +122,7 @@ enum {
 	OPT_TAGNAME,
 	OPT_BACKUPKEYS,
 	OPT_WAITFORDONE,
+	OPT_INCREMENTALONLY,
 
 	// Backup Modify
 	OPT_MOD_ACTIVE_INTERVAL,
@@ -135,6 +136,7 @@ enum {
 	OPT_PREFIX_REMOVE,
 	OPT_RESTORE_CLUSTERFILE_DEST,
 	OPT_RESTORE_CLUSTERFILE_ORIG,
+	OPT_RESTORE_BEGIN_VERSION,
 
 	// Shared constants
 	OPT_CLUSTERFILE,
@@ -231,6 +233,7 @@ CSimpleOpt::SOption g_rgBackupStartOptions[] = {
 	{ OPT_DEVHELP, "--dev-help", SO_NONE },
 	{ OPT_KNOB, "--knob_", SO_REQ_SEP },
 	{ OPT_BLOB_CREDENTIALS, "--blob_credentials", SO_REQ_SEP },
+	{ OPT_INCREMENTALONLY,  "--incremental",    SO_NONE },
 #ifndef TLS_DISABLED
 	TLS_OPTION_FLAGS
 #endif
@@ -638,6 +641,7 @@ CSimpleOpt::SOption g_rgRestoreOptions[] = {
 	{ OPT_BACKUPKEYS, "--keys", SO_REQ_SEP },
 	{ OPT_WAITFORDONE, "-w", SO_NONE },
 	{ OPT_WAITFORDONE, "--waitfordone", SO_NONE },
+	{ OPT_RESTORE_BEGIN_VERSION, "--begin_version", SO_REQ_SEP },
 	{ OPT_RESTORE_VERSION, "--version", SO_REQ_SEP },
 	{ OPT_RESTORE_VERSION, "-v", SO_REQ_SEP },
 	{ OPT_TRACE, "--log", SO_NONE },
@@ -657,6 +661,7 @@ CSimpleOpt::SOption g_rgRestoreOptions[] = {
 	{ OPT_HELP, "--help", SO_NONE },
 	{ OPT_DEVHELP, "--dev-help", SO_NONE },
 	{ OPT_BLOB_CREDENTIALS, "--blob_credentials", SO_REQ_SEP },
+	{ OPT_INCREMENTALONLY,  "--incremental",    SO_NONE },
 #ifndef TLS_DISABLED
 	TLS_OPTION_FLAGS
 #endif
@@ -1086,6 +1091,8 @@ static void printRestoreUsage(bool devhelp) {
 	printf("  --trace_format FORMAT\n"
 	       "                 Select the format of the trace files. xml (the default) and json are supported.\n"
 	       "                 Has no effect unless --log is specified.\n");
+	printf("  --incremental\n"
+	       "                 Performs incremental restore without the base backup.\n");
 #ifndef TLS_DISABLED
 	printf(TLS_HELP);
 #endif
@@ -2133,13 +2140,15 @@ ACTOR Future<Void> runRestore(Database db,
                               std::string tagName,
                               std::string container,
                               Standalone<VectorRef<KeyRangeRef>> ranges,
+                              Version beginVersion,
                               Version targetVersion,
                               std::string targetTimestamp,
                               bool performRestore,
                               bool verbose,
                               bool waitForDone,
                               std::string addPrefix,
-                              std::string removePrefix) {
+                              std::string removePrefix,
+                              bool incrementalBackupOnly) {
 	if (ranges.empty()) {
 		ranges.push_back_deep(ranges.arena(), normalKeys);
 	}
@@ -2185,12 +2194,15 @@ ACTOR Future<Void> runRestore(Database db,
 
 			BackupDescription desc = wait(bc->describeBackup());
 
-			if (!desc.maxRestorableVersion.present()) {
+			if (incrementalBackupOnly && desc.contiguousLogEnd.present()) {
+				targetVersion = desc.contiguousLogEnd.get() - 1;
+			} else if (desc.maxRestorableVersion.present()) {
+				targetVersion = desc.maxRestorableVersion.get();
+			} else {
 				fprintf(stderr, "The specified backup is not restorable to any version.\n");
 				throw restore_error();
 			}
 
-			targetVersion = desc.maxRestorableVersion.get();
 
 			if (verbose)
 				printf("Using target restore version %" PRId64 "\n", targetVersion);
@@ -2206,7 +2218,10 @@ ACTOR Future<Void> runRestore(Database db,
 			                                                   targetVersion,
 			                                                   verbose,
 			                                                   KeyRef(addPrefix),
-			                                                   KeyRef(removePrefix)));
+			                                                   KeyRef(removePrefix),
+			                                                   true,
+			                                                   incrementalBackupOnly,
+			                                                   beginVersion));
 
 			if (waitForDone && verbose) {
 				// If restore is now complete then report version restored
@@ -2327,8 +2342,8 @@ ACTOR Future<Void> expireBackupData(const char* name,
 			throw;
 		if (e.code() == error_code_backup_cannot_expire)
 			fprintf(stderr,
-			        "ERROR: Requested expiration would be unsafe.  Backup would not meet minimum "
-			        "restorability.  Use --force to delete data anyway.\n");
+			        "ERROR: Requested expiration would be unsafe.  Backup would not meet minimum restorability.  Use "
+			        "--force to delete data anyway.\n");
 		else
 			fprintf(stderr, "ERROR: %s\n", e.what());
 		throw;
@@ -2869,10 +2884,12 @@ int main(int argc, char* argv[]) {
 		std::string removePrefix;
 		Standalone<VectorRef<KeyRangeRef>> backupKeys;
 		int maxErrors = 20;
+		Version beginVersion = invalidVersion;
 		Version restoreVersion = invalidVersion;
 		std::string restoreTimestamp;
 		bool waitForDone = false;
 		bool stopWhenDone = true;
+		bool incrementalBackupOnly = false;
 		bool forceAction = false;
 		bool trace = false;
 		bool quietDisplay = false;
@@ -3099,15 +3116,15 @@ int main(int argc, char* argv[]) {
 					fprintf(stderr, "ERROR: Could not parse snapshot interval `%s'\n", a);
 					printHelpTeaser(argv[0]);
 					return FDB_EXIT_ERROR;
-				}
-				if (optId == OPT_SNAPSHOTINTERVAL) {
-					snapshotIntervalSeconds = seconds;
-					modifyOptions.snapshotIntervalSeconds = seconds;
+					}
+					if(optId == OPT_SNAPSHOTINTERVAL) {
+						snapshotIntervalSeconds = seconds;
+						modifyOptions.snapshotIntervalSeconds = seconds;
 				} else if (optId == OPT_MOD_ACTIVE_INTERVAL) {
-					modifyOptions.activeSnapshotIntervalSeconds = seconds;
+						modifyOptions.activeSnapshotIntervalSeconds = seconds;
+					}
+					break;
 				}
-				break;
-			}
 			case OPT_MOD_VERIFY_UID:
 				modifyOptions.verifyUID = args->OptionArg();
 				break;
@@ -3117,10 +3134,13 @@ int main(int argc, char* argv[]) {
 			case OPT_NOSTOPWHENDONE:
 				stopWhenDone = false;
 				break;
+			case OPT_INCREMENTALONLY:
+				incrementalBackupOnly = true;
+				break;
 			case OPT_RESTORECONTAINER:
 				restoreContainer = args->OptionArg();
 				// If the url starts with '/' then prepend "file://" for backwards compatibility
-				if (StringRef(restoreContainer).startsWith(LiteralStringRef("/")))
+				if(StringRef(restoreContainer).startsWith(LiteralStringRef("/")))
 					restoreContainer = std::string("file://") + restoreContainer;
 				break;
 			case OPT_DESCRIBE_DEEP:
@@ -3142,6 +3162,17 @@ int main(int argc, char* argv[]) {
 					printHelpTeaser(argv[0]);
 					return FDB_EXIT_ERROR;
 				}
+				break;
+			}
+			case OPT_RESTORE_BEGIN_VERSION: {
+				const char* a = args->OptionArg();
+				long long ver = 0;
+				if (!sscanf(a, "%lld", &ver)) {
+					fprintf(stderr, "ERROR: Could not parse database beginVersion `%s'\n", a);
+					printHelpTeaser(argv[0]);
+					return FDB_EXIT_ERROR;
+				}
+				beginVersion = ver;
 				break;
 			}
 			case OPT_RESTORE_VERSION: {
@@ -3663,13 +3694,15 @@ int main(int argc, char* argv[]) {
 				                         tagName,
 				                         restoreContainer,
 				                         backupKeys,
+				                         beginVersion,
 				                         restoreVersion,
 				                         restoreTimestamp,
 				                         !dryRun,
 				                         !quietDisplay,
 				                         waitForDone,
 				                         addPrefix,
-				                         removePrefix));
+				                         removePrefix,
+							 incrementalBackupOnly));
 				break;
 			case RESTORE_WAIT:
 				f = stopAfter(success(ba.waitRestore(db, KeyRef(tagName), true)));

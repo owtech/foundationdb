@@ -20,6 +20,7 @@
 
 #include "fdbclient/BackupContainer.h"
 #include "fdbclient/BackupAgent.actor.h"
+#include "fdbclient/FDBTypes.h"
 #include "fdbclient/JsonBuilder.h"
 #include "flow/Trace.h"
 #include "flow/UnitTest.h"
@@ -696,6 +697,31 @@ public:
 		return v;
 	}
 
+	// Computes the continuous end version for non-partitioned mutation logs up to
+	// the "targetVersion". If "outLogs" is not nullptr, it will be updated with
+	// continuous log files. "*end" is updated with the continuous end version.
+	static void computeRestoreEndVersion(const std::vector<LogFile>& logs,
+	                                     std::vector<LogFile>* outLogs,
+	                                     Version* end,
+	                                     Version targetVersion) {
+		auto i = logs.begin();
+		if (outLogs != nullptr)
+			outLogs->push_back(*i);
+
+		// Add logs to restorable logs set until continuity is broken OR we reach targetVersion
+		while (++i != logs.end()) {
+			if (i->beginVersion > *end || i->beginVersion > targetVersion)
+				break;
+
+			// If the next link in the log chain is found, update the end
+			if (i->beginVersion == *end) {
+				if (outLogs != nullptr)
+					outLogs->push_back(*i);
+				*end = i->endVersion;
+			}
+		}
+	}
+
 	ACTOR static Future<BackupDescription> describeBackup_impl(Reference<BackupContainerFileSystem> bc,
 	                                                           bool deepScan,
 	                                                           Version logStartVersionOverride) {
@@ -1098,8 +1124,34 @@ public:
 		                       restorableBeginVersion);
 	}
 
+	static Optional<RestorableFileSet> getRestoreSetFromLogs(std::vector<LogFile> logs, 
+	                                                         Version targetVersion,
+	                                                         RestorableFileSet restorable) {
+		Version end = logs.begin()->endVersion;
+		computeRestoreEndVersion(logs, &restorable.logs, &end, targetVersion);
+		if (end >= targetVersion) {
+			restorable.continuousBeginVersion = logs.begin()->beginVersion;
+			restorable.continuousEndVersion = end;
+			return Optional<RestorableFileSet>(restorable);
+		}
+		return Optional<RestorableFileSet>();
+	}
+
 	ACTOR static Future<Optional<RestorableFileSet>> getRestoreSet_impl(Reference<BackupContainerFileSystem> bc,
-	                                                                    Version targetVersion) {
+	                                                                    Version targetVersion,
+	                                                                    bool logsOnly,
+	                                                                    Version beginVersion) {
+		if (logsOnly) {
+			state RestorableFileSet restorableSet;
+			state std::vector<LogFile> logFiles;
+			Version begin = beginVersion == invalidVersion ? 0 : beginVersion;
+			wait(store(logFiles, bc->listLogFiles(begin, targetVersion)));
+			// List logs in version order so log continuity can be analyzed
+			std::sort(logFiles.begin(), logFiles.end());
+			if (!logFiles.empty()) {
+				return getRestoreSetFromLogs(logFiles, targetVersion, restorableSet);
+			}
+		}
 		// Find the most recent keyrange snapshot to end at or before targetVersion
 		state Optional<KeyspaceSnapshotFile> snapshot;
 		std::vector<KeyspaceSnapshotFile> snapshots = wait(bc->listKeyspaceSnapshots());
@@ -1114,7 +1166,7 @@ public:
 			restorable.targetVersion = targetVersion;
 
 			std::vector<RangeFile> ranges = wait(bc->readKeyspaceSnapshot(snapshot.get()));
-			restorable.ranges = ranges;
+			restorable.ranges = std::move(ranges);
 
 			// No logs needed if there is a complete key space snapshot at the target version.
 			if (snapshot.get().beginVersion == snapshot.get().endVersion && snapshot.get().endVersion == targetVersion)
@@ -1126,33 +1178,19 @@ public:
 			std::sort(logs.begin(), logs.end());
 
 			// If there are logs and the first one starts at or before the snapshot begin version then proceed
-			if (!logs.empty() && logs.front().beginVersion <= snapshot.get().beginVersion) {
-				auto i = logs.begin();
-				Version end = i->endVersion;
-				restorable.logs.push_back(*i);
-
-				// Add logs to restorable logs set until continuity is broken OR we reach targetVersion
-				while (++i != logs.end()) {
-					if (i->beginVersion > end || i->beginVersion > targetVersion)
-						break;
-					// If the next link in the log chain is found, update the end
-					if (i->beginVersion == end) {
-						restorable.logs.push_back(*i);
-						end = i->endVersion;
-					}
-				}
-
-				if (end >= targetVersion) {
-					return Optional<RestorableFileSet>(restorable);
-				}
+			if(!logs.empty() && logs.front().beginVersion <= snapshot.get().beginVersion) {
+				return getRestoreSetFromLogs(logs, targetVersion, restorable);
 			}
 		}
 
 		return Optional<RestorableFileSet>();
 	}
 
-	Future<Optional<RestorableFileSet>> getRestoreSet(Version targetVersion) {
-		return getRestoreSet_impl(Reference<BackupContainerFileSystem>::addRef(this), targetVersion);
+	Future<Optional<RestorableFileSet>> getRestoreSet(Version targetVersion,
+	                                                  bool logsOnly,
+	                                                  Version beginVersion) final {
+		return getRestoreSet_impl(
+		    Reference<BackupContainerFileSystem>::addRef(this), targetVersion, logsOnly, beginVersion);
 	}
 
 private:
@@ -1932,6 +1970,7 @@ ACTOR Future<Void> testBackupContainer(std::string url) {
 	state std::vector<Future<Void>> writes;
 	state std::map<Version, std::vector<std::string>> snapshots;
 	state std::map<Version, int64_t> snapshotSizes;
+	state std::map<Version, std::vector<std::pair<Key, Key>>> snapshotBeginEndKeys;
 	state int nRangeFiles = 0;
 	state std::map<Version, std::string> logs;
 	state Version v = deterministicRandom()->randomInt64(0, std::numeric_limits<Version>::max() / 2);
@@ -1950,6 +1989,7 @@ ACTOR Future<Void> testBackupContainer(std::string url) {
 		while (kvfiles > 0) {
 			if (snapshots.empty()) {
 				snapshots[v] = {};
+				snapshotBeginEndKeys[v] = {};
 				snapshotSizes[v] = 0;
 				if (deterministicRandom()->coinflip()) {
 					v = nextVersion(v);
@@ -1959,6 +1999,7 @@ ACTOR Future<Void> testBackupContainer(std::string url) {
 			++nRangeFiles;
 			v = nextVersion(v);
 			snapshots.rbegin()->second.push_back(range->getFileName());
+			snapshotBeginEndKeys.rbegin()->second.emplace_back(LiteralStringRef(""), LiteralStringRef(""));
 
 			int size = chooseFileSize(fileSizes);
 			snapshotSizes.rbegin()->second += size;
@@ -1968,6 +2009,7 @@ ACTOR Future<Void> testBackupContainer(std::string url) {
 				writes.push_back(
 				    c->writeKeyspaceSnapshotFile(snapshots.rbegin()->second, snapshotSizes.rbegin()->second));
 				snapshots[v] = {};
+				snapshotBeginEndKeys[v] = {};
 				snapshotSizes[v] = 0;
 				break;
 			}

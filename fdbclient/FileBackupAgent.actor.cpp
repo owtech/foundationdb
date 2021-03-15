@@ -140,12 +140,14 @@ public:
 	}
 	KeyBackedProperty<Key> addPrefix() { return configSpace.pack(LiteralStringRef(__FUNCTION__)); }
 	KeyBackedProperty<Key> removePrefix() { return configSpace.pack(LiteralStringRef(__FUNCTION__)); }
+	KeyBackedProperty<bool> incrementalBackupOnly() { return configSpace.pack(LiteralStringRef(__FUNCTION__)); }
 	// XXX: Remove restoreRange() once it is safe to remove. It has been changed to restoreRanges
 	KeyBackedProperty<KeyRange> restoreRange() { return configSpace.pack(LiteralStringRef(__FUNCTION__)); }
 	KeyBackedProperty<std::vector<KeyRange>> restoreRanges() {
 		return configSpace.pack(LiteralStringRef(__FUNCTION__));
 	}
 	KeyBackedProperty<Key> batchFuture() { return configSpace.pack(LiteralStringRef(__FUNCTION__)); }
+	KeyBackedProperty<Version> beginVersion() { return configSpace.pack(LiteralStringRef(__FUNCTION__)); }
 	KeyBackedProperty<Version> restoreVersion() { return configSpace.pack(LiteralStringRef(__FUNCTION__)); }
 
 	KeyBackedProperty<Reference<IBackupContainer>> sourceContainer() {
@@ -3269,8 +3271,9 @@ struct RestoreDispatchTaskFunc : RestoreTaskFuncBase {
 		state int64_t remainingInBatch = Params.remainingInBatch().get(task);
 		state bool addingToExistingBatch = remainingInBatch > 0;
 		state Version restoreVersion;
+		state Future<Optional<bool>> incrementalBackupOnly = restore.incrementalBackupOnly().get(tr);
 
-		wait(store(restoreVersion, restore.restoreVersion().getOrThrow(tr)) &&
+		wait(store(restoreVersion, restore.restoreVersion().getOrThrow(tr)) && success(incrementalBackupOnly) &&
 		     checkTaskVersion(tr->getDatabase(), task, name, version));
 
 		// If not adding to an existing batch then update the apply mutations end version so the mutations from the
@@ -3426,7 +3429,6 @@ struct RestoreDispatchTaskFunc : RestoreTaskFuncBase {
 			// Set the starting point for the next task in case we stop inside this file
 			endVersion = f.version;
 			beginFile = f.fileName;
-
 			state int64_t j = beginBlock * f.blockSize;
 			// For each block of the file
 			for (; j < f.fileSize; j += f.blockSize) {
@@ -3730,6 +3732,7 @@ struct StartFullRestoreTaskFunc : RestoreTaskFuncBase {
 		state Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(cx));
 		state RestoreConfig restore(task);
 		state Version restoreVersion;
+		state Version beginVersion;
 		state Reference<IBackupContainer> bc;
 
 		loop {
@@ -3740,6 +3743,8 @@ struct StartFullRestoreTaskFunc : RestoreTaskFuncBase {
 				wait(checkTaskVersion(tr->getDatabase(), task, name, version));
 				Version _restoreVersion = wait(restore.restoreVersion().getOrThrow(tr));
 				restoreVersion = _restoreVersion;
+				Optional<Version> _beginVersion = wait(restore.beginVersion().get(tr));
+				beginVersion = _beginVersion.present() ? _beginVersion.get() : invalidVersion;
 				wait(taskBucket->keepRunning(tr, task));
 
 				ERestoreState oldState = wait(restore.stateEnum().getD(tr));
@@ -3785,23 +3790,32 @@ struct StartFullRestoreTaskFunc : RestoreTaskFuncBase {
 			}
 		}
 
-		Optional<RestorableFileSet> restorable = wait(bc->getRestoreSet(restoreVersion));
+		Optional<bool> _incremental = wait(restore.incrementalBackupOnly().get(tr));
+		state bool incremental = _incremental.present() ? _incremental.get() : false;
+		if (beginVersion == invalidVersion) {
+			beginVersion = 0;
+		}
+		Optional<RestorableFileSet> restorable = wait(bc->getRestoreSet(restoreVersion, incremental, beginVersion));
+		if (!incremental) {
+			beginVersion = restorable.get().snapshot.beginVersion;
+		}
 
 		if (!restorable.present())
 			throw restore_missing_data();
 
 		// First version for which log data should be applied
-		Params.firstVersion().set(task, restorable.get().snapshot.beginVersion);
+		Params.firstVersion().set(task, beginVersion);
 
 		// Convert the two lists in restorable (logs and ranges) to a single list of RestoreFiles.
 		// Order does not matter, they will be put in order when written to the restoreFileMap below.
 		state std::vector<RestoreConfig::RestoreFile> files;
 
-		for (const RangeFile& f : restorable.get().ranges) {
-			files.push_back({ f.version, f.fileName, true, f.blockSize, f.fileSize });
+		for(const RangeFile &f : restorable.get().ranges) {
+			files.push_back({f.version, f.fileName, true, f.blockSize, f.fileSize});
 		}
-		for (const LogFile& f : restorable.get().logs) {
-			files.push_back({ f.beginVersion, f.fileName, false, f.blockSize, f.fileSize, f.endVersion });
+
+		for(const LogFile &f : restorable.get().logs) {
+			files.push_back({f.beginVersion, f.fileName, false, f.blockSize, f.fileSize, f.endVersion});
 		}
 
 		state std::vector<RestoreConfig::RestoreFile>::iterator start = files.begin();
@@ -3866,16 +3880,23 @@ struct StartFullRestoreTaskFunc : RestoreTaskFuncBase {
 		}
 
 		restore.stateEnum().set(tr, ERestoreState::RUNNING);
-
 		// Set applyMutation versions
+
 		restore.setApplyBeginVersion(tr, firstVersion);
 		restore.setApplyEndVersion(tr, firstVersion);
-
 		// Apply range data and log data in order
 		wait(success(RestoreDispatchTaskFunc::addTask(
 		    tr, taskBucket, task, 0, "", 0, CLIENT_KNOBS->RESTORE_DISPATCH_BATCH_SIZE)));
 
 		wait(taskBucket->finish(tr, task));
+		state Future<Optional<bool>> logsOnly = restore.incrementalBackupOnly().get(tr);
+		wait(success(logsOnly));
+		if (logsOnly.get().present() && logsOnly.get().get()) {
+			// If this is an incremental restore, we need to set the applyMutationsMapPrefix
+			// to the earliest log version so no mutations are missed
+			Value versionEncoded = BinaryWriter::toValue(Params.firstVersion().get(task), Unversioned());
+			wait(krmSetRange(tr, restore.applyMutationsMapPrefix(), normalKeys, versionEncoded));
+		}
 		return Void();
 	}
 
@@ -4119,6 +4140,8 @@ public:
 	                                        Key addPrefix,
 	                                        Key removePrefix,
 	                                        bool lockDB,
+	                                        bool incrementalBackupOnly,
+	                                        Version beginVersion,
 	                                        UID uid) {
 		KeyRangeMap<int> restoreRangeSet;
 		for (auto& range : ranges) {
@@ -4168,7 +4191,7 @@ public:
 			                                .removePrefix(removePrefix)
 			                                .withPrefix(addPrefix);
 			Standalone<RangeResultRef> existingRows = wait(tr->getRange(restoreIntoRange, 1));
-			if (existingRows.size() > 0) {
+			if (existingRows.size() > 0 && !incrementalBackupOnly) {
 				throw restore_destination_not_empty();
 			}
 		}
@@ -4185,6 +4208,8 @@ public:
 		restore.sourceContainer().set(tr, bc);
 		restore.stateEnum().set(tr, ERestoreState::QUEUED);
 		restore.restoreVersion().set(tr, restoreVersion);
+		restore.incrementalBackupOnly().set(tr, incrementalBackupOnly);
+		restore.beginVersion().set(tr, beginVersion);
 		if (BUGGIFY && restoreRanges.size() == 1) {
 			restore.restoreRange().set(tr, restoreRanges[0]);
 		} else {
@@ -4728,6 +4753,8 @@ public:
 	                                     Key addPrefix,
 	                                     Key removePrefix,
 	                                     bool lockDB,
+	                                     bool incrementalBackupOnly,
+	                                     Version beginVersion,
 	                                     UID randomUid) {
 		state Reference<IBackupContainer> bc = IBackupContainer::openContainer(url.toString());
 
@@ -4740,7 +4767,12 @@ public:
 		if (targetVersion == invalidVersion && desc.maxRestorableVersion.present())
 			targetVersion = desc.maxRestorableVersion.get();
 
-		Optional<RestorableFileSet> restoreSet = wait(bc->getRestoreSet(targetVersion));
+		if (targetVersion == invalidVersion && incrementalBackupOnly && desc.contiguousLogEnd.present()) {
+			targetVersion = desc.contiguousLogEnd.get() - 1;
+		}
+
+		Optional<RestorableFileSet> restoreSet =
+		    wait(bc->getRestoreSet(targetVersion, incrementalBackupOnly, beginVersion));
 
 		if (!restoreSet.present()) {
 			TraceEvent(SevWarn, "FileBackupAgentRestoreNotPossible")
@@ -4762,8 +4794,18 @@ public:
 			try {
 				tr->setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
 				tr->setOption(FDBTransactionOptions::LOCK_AWARE);
-				wait(submitRestore(
-				    backupAgent, tr, tagName, url, ranges, targetVersion, addPrefix, removePrefix, lockDB, randomUid));
+				wait(submitRestore(backupAgent,
+				                   tr,
+				                   tagName,
+				                   url,
+				                   ranges,
+				                   targetVersion,
+				                   addPrefix,
+				                   removePrefix,
+				                   lockDB,
+				                   incrementalBackupOnly,
+				                   beginVersion,
+				                   randomUid));
 				wait(tr->commit());
 				break;
 			} catch (Error& e) {
@@ -4898,6 +4940,8 @@ public:
 		                           addPrefix,
 		                           removePrefix,
 		                           true,
+		                           false,
+		                           invalidVersion,
 		                           randomUid));
 		return ver;
 	}
@@ -4917,7 +4961,9 @@ Future<Version> FileBackupAgent::restore(Database cx,
                                          bool verbose,
                                          Key addPrefix,
                                          Key removePrefix,
-                                         bool lockDB) {
+                                         bool lockDB,
+                                         bool incrementalBackupOnly,
+                                         Version beginVersion) {
 	return FileBackupAgentImpl::restore(this,
 	                                    cx,
 	                                    cxOrig,
@@ -4930,6 +4976,8 @@ Future<Version> FileBackupAgent::restore(Database cx,
 	                                    addPrefix,
 	                                    removePrefix,
 	                                    lockDB,
+	                                    incrementalBackupOnly,
+	                                    beginVersion,
 	                                    deterministicRandom()->randomUniqueID());
 }
 

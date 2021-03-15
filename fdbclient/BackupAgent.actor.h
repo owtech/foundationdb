@@ -281,7 +281,9 @@ public:
 	                        bool verbose = true,
 	                        Key addPrefix = Key(),
 	                        Key removePrefix = Key(),
-	                        bool lockDB = true);
+				bool lockDB = true,
+				bool incrementalBackupOnly = false,
+	                        Version beginVersion = -1);
 	Future<Version> restore(Database cx,
 	                        Optional<Database> cxOrig,
 	                        Key tagName,
@@ -292,7 +294,9 @@ public:
 	                        KeyRange range = normalKeys,
 	                        Key addPrefix = Key(),
 	                        Key removePrefix = Key(),
-	                        bool lockDB = true) {
+				bool lockDB = true,
+	                        bool incrementalBackupOnly = false,
+	                        Version beginVersion = -1) {
 		Standalone<VectorRef<KeyRangeRef>> rangeRef;
 		rangeRef.push_back_deep(rangeRef.arena(), range);
 		return restore(cx,
@@ -305,7 +309,9 @@ public:
 		               verbose,
 		               addPrefix,
 		               removePrefix,
-		               lockDB);
+			       lockDB,
+		               incrementalBackupOnly,
+			       beginVersion);
 	}
 	Future<Version> atomicRestore(Database cx,
 	                              Key tagName,
