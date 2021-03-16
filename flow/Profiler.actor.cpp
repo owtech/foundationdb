@@ -35,7 +35,7 @@
 
 extern volatile thread_local int profilingEnabled;
 
-static uint64_t gettid() {
+static uint64_t sys_gettid() {
 	return syscall(__NR_gettid);
 }
 
@@ -225,7 +225,7 @@ struct Profiler {
 		sev.sigev_notify = SIGEV_THREAD_ID;
 		sev.sigev_signo = SIGPROF;
 		sev.sigev_value.sival_ptr = &(self->signalClosure);
-		sev._sigev_un._tid = gettid();
+		sev._sigev_un._tid = sys_gettid();
 		if (timer_create(CLOCK_THREAD_CPUTIME_ID, &sev, &self->periodicTimer) != 0) {
 			TraceEvent(SevWarn, "FailedToCreateProfilingTimer").GetLastError();
 			return Void();
@@ -288,7 +288,7 @@ void startProfiling(INetwork* network,
 	        "%PID%",
 	        format("%d", getpid())),
 	    "%TID%",
-	    format("%llx", (long long)gettid()));
+	    format("%llx", (long long)sys_gettid()));
 
 	if (!Profiler::active_profiler)
 		Profiler::active_profiler = new Profiler(period, outputFile, network);
