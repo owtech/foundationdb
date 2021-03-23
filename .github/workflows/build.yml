@@ -13,12 +13,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v2
-
     - name: Install Dependencies
       shell: bash
-      run: sudo apt update && sudo apt install -y  libboost-dev
-      # run: sudo apt update && sudo apt install -y  libfftw3-dev zlib1g-dev libwavpack-dev libwxgtk3.0-gtk3-dev libudev-dev libjack-dev libasound2-dev
+      run: |
+        sudo apt update
+        sudo apt install -y git cmake libboost-dev g++ build-essential libssl-dev default-jdk python3 python3-pip
+        sudo pip3 install virtualenv
+        sudo apt install -y dirmngr gnupg apt-transport-https ca-certificates
+        sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 3FA7E0328081BFF6A14DA29AA6A19B38D3D831EF
+        sudo sh -c 'echo "deb https://download.mono-project.com/repo/ubuntu stable-bionic main" > /etc/apt/sources.list.d/mono-official-stable.list'
+        sudo apt update 
+        sudo apt install mono-complete
+
+    - uses: actions/checkout@v2
 
     - name: Create Build Environment
       # Some projects don't allow in-source building, so create a separate build directory
@@ -33,13 +40,13 @@ jobs:
       # Note the current convention is to use the -S and -B options here to specify source 
       # and build directories, but this is only available with CMake 3.13 and higher.  
       # The CMake binaries on the Github Actions machines are (as of this writing) 3.12
-      run: cmake -D FDB_RELEASE=ON $GITHUB_WORKSPACE
+      run: cmake -D FDB_RELEASE=ON ${{github.workspace}}
 
     - name: Build
       working-directory: ${{github.workspace}}/bld
       shell: bash
       # Execute the build.  You can specify a specific target with "--target <NAME>"
-      run: make -j2
+      run: make -j3
 
     - name: Build rpm
       working-directory: ${{github.workspace}}/bld
