@@ -46,7 +46,7 @@ jobs:
       working-directory: ${{github.workspace}}/bld
       shell: bash
       # Execute the build.  You can specify a specific target with "--target <NAME>"
-      run: make
+      run: make -j 2
 
     - name: Build rpm
       working-directory: ${{github.workspace}}/bld
