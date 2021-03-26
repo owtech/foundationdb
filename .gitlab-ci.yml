@@ -2,6 +2,7 @@ image: ubuntu:latest
 
 build:
   stage: build
+  timeout: 4 hours
   before_script:
     - apt update
     - apt install -y sudo
