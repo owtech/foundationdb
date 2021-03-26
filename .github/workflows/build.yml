@@ -45,7 +45,7 @@ jobs:
     - name: Get CPack variables
       working-directory: ${{github.workspace}}/bld
       run: |
-        grep set CPackConfig.cmake | sed 's/set.//;s/")$//;s/^ *//;s/ "/=/'
+        grep 'set(' CPackConfig.cmake | sed 's/set.//;s/")$//;s/^ *//;s/ "/=/' >>$GITHUB_ENV
         
     - name: Test cpack variables
       run:
