@@ -49,8 +49,8 @@ jobs:
         
     - name: Test cpack variables
       run:
-        echo "clients: ${{ env.CPACK_RPM_CLIENTS-EL7_FILE_NAME }}"
-        echo "server: ${{ env.CPACK_RPM_SERVER-EL7_FILE_NAME }}"
+        echo "client ${{ env.CPACK_RPM_CLIENTS-EL7_FILE_NAME }}"
+        echo "server ${{ env.CPACK_RPM_SERVER-EL7_FILE_NAME }}"
 
 #    - name: Build
 #      working-directory: ${{github.workspace}}/bld
