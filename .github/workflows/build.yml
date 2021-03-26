@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [os-fork-6.2]
+    branches: ["os-fork-6.2*"]
 
 jobs:
   build-linux:
@@ -41,21 +41,31 @@ jobs:
       # and build directories, but this is only available with CMake 3.13 and higher.  
       # The CMake binaries on the Github Actions machines are (as of this writing) 3.12
       run: cmake -D FDB_RELEASE=ON -D GENERATE_DEBUG_PACKAGES=OFF ${{github.workspace}}
-
-    - name: Build
+      
+    - name: Get CPack variables
       working-directory: ${{github.workspace}}/bld
-      shell: bash
-      # Execute the build.  You can specify a specific target with "--target <NAME>"
-      run: make -j 2
+      run: |
+        grep set CPackConfig.cmake | sed 's/set.//;s/")$//;s/^ *//;s/ "/=/' >>$GITHUB_ENV
+        
+    - name: Test cpack variables
+      run:
+        echo "clients: ${{ env.CPACK_RPM_CLIENTS-EL7_FILE_NAME }}"
+        echo "server: ${{ env.CPACK_RPM_SERVER-EL7_FILE_NAME }}"
 
-    - name: Build rpm
-      working-directory: ${{github.workspace}}/bld
-      shell: bash
-      # Execute the build.  You can specify a specific target with "--target <NAME>"
-      run: cpack -G RPM
+#    - name: Build
+#      working-directory: ${{github.workspace}}/bld
+#      shell: bash
+#      # Execute the build.  You can specify a specific target with "--target <NAME>"
+#      run: make -j 2
 
-    - name: Upload the Result
-      uses: actions/upload-artifact@v2
-      with:
-        name: foundationdb-rpms.zip
-        path: ${{github.workspace}}/bld/packages/foundationdb-*.rpm*
+#    - name: Build rpm
+#      working-directory: ${{github.workspace}}/bld
+#      shell: bash
+      # Execute the build.  You can specify a specific target with "--target <NAME>"
+#      run: cpack -G RPM
+
+#    - name: Upload the Result
+#      uses: actions/upload-artifact@v2
+#      with:
+#        name: foundationdb-rpms.zip
+#        path: ${{github.workspace}}/bld/packages/foundationdb-*.rpm*
