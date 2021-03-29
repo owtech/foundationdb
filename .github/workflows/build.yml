@@ -52,6 +52,16 @@ jobs:
       shell: bash
       run: cpack -G RPM
 
+    - name: Get foundatondb version
+      shell: bash
+      working-directory: ${{github.workspace}}/bld
+      run: echo FDB_VERSION=`${{github.workspace}}/build/get_version.sh ${{github.workspace}}/versions.target` >>$GITHUB_ENV
+      
+    - name: Get foundationdb version suffix
+      shell: bash
+      working-directory: ${{github.workspace}}/bld
+      run: grep FDB_VERSION_SUFFIX CMakeCache.txt | sed s/:[^=]*// >>$GITHUB_ENV
+
     - name: Get CPack variables
       working-directory: ${{github.workspace}}/bld
       shell: bash
@@ -61,6 +71,8 @@ jobs:
     - name: Test cpack variables
       shell: bash
       run:
+        echo "FDB_VERSION=${{ env.FDB_VERSION }}"
+        echo "FDB_VERSION_SUFFIX=${{ env.FDB_VERSION_SUFFIX }}"
         echo "client ${{ env.CPACK_RPM_CLIENTS-EL7_FILE_NAME }}"
         echo "server ${{ env.CPACK_RPM_SERVER-EL7_FILE_NAME }}"
 
@@ -87,3 +99,9 @@ jobs:
       with:
         name: ${{ env.CPACK_RPM_SERVER-EL7_FILE_NAME }}.sha256
         path: ${{github.workspace}}/bld/packages/${{ env.CPACK_RPM_SERVER-EL7_FILE_NAME }}.sha256
+
+    - name: Upload the java bindings
+      uses: actions/upload-artifact@v2
+      with:
+        name: "fdb-java-${{ env.FDB_VERSION }}${{ env.FDB_VERSION_SUFFIX }}.jar"
+        path: "${{github.workspace}}/bld/packages/fdb-java-${{ env.FDB_VERSION }}${{ env.FDB_VERSION_SUFFIX }}.jar"
