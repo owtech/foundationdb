@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [os-fork-6.2]
+    branches: ["os-fork-6.2*"]
 
 jobs:
   build-linux:
@@ -40,22 +40,50 @@ jobs:
       # Note the current convention is to use the -S and -B options here to specify source 
       # and build directories, but this is only available with CMake 3.13 and higher.  
       # The CMake binaries on the Github Actions machines are (as of this writing) 3.12
-      run: cmake -D FDB_RELEASE=ON -D GENERATE_DEBUG_PACKAGES=OFF ${{github.workspace}}
+      run: cmake -D FDB_RELEASE=OFF -D GENERATE_DEBUG_PACKAGES=OFF ${{github.workspace}}
+       
+    - name: Test cpack variables
+      shell: bash
+      run:
+        echo "client ${{ env.CPACK_RPM_CLIENTS-EL7_FILE_NAME }}"
+        echo "server ${{ env.CPACK_RPM_SERVER-EL7_FILE_NAME }}"
 
     - name: Build
       working-directory: ${{github.workspace}}/bld
       shell: bash
-      # Execute the build.  You can specify a specific target with "--target <NAME>"
-      run: make -j 2
+      run: make -j 1
 
-    - name: Build rpm
+    - name: Build rpms
       working-directory: ${{github.workspace}}/bld
       shell: bash
-      # Execute the build.  You can specify a specific target with "--target <NAME>"
       run: cpack -G RPM
 
-    - name: Upload the Result
+    - name: Get CPack variables
+      working-directory: ${{github.workspace}}/bld
+      shell: bash
+      run: |
+        grep -E 'CPACK_RPM_CLIENTS-EL7_FILE_NAME|CPACK_RPM_SERVER-EL7_FILE_NAME' CPackConfig.cmake | sed 's/set.//;s/")$//;s/^ *//;s/ "/=/' >>$GITHUB_ENV
+
+    - name: Upload the Client rpm
       uses: actions/upload-artifact@v2
       with:
-        name: foundationdb-rpms.zip
-        path: ${{github.workspace}}/bld/packages/foundationdb-*.rpm*
+        name: ${{ env.CPACK_RPM_CLIENTS-EL7_FILE_NAME }}
+        path: ${{github.workspace}}/bld/packages/${{ env.CPACK_RPM_CLIENTS-EL7_FILE_NAME }}
+
+    - name: Upload the Client rpm checksum
+      uses: actions/upload-artifact@v2
+      with:
+        name: ${{ env.CPACK_RPM_CLIENTS-EL7_FILE_NAME }}.sha256
+        path: ${{github.workspace}}/bld/packages/${{ env.CPACK_RPM_CLIENTS-EL7_FILE_NAME }}.sha256
+
+    - name: Upload the Server rpm
+      uses: actions/upload-artifact@v2
+      with:
+        name: ${{ env.CPACK_RPM_SERVER-EL7_FILE_NAME }}
+        path: ${{github.workspace}}/bld/packages/${{ env.CPACK_RPM_SERVER-EL7_FILE_NAME }}
+
+    - name: Upload the Server rpm checksum
+      uses: actions/upload-artifact@v2
+      with:
+        name: ${{ env.CPACK_RPM_SERVER-EL7_FILE_NAME }}.sha256
+        path: ${{github.workspace}}/bld/packages/${{ env.CPACK_RPM_SERVER-EL7_FILE_NAME }}.sha256
