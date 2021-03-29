@@ -86,8 +86,20 @@ set(FDB_VERSION ${PROJECT_VERSION})
 set(FDB_VERSION_PLAIN ${FDB_VERSION})
 configure_file(${CMAKE_SOURCE_DIR}/versions.target.cmake ${CMAKE_SOURCE_DIR}/versions.target)
 
-message(STATUS "FDB version is ${FDB_VERSION}")
+if(NOT FDB_VERSION_SUFFIX)
+  if(NOT FDB_RELEASE)
+    if(CURRENT_GIT_VERSION)
+      set(git_string ".${CURRENT_GIT_VERSION}")
+    endif()
+    set(FDB_VERSION_SUFFIX "-0${git_string}.PRERELEASE")
+  else()
+    set(FDB_VERSION_SUFFIX "-1")
+  endif()
+endif()
+
 message(STATUS "FDB package name is ${FDB_PACKAGE_NAME}")
+message(STATUS "FDB version is ${FDB_VERSION}")
+message(STATUS "FDB version suffix is ${FDB_VERSION_SUFFIX}")
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/fdbclient/versions.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/fdbclient/versions.h)
 
 
