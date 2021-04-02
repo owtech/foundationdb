@@ -3,6 +3,7 @@ name: Build
 on:
   push:
     branches: ["os-fork-6.2*"]
+    tags: ["6.2*-ow"]
 
 jobs:
   build_linux:
