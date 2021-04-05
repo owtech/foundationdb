@@ -7,7 +7,7 @@ on:
 
 jobs:
   build_linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-18.04
 
     outputs:
       project_ver: ${{steps.vers.outputs.project_ver}}
