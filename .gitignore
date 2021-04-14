@@ -86,6 +86,10 @@ flow/coveragetool/obj
 /.ccls-cache
 /.clangd
 
+# Openway fork build
+/bld/
+/nbproject/private/
+
 # Temporary and user configuration files
 *~
 *.orig
