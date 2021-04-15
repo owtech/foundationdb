@@ -1392,7 +1392,31 @@ public:
 
 	ACTOR static Future<Optional<RestorableFileSet>> getRestoreSet_impl(Reference<BackupContainerFileSystem> bc,
 	                                                                    Version targetVersion,
-	                                                                    VectorRef<KeyRangeRef> keyRangesFilter) {
+	                                                                    VectorRef<KeyRangeRef> keyRangesFilter,
+	                                                                    bool logsOnly) {
+
+		// Does not support use keyRangesFilter for logsOnly yet
+		if (logsOnly && !keyRangesFilter.empty()) {
+			TraceEvent(SevError, "BackupContainerRestoreSetUnsupportedAPI")
+			    .detail("KeyRangesFilter", keyRangesFilter.size());
+			return Optional<RestorableFileSet>();
+		}
+
+		if (logsOnly) {
+			state RestorableFileSet restorableSet;
+			state std::vector<LogFile> logFiles;
+			wait(store(logFiles, bc->listLogFiles(0, targetVersion, false)));
+			if (!logFiles.empty()) {
+				Version end = logFiles.begin()->endVersion;
+				computeRestoreEndVersion(logFiles, &restorableSet.logs, &end, targetVersion);
+				if (end >= targetVersion) {
+					restorableSet.continuousBeginVersion = logFiles.begin()->beginVersion;
+					restorableSet.continuousEndVersion = end;
+					return Optional<RestorableFileSet>(restorableSet);
+				}
+			}
+			return Optional<RestorableFileSet>();
+		}
 		// Find the most recent keyrange snapshot through which we can restore filtered key ranges into targetVersion.
 		state std::vector<KeyspaceSnapshotFile> snapshots = wait(bc->listKeyspaceSnapshots());
 		state int i = snapshots.size() - 1;
@@ -1508,8 +1532,9 @@ public:
 	}
 
 	Future<Optional<RestorableFileSet>> getRestoreSet(Version targetVersion,
-	                                                  VectorRef<KeyRangeRef> keyRangesFilter) final {
-		return getRestoreSet_impl(Reference<BackupContainerFileSystem>::addRef(this), targetVersion, keyRangesFilter);
+	                                                  VectorRef<KeyRangeRef> keyRangesFilter,
+	                                                  bool logsOnly) final {
+		return getRestoreSet_impl(Reference<BackupContainerFileSystem>::addRef(this), targetVersion, keyRangesFilter, logsOnly);
 	}
 
 private:

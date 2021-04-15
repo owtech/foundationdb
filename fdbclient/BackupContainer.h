@@ -284,7 +284,8 @@ public:
 	// If targetVersion is 'latestVersion', use the minimum restorable version in a snapshot. Returns non-present if
 	// restoring to the given version is not possible.
 	virtual Future<Optional<RestorableFileSet>> getRestoreSet(Version targetVersion,
-	                                                          VectorRef<KeyRangeRef> keyRangesFilter = {}) = 0;
+	                                                          VectorRef<KeyRangeRef> keyRangesFilter = {},
+	                                                          bool logsOnly = false) = 0;
 
 	// Get an IBackupContainer based on a container spec string
 	static Reference<IBackupContainer> openContainer(std::string url);
