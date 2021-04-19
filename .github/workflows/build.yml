@@ -6,14 +6,63 @@ on:
     tags: ["*-ow"]
 
 jobs:
-  build_linux:
-    runs-on: ubuntu-18.04
-
+  calc_ver:
+    # calculate versions from git tags
+    runs-on: ubuntu-latest
     outputs:
       project_ver: ${{steps.vers.outputs.project_ver}}
+      build_ver: ${{steps.vers.outputs.build_ver}}
+      full_ver: ${{steps.vers.outputs.full_ver}}
       release_flag: ${{steps.vers.outputs.release_flag}}
-      ver_suffix: ${{steps.vers.outputs.ver_suffix}}
-      release_ver: ${{steps.vers.outputs.release_ver}}
+      release_id: ${{ steps.create_release.outputs.id }}
+      release_upload_url: ${{ steps.create_release.outputs.upload_url }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Calculate versions
+      id: vers
+      shell: bash
+      run: |
+        git fetch --prune --unshallow --tags
+        GIT_VERSION=`git describe --tags`
+        PROJECT_VERSION=`echo $GIT_VERSION | cut -d- -f1`
+        BUILD_VERSION=`echo $GIT_VERSION | cut -d- -f2-3 --output-delimiter=.`
+        GIT_CHANGE_NUM=`echo $GIT_VERSION | cut -d- -f3`
+        if [[ -n "$GIT_CHANGE_NUM" ]] || [[ "$BUILD_VERSION" < "1" ]]; then
+          RELEASE_FLAG=OFF
+        else
+          RELEASE_FLAG=ON
+        fi
+
+        echo "::set-output name=project_ver::$PROJECT_VERSION"
+        echo "::set-output name=build_ver::$BUILD_VERSION"
+        echo "::set-output name=full_ver::$PROJECT_VERSION-$BUILD_VERSION"
+        echo "::set-output name=release_flag::$RELEASE_FLAG"
+
+    - name: Display versions
+      run: |
+        echo "project_ver=${{steps.vers.outputs.project_ver}}"
+        echo "build_ver=${{steps.vers.outputs.build_ver}}"
+        echo "full_ver=${{steps.vers.outputs.full_ver}}"
+        echo "release_flag=${{steps.vers.outputs.release_flag}}"
+
+    - name: Create Draft Release
+      if: ${{ steps.vers.outputs.release_flag == 'ON' }}
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: "${{ steps.vers.outputs.full_ver }}"
+        release_name:  "v${{ steps.vers.outputs.full_ver }}"
+        draft: true
+        prerelease: false
+
+  build_linux:
+    runs-on: ubuntu-18.04
+    needs: [calc_ver]
 
     steps:
     - name: Install Dependencies
@@ -28,34 +77,9 @@ jobs:
         sudo apt update
         sudo apt install -y mono-complete
 
-    - uses: actions/checkout@v2
+    - name: Checkout
+      uses: actions/checkout@v2
 
-    - name: Calculate versions
-      id: vers
-      run: |
-        PROJECT_VERSION=`${{github.workspace}}/build/get_version.sh ${{github.workspace}}/versions.target`
-        RELEASE_VERSION=`git describe --tags --exact-match` && true
-        if [[ -n "$RELEASE_VERSION" ]]; then
-          # rem Release
-          RELEASE_FLAG=ON
-          VERSION_SUFFIX="ow.r"
-        else
-          # Intermediate build
-          RELEASE_FLAG=OFF
-          VERSION_SUFFIX="ow.${{github.run_number}}"
-        fi
-        echo "::set-output name=project_ver::$PROJECT_VERSION"
-        echo "::set-output name=release_flag::$RELEASE_FLAG"
-        echo "::set-output name=ver_suffix::$VERSION_SUFFIX"        
-        echo "::set-output name=release_ver::$RELEASE_VERSION"
-
-    - name: Display versions
-      run: |
-        echo "project_ver=${{steps.vers.outputs.project_ver}}"
-        echo "release_flag=${{steps.vers.outputs.release_flag}}"
-        echo "ver_suffix=${{steps.vers.outputs.ver_suffix}}"
-        echo "release_ver=${{steps.vers.outputs.release_ver}}"
-        
     - name: Create Build Environment
       # Some projects don't allow in-source building, so create a separate build directory
       # We'll use this as our working directory for all subsequent commands
@@ -69,7 +93,7 @@ jobs:
       # Note the current convention is to use the -S and -B options here to specify source 
       # and build directories, but this is only available with CMake 3.13 and higher.  
       # The CMake binaries on the Github Actions machines are (as of this writing) 3.12
-      run: cmake -D FDB_RELEASE=${{steps.vers.outputs.release_flag}} -DFDB_VERSION_SUFFIX=-${{steps.vers.outputs.ver_suffix}} -DGENERATE_DEBUG_PACKAGES=OFF ${{github.workspace}}
+      run: cmake -D FDB_RELEASE=${{needs.calc_ver.outputs.release_flag}} -DFDB_VERSION_SUFFIX=-${{needs.calc_ver.outputs.build_ver}} -DGENERATE_DEBUG_PACKAGES=OFF ${{github.workspace}}
        
     - name: Build
       working-directory: ${{github.workspace}}/bld
@@ -81,130 +105,99 @@ jobs:
       shell: bash
       run: cpack -G RPM
 
-    - name: Get foundatondb version
-      shell: bash
-      working-directory: ${{github.workspace}}/bld
-      run: echo FDB_VERSION=`${{github.workspace}}/build/get_version.sh ${{github.workspace}}/versions.target` >>$GITHUB_ENV
-      
-    - name: Upload the Client rpm
+    - name: Upload client rpm
       uses: actions/upload-artifact@v2
       with:
-        name: foundationdb-clients-${{steps.vers.outputs.project_ver}}-${{steps.vers.outputs.ver_suffix}}.el7.x86_64.rpm
-        path: ${{github.workspace}}/bld/packages/foundationdb-clients-${{steps.vers.outputs.project_ver}}-${{steps.vers.outputs.ver_suffix}}.el7.x86_64.rpm
+        name: foundationdb-clients-${{ needs.calc_ver.outputs.full_ver }}.el7.x86_64.rpm
+        path: ${{github.workspace}}/bld/packages/foundationdb-clients-${{ needs.calc_ver.outputs.full_ver }}.el7.x86_64.rpm
 
-    - name: Upload the Client rpm checksum
-      uses: actions/upload-artifact@v2
+    - name: Release client rpm
+      if: ${{ needs.calc_ver.outputs.release_flag == "ON" }}
+      uses: actions/upload-release-asset@v1.0.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        name: foundationdb-clients-${{steps.vers.outputs.project_ver}}-${{steps.vers.outputs.ver_suffix}}.el7.x86_64.rpm.sha256
-        path: ${{github.workspace}}/bld/packages/foundationdb-clients-${{steps.vers.outputs.project_ver}}-${{steps.vers.outputs.ver_suffix}}.el7.x86_64.rpm.sha256
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ${{github.workspace}}/bld/packages/foundationdb-clients-${{ needs.calc_ver.outputs.full_ver }}.el7.x86_64.rpm
+        asset_name: foundationdb-clients-${{ needs.calc_ver.outputs.full_ver }}.el7.x86_64.rpm
+        asset_content_type: application/octet-stream
 
-    - name: Upload the Server rpm
+    - name: Upload client rpm checksum
       uses: actions/upload-artifact@v2
       with:
-        name: foundationdb-server-${{steps.vers.outputs.project_ver}}-${{steps.vers.outputs.ver_suffix}}.el7.x86_64.rpm
-        path: ${{github.workspace}}/bld/packages/foundationdb-server-${{steps.vers.outputs.project_ver}}-${{steps.vers.outputs.ver_suffix}}.el7.x86_64.rpm
+        name: foundationdb-clients-${{ needs.calc_ver.outputs.full_ver }}.el7.x86_64.rpm.sha256
+        path: ${{github.workspace}}/bld/packages/foundationdb-clients-${{ needs.calc_ver.outputs.full_ver }}.el7.x86_64.rpm.sha256
 
-    - name: Upload the Server rpm checksum
-      uses: actions/upload-artifact@v2
+    - name: Release client rpm checksum
+      if: ${{ needs.calc_ver.outputs.release_flag == "ON" }}
+      uses: actions/upload-release-asset@v1.0.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        name: foundationdb-server-${{steps.vers.outputs.project_ver}}-${{steps.vers.outputs.ver_suffix}}.el7.x86_64.rpm.sha256
-        path: ${{github.workspace}}/bld/packages/foundationdb-server-${{steps.vers.outputs.project_ver}}-${{steps.vers.outputs.ver_suffix}}.el7.x86_64.rpm.sha256
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ${{github.workspace}}/bld/packages/foundationdb-clients-${{ needs.calc_ver.outputs.full_ver }}.el7.x86_64.rpm.sha256
+        asset_name: foundationdb-clients-${{ needs.calc_ver.outputs.full_ver }}.el7.x86_64.rpm.sha256
+        asset_content_type: text/plain
 
-    - name: Upload the java bindings
+    - name: Upload server rpm
       uses: actions/upload-artifact@v2
       with:
-        name: "fdb-java-${{steps.vers.outputs.project_ver}}-${{steps.vers.outputs.ver_suffix}}.jar"
-        path: "${{github.workspace}}/bld/packages/fdb-java-${{steps.vers.outputs.project_ver}}-${{steps.vers.outputs.ver_suffix}}.jar"
+        name: foundationdb-server-${{ needs.calc_ver.outputs.full_ver }}.el7.x86_64.rpm
+        path: ${{github.workspace}}/bld/packages/foundationdb-server-${{ needs.calc_ver.outputs.full_ver }}.el7.x86_64.rpm
+
+    - name: Release server rpm
+      if: ${{ needs.calc_ver.outputs.release_flag == "ON" }}
+      uses: actions/upload-release-asset@v1.0.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ${{github.workspace}}/bld/packages/foundationdb-server-${{ needs.calc_ver.outputs.full_ver }}.el7.x86_64.rpm
+        asset_name: foundationdb-server-${{ needs.calc_ver.outputs.full_ver }}.el7.x86_64.rpm
+        asset_content_type: application/octet-stream
+
+    - name: Upload server rpm checksum
+      uses: actions/upload-artifact@v2
+      with:
+        name: foundationdb-server-${{ needs.calc_ver.outputs.full_ver }}.el7.x86_64.rpm.sha256
+        path: ${{github.workspace}}/bld/packages/foundationdb-server-${{ needs.calc_ver.outputs.full_ver }}.el7.x86_64.rpm.sha256
+
+    - name: Release server rpm
+      if: ${{ needs.calc_ver.outputs.release_flag == "ON" }}
+      uses: actions/upload-release-asset@v1.0.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ${{github.workspace}}/bld/packages/foundationdb-server-${{ needs.calc_ver.outputs.full_ver }}.el7.x86_64.rpm.sha256
+        asset_name: foundationdb-server-${{ needs.calc_ver.outputs.full_ver }}.el7.x86_64.rpm.sha256
+        asset_content_type: text/plain
+
+    - name: Upload java bindings
+      uses: actions/upload-artifact@v2
+      with:
+        name: "fdb-java-${{ needs.calc_ver.outputs.full_ver }}.jar"
+        path: "${{github.workspace}}/bld/packages/fdb-java-${{ needs.calc_ver.outputs.full_ver }}.jar"
+
+    - name: Release java bindings
+      if: ${{ needs.calc_ver.outputs.release_flag == "ON" }}
+      uses: actions/upload-release-asset@v1.0.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: "${{github.workspace}}/bld/packages/fdb-java-${{ needs.calc_ver.outputs.full_ver }}.jar"
+        asset_name: "fdb-java-${{ needs.calc_ver.outputs.full_ver }}.jar"
+        asset_content_type: application/java-archive
 
   release:
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: [build_linux]
+    needs: [calc_ver, build_linux]
+    if: ${{ needs.calc_ver.outputs.release_flag == 'ON' }}
     runs-on: ubuntu-latest
     steps:
       
-    - name: Download artifact
-      uses: actions/download-artifact@v2
-      with:
-        name: foundationdb-clients-${{needs.build_linux.outputs.project_ver}}-${{needs.build_linux.outputs.ver_suffix}}.el7.x86_64.rpm
-      
-    - name: Download artifact
-      uses: actions/download-artifact@v2
-      with:
-        name: foundationdb-clients-${{needs.build_linux.outputs.project_ver}}-${{needs.build_linux.outputs.ver_suffix}}.el7.x86_64.rpm.sha256
-      
-    - name: Download artifact
-      uses: actions/download-artifact@v2
-      with:
-        name: foundationdb-server-${{needs.build_linux.outputs.project_ver}}-${{needs.build_linux.outputs.ver_suffix}}.el7.x86_64.rpm
-      
-    - name: Download artifact
-      uses: actions/download-artifact@v2
-      with:
-        name: foundationdb-server-${{needs.build_linux.outputs.project_ver}}-${{needs.build_linux.outputs.ver_suffix}}.el7.x86_64.rpm.sha256
-      
-    - name: Download artifact
-      uses: actions/download-artifact@v2
-      with:
-        name: "fdb-java-${{needs.build_linux.outputs.project_ver}}-${{needs.build_linux.outputs.ver_suffix}}.jar"
-
-    - name: Create Draft Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: "${{ needs.build_linux.outputs.release_ver}}"
-        release_name:  "v${{ needs.build_linux.outputs.release_ver}}"
-        draft: true
-        prerelease: false
-
-    - uses: actions/upload-release-asset@v1.0.1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: foundationdb-clients-${{needs.build_linux.outputs.project_ver}}-${{needs.build_linux.outputs.ver_suffix}}.el7.x86_64.rpm
-        asset_name: foundationdb-clients-${{needs.build_linux.outputs.project_ver}}-${{needs.build_linux.outputs.ver_suffix}}.el7.x86_64.rpm
-        asset_content_type: text/plain
-
-    - uses: actions/upload-release-asset@v1.0.1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: foundationdb-clients-${{needs.build_linux.outputs.project_ver}}-${{needs.build_linux.outputs.ver_suffix}}.el7.x86_64.rpm.sha256
-        asset_name: foundationdb-clients-${{needs.build_linux.outputs.project_ver}}-${{needs.build_linux.outputs.ver_suffix}}.el7.x86_64.rpm.sha256
-        asset_content_type: text/plain
-
-    - uses: actions/upload-release-asset@v1.0.1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: foundationdb-server-${{needs.build_linux.outputs.project_ver}}-${{needs.build_linux.outputs.ver_suffix}}.el7.x86_64.rpm
-        asset_name: foundationdb-server-${{needs.build_linux.outputs.project_ver}}-${{needs.build_linux.outputs.ver_suffix}}.el7.x86_64.rpm
-        asset_content_type: text/plain
-
-    - uses: actions/upload-release-asset@v1.0.1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: foundationdb-server-${{needs.build_linux.outputs.project_ver}}-${{needs.build_linux.outputs.ver_suffix}}.el7.x86_64.rpm.sha256
-        asset_name: foundationdb-server-${{needs.build_linux.outputs.project_ver}}-${{needs.build_linux.outputs.ver_suffix}}.el7.x86_64.rpm.sha256
-        asset_content_type: text/plain
-
-    - uses: actions/upload-release-asset@v1.0.1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: "fdb-java-${{needs.build_linux.outputs.project_ver}}-${{needs.build_linux.outputs.ver_suffix}}.jar"
-        asset_name: "fdb-java-${{needs.build_linux.outputs.project_ver}}-${{needs.build_linux.outputs.ver_suffix}}.jar"
-        asset_content_type: text/plain
-
     - uses: eregon/publish-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        release_id: ${{ steps.create_release.outputs.id }}    
+        release_id: ${{ needs.calc_ver.outputs.release_id }}
