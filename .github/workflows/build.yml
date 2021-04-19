@@ -112,7 +112,7 @@ jobs:
         path: ${{github.workspace}}/bld/packages/foundationdb-clients-${{ needs.calc_ver.outputs.full_ver }}.el7.x86_64.rpm
 
     - name: Release client rpm
-      if: ${{ needs.calc_ver.outputs.release_flag == "ON" }}
+      if: ${{ needs.calc_ver.outputs.release_flag == 'ON' }}
       uses: actions/upload-release-asset@v1.0.1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -129,7 +129,7 @@ jobs:
         path: ${{github.workspace}}/bld/packages/foundationdb-clients-${{ needs.calc_ver.outputs.full_ver }}.el7.x86_64.rpm.sha256
 
     - name: Release client rpm checksum
-      if: ${{ needs.calc_ver.outputs.release_flag == "ON" }}
+      if: ${{ needs.calc_ver.outputs.release_flag == 'ON' }}
       uses: actions/upload-release-asset@v1.0.1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -146,7 +146,7 @@ jobs:
         path: ${{github.workspace}}/bld/packages/foundationdb-server-${{ needs.calc_ver.outputs.full_ver }}.el7.x86_64.rpm
 
     - name: Release server rpm
-      if: ${{ needs.calc_ver.outputs.release_flag == "ON" }}
+      if: ${{ needs.calc_ver.outputs.release_flag == 'ON' }}
       uses: actions/upload-release-asset@v1.0.1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -163,7 +163,7 @@ jobs:
         path: ${{github.workspace}}/bld/packages/foundationdb-server-${{ needs.calc_ver.outputs.full_ver }}.el7.x86_64.rpm.sha256
 
     - name: Release server rpm
-      if: ${{ needs.calc_ver.outputs.release_flag == "ON" }}
+      if: ${{ needs.calc_ver.outputs.release_flag == 'ON' }}
       uses: actions/upload-release-asset@v1.0.1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -180,7 +180,7 @@ jobs:
         path: "${{github.workspace}}/bld/packages/fdb-java-${{ needs.calc_ver.outputs.full_ver }}.jar"
 
     - name: Release java bindings
-      if: ${{ needs.calc_ver.outputs.release_flag == "ON" }}
+      if: ${{ needs.calc_ver.outputs.release_flag == 'ON' }}
       uses: actions/upload-release-asset@v1.0.1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
