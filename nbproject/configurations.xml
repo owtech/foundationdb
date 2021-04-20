@@ -1054,7 +1054,7 @@
       <item path="/usr/share/cmake/Modules/CheckFunctionExists.c"
             ex="false"
             tool="0"
-            flavor2="0">
+            flavor2="2">
         <cTool flags="5">
           <preprocessorList>
             <Elem>CHECK_FUNCTION_EXISTS=pthread_create</Elem>
@@ -1604,8 +1604,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1613,16 +1611,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1632,8 +1623,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1641,16 +1630,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1660,8 +1642,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1669,16 +1649,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1688,8 +1661,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1697,16 +1668,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1716,8 +1680,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1725,16 +1687,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1744,8 +1699,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1753,16 +1706,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1772,8 +1718,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1781,16 +1725,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1800,8 +1737,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1809,16 +1744,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1828,8 +1756,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1837,16 +1763,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1856,8 +1775,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1865,16 +1782,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1884,8 +1794,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1893,16 +1801,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1912,8 +1813,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1921,16 +1820,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1940,8 +1832,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1949,16 +1839,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1968,8 +1851,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1977,16 +1858,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1996,8 +1870,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2005,16 +1877,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2024,8 +1889,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2033,16 +1896,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2052,8 +1908,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2061,16 +1915,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2080,8 +1927,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2089,16 +1934,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2108,8 +1946,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2117,16 +1953,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2136,8 +1965,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2145,16 +1972,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2164,8 +1984,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2173,16 +1991,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2192,8 +2003,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2201,16 +2010,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2220,8 +2022,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2229,16 +2029,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2248,8 +2041,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2257,16 +2048,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2276,8 +2060,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2285,16 +2067,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2304,8 +2079,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2313,16 +2086,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2332,8 +2098,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2341,24 +2105,15 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/Restore.actor.g.cpp" ex="false" tool="1" flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>fdbserver</pElem>
             <pElem>bld/fdbserver</pElem>
             <pElem>bindings/c</pElem>
@@ -2375,18 +2130,11 @@
             <pElem>bld/boostProject-prefix/src/boostProject</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>FDB_CLEAN_BUILD</Elem>
             <Elem>FDB_RELEASE</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
             <Elem>HAVE_OPENSSL_INIT_NO_ATEXIT</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2396,8 +2144,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2405,16 +2151,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2424,8 +2163,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2433,16 +2170,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2452,8 +2182,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2461,16 +2189,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2480,8 +2201,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2489,16 +2208,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2508,8 +2220,6 @@
             flavor2="11">
         <ccTool flags="6">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>/usr/include/boost/variant</pElem>
             <pElem>/usr/include/boost/system</pElem>
             <pElem>/usr/include/boost/system/detail</pElem>
@@ -2579,14 +2289,7 @@
             <pElem>/usr/include/c++/10/x86_64-redhat-linux</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>TLS_DISABLED</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2596,8 +2299,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2605,16 +2306,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2624,8 +2318,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2633,16 +2325,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2652,8 +2337,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2661,16 +2344,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2680,8 +2356,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2689,24 +2363,15 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/Status.actor.g.cpp" ex="false" tool="1" flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2714,16 +2379,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2733,8 +2391,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2742,16 +2398,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2761,8 +2410,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2770,16 +2417,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2789,8 +2429,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2798,16 +2436,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2817,8 +2448,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2826,16 +2455,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2845,8 +2467,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2854,16 +2474,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2873,8 +2486,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2882,16 +2493,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2901,8 +2505,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2910,16 +2512,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2929,8 +2524,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2938,24 +2531,15 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/pubsub.actor.g.cpp" ex="false" tool="1" flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2963,28 +2547,23 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/rocksdb-prefix/src/rocksdb-build/CMakeFiles/3.19.7/CompilerIdC/CMakeCCompilerId.c"
             ex="false"
             tool="0"
-            flavor2="0">
+            flavor2="2">
       </item>
       <item path="bld/fdbserver/rocksdb-prefix/src/rocksdb-build/CMakeFiles/3.19.7/CompilerIdCXX/CMakeCXXCompilerId.cpp"
             ex="false"
             tool="1"
-            flavor2="0">
+            flavor2="11">
+        <ccTool flags="7">
+        </ccTool>
       </item>
       <item path="bld/fdbserver/rocksdb-prefix/src/rocksdb-build/build_version.cc"
             ex="false"
@@ -3001,7 +2580,6 @@
           <preprocessorList>
             <Elem>HAVE_PCLMUL</Elem>
             <Elem>HAVE_SSE42</Elem>
-            <Elem>NDEBUG</Elem>
             <Elem>OS_LINUX</Elem>
             <Elem>ROCKSDB_FALLOCATE_PRESENT</Elem>
             <Elem>ROCKSDB_LIB_IO_POSIX</Elem>
@@ -4814,8 +4392,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -4823,24 +4399,15 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/tester.actor.g.cpp" ex="false" tool="1" flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -4848,24 +4415,15 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/worker.actor.g.cpp" ex="false" tool="1" flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -4873,16 +4431,9 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -4891,17 +4442,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/ApiWorkload.actor.g.cpp"
@@ -4909,17 +4449,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/AsyncFileCorrectness.actor.g.cpp"
@@ -4927,17 +4456,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/AsyncFileRead.actor.g.cpp"
@@ -4945,17 +4463,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/AsyncFileWrite.actor.g.cpp"
@@ -4963,17 +4470,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/AtomicOps.actor.g.cpp"
@@ -4981,17 +4477,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/AtomicOpsApiCorrectness.actor.g.cpp"
@@ -4999,17 +4484,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/AtomicRestore.actor.g.cpp"
@@ -5017,17 +4491,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/AtomicSwitchover.actor.g.cpp"
@@ -5035,17 +4498,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/BackgroundSelectors.actor.g.cpp"
@@ -5053,17 +4505,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/BackupAndParallelRestoreCorrectness.actor.g.cpp"
@@ -5071,17 +4512,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/BackupCorrectness.actor.g.cpp"
@@ -5089,17 +4519,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/BackupToDBAbort.actor.g.cpp"
@@ -5107,17 +4526,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/BackupToDBCorrectness.actor.g.cpp"
@@ -5125,17 +4533,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/BackupToDBUpgrade.actor.g.cpp"
@@ -5143,17 +4540,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/BulkLoad.actor.g.cpp"
@@ -5161,17 +4547,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/ChangeConfig.actor.g.cpp"
@@ -5179,17 +4554,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/ClientTransactionProfileCorrectness.actor.g.cpp"
@@ -5197,17 +4561,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/CommitBugCheck.actor.g.cpp"
@@ -5215,17 +4568,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/ConfigureDatabase.actor.g.cpp"
@@ -5233,17 +4575,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/ConflictRange.actor.g.cpp"
@@ -5251,17 +4582,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/ConsistencyCheck.actor.g.cpp"
@@ -5269,17 +4589,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/CpuProfiler.actor.g.cpp"
@@ -5287,17 +4596,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/Cycle.actor.g.cpp"
@@ -5305,17 +4603,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/DDBalance.actor.g.cpp"
@@ -5323,17 +4610,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/DDMetrics.actor.g.cpp"
@@ -5341,17 +4617,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/DDMetricsExclude.actor.g.cpp"
@@ -5359,17 +4624,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/DataDistributionMetrics.actor.g.cpp"
@@ -5377,17 +4631,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/DifferentClustersSameRV.actor.g.cpp"
@@ -5395,17 +4638,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/DiskDurability.actor.g.cpp"
@@ -5413,17 +4645,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/DiskDurabilityTest.actor.g.cpp"
@@ -5431,17 +4652,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/Downgrade.actor.g.cpp"
@@ -5449,17 +4659,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/DummyWorkload.actor.g.cpp"
@@ -5467,17 +4666,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/ExternalWorkload.actor.g.cpp"
@@ -5485,17 +4673,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/FastTriggeredWatches.actor.g.cpp"
@@ -5503,17 +4680,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/FileSystem.actor.g.cpp"
@@ -5521,17 +4687,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/FuzzApiCorrectness.actor.g.cpp"
@@ -5539,17 +4694,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/Increment.actor.g.cpp"
@@ -5557,17 +4701,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/IncrementalBackup.actor.g.cpp"
@@ -5575,27 +4708,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>fdbserver</pElem>
-            <pElem>bld/fdbserver</pElem>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>fdbclient</pElem>
-            <pElem>bld/fdbclient</pElem>
-            <pElem>fdbrpc</pElem>
-            <pElem>bld/fdbrpc</pElem>
-            <pElem>flow</pElem>
-            <pElem>bld/flow</pElem>
-            <pElem>flow/-lpthread</pElem>
-            <pElem>bld/boostProject-prefix/src/boostProject</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>FDB_CLEAN_BUILD</Elem>
-            <Elem>FDB_RELEASE</Elem>
-            <Elem>HAVE_OPENSSL_INIT_NO_ATEXIT</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/IndexScan.actor.g.cpp"
@@ -5603,17 +4715,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/Inventory.actor.g.cpp"
@@ -5621,17 +4722,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/KVStoreTest.actor.g.cpp"
@@ -5639,17 +4729,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/KillRegion.actor.g.cpp"
@@ -5657,17 +4736,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/LocalRatekeeper.actor.g.cpp"
@@ -5675,17 +4743,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/LockDatabase.actor.g.cpp"
@@ -5693,17 +4750,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/LockDatabaseFrequently.actor.g.cpp"
@@ -5711,17 +4757,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/LogMetrics.actor.g.cpp"
@@ -5729,17 +4764,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/LowLatency.actor.g.cpp"
@@ -5747,17 +4771,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/MachineAttrition.actor.g.cpp"
@@ -5765,17 +4778,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/Mako.actor.g.cpp"
@@ -5783,17 +4785,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/MemoryLifetime.actor.g.cpp"
@@ -5801,17 +4792,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/MetricLogging.actor.g.cpp"
@@ -5819,17 +4799,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/ParallelRestore.actor.g.cpp"
@@ -5837,17 +4806,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/Performance.actor.g.cpp"
@@ -5855,17 +4813,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/Ping.actor.g.cpp"
@@ -5873,17 +4820,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/PopulateTPCC.actor.g.cpp"
@@ -5891,17 +4827,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/PubSubMultiples.actor.g.cpp"
@@ -5909,17 +4834,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/QueuePush.actor.g.cpp"
@@ -5927,17 +4841,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/RYWDisable.actor.g.cpp"
@@ -5945,17 +4848,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/RYWPerformance.actor.g.cpp"
@@ -5963,17 +4855,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/RandomClogging.actor.g.cpp"
@@ -5981,17 +4862,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/RandomMoveKeys.actor.g.cpp"
@@ -5999,17 +4869,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/RandomSelector.actor.g.cpp"
@@ -6017,17 +4876,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/ReadHotDetection.actor.g.cpp"
@@ -6035,17 +4883,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/ReadWrite.actor.g.cpp"
@@ -6053,17 +4890,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/RemoveServersSafely.actor.g.cpp"
@@ -6071,17 +4897,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/ReportConflictingKeys.actor.g.cpp"
@@ -6089,17 +4904,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/Rollback.actor.g.cpp"
@@ -6107,17 +4911,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/RyowCorrectness.actor.g.cpp"
@@ -6125,17 +4918,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/SaveAndKill.actor.g.cpp"
@@ -6143,17 +4925,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/SelectorCorrectness.actor.g.cpp"
@@ -6161,17 +4932,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/Serializability.actor.g.cpp"
@@ -6179,17 +4939,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/Sideband.actor.g.cpp"
@@ -6197,17 +4946,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/SlowTaskWorkload.actor.g.cpp"
@@ -6215,17 +4953,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/SnapTest.actor.g.cpp"
@@ -6233,17 +4960,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/SpecialKeySpaceCorrectness.actor.g.cpp"
@@ -6251,17 +4967,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/StatusWorkload.actor.g.cpp"
@@ -6269,17 +4974,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/Storefront.actor.g.cpp"
@@ -6287,17 +4981,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/StreamingRead.actor.g.cpp"
@@ -6305,17 +4988,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/SuspendProcesses.actor.g.cpp"
@@ -6323,17 +4995,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/TPCC.actor.g.cpp"
@@ -6341,17 +5002,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/TagThrottleApi.actor.g.cpp"
@@ -6359,17 +5009,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/TargetedKill.actor.g.cpp"
@@ -6377,17 +5016,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/TaskBucketCorrectness.actor.g.cpp"
@@ -6395,17 +5023,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/ThreadSafety.actor.g.cpp"
@@ -6413,17 +5030,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/Throttling.actor.g.cpp"
@@ -6431,17 +5037,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/Throughput.actor.g.cpp"
@@ -6449,17 +5044,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/TimeKeeperCorrectness.actor.g.cpp"
@@ -6467,17 +5051,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/TriggerRecovery.actor.g.cpp"
@@ -6485,17 +5058,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/UnitPerf.actor.g.cpp"
@@ -6503,17 +5065,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/UnitTests.actor.g.cpp"
@@ -6521,17 +5072,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/Unreadable.actor.g.cpp"
@@ -6539,17 +5079,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/VersionStamp.actor.g.cpp"
@@ -6557,17 +5086,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/WatchAndWait.actor.g.cpp"
@@ -6575,17 +5093,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/Watches.actor.g.cpp"
@@ -6593,17 +5100,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/WorkerErrors.actor.g.cpp"
@@ -6611,17 +5107,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/WriteBandwidth.actor.g.cpp"
@@ -6629,17 +5114,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/workloads/WriteDuringRead.actor.g.cpp"
@@ -6647,17 +5121,6 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
-          <incDir>
-            <pElem>bindings/c</pElem>
-            <pElem>bld/bindings/c</pElem>
-            <pElem>bld/fdbserver/workloads</pElem>
-            <pElem>fdbserver/workloads</pElem>
-            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/flow/ActorCollection.actor.g.cpp"
@@ -6975,9 +5438,18 @@
       </folder>
       <folder path="0/bld/fdbserver/workloads">
         <ccTool>
+          <incDir>
+            <pElem>bindings/c</pElem>
+            <pElem>bld/bindings/c</pElem>
+            <pElem>bld/fdbserver/workloads</pElem>
+            <pElem>fdbserver/workloads</pElem>
+            <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
+            <pElem>bld/fdbserver</pElem>
+          </incDir>
           <preprocessorList>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
           </preprocessorList>
         </ccTool>
       </folder>
