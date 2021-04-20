@@ -3,7 +3,7 @@ name: Build
 on:
   push:
     branches: ["ow-fork-*"]
-    tags: ["*-ow"]
+    tags: ["*-*ow"]
 
 jobs:
   calc_ver:
