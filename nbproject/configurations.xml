@@ -1028,13 +1028,13 @@
       <makefileType>
         <makeTool>
           <buildCommandWorkingDir>bld</buildCommandWorkingDir>
-          <buildCommand>${MAKE} -f Makefile -j16</buildCommand>
-          <cleanCommand>${MAKE} -f Makefile clean</cleanCommand>
+          <buildCommand>ninja</buildCommand>
+          <cleanCommand>ninja clean</cleanCommand>
           <executablePath></executablePath>
         </makeTool>
         <preBuild>
           <preBuildCommandWorkingDir>bld</preBuildCommandWorkingDir>
-          <preBuildCommand>cmake -DCMAKE_CXX_STANDARD_LIBRARIES="-lz" ..</preBuildCommand>
+          <preBuildCommand>cmake -DCMAKE_CXX_STANDARD_LIBRARIES="-lz" -G Ninja ..</preBuildCommand>
         </preBuild>
       </makefileType>
       <item path="/usr/share/cmake/Modules/CMakeCCompilerABI.c"
@@ -1604,6 +1604,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1611,9 +1613,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1623,6 +1632,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1630,9 +1641,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1642,6 +1660,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1649,9 +1669,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1661,6 +1688,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1668,9 +1697,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1680,6 +1716,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1687,9 +1725,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1699,6 +1744,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1706,9 +1753,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1718,6 +1772,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1725,9 +1781,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1737,6 +1800,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1744,9 +1809,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1756,6 +1828,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1763,9 +1837,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1775,6 +1856,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1782,9 +1865,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1794,6 +1884,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1801,9 +1893,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1813,6 +1912,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1820,9 +1921,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1832,6 +1940,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1839,9 +1949,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1851,6 +1968,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1858,9 +1977,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1870,6 +1996,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1877,9 +2005,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1889,6 +2024,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1896,9 +2033,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1908,6 +2052,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1915,9 +2061,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1927,6 +2080,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1934,9 +2089,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1946,6 +2108,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1953,9 +2117,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1965,6 +2136,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1972,9 +2145,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1984,6 +2164,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1991,9 +2173,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2003,6 +2192,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2010,9 +2201,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2022,6 +2220,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2029,9 +2229,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2041,6 +2248,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2048,9 +2257,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2060,6 +2276,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2067,9 +2285,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2079,6 +2304,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2086,9 +2313,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2098,6 +2332,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2105,15 +2341,24 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/Restore.actor.g.cpp" ex="false" tool="1" flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>fdbserver</pElem>
             <pElem>bld/fdbserver</pElem>
             <pElem>bindings/c</pElem>
@@ -2130,11 +2375,18 @@
             <pElem>bld/boostProject-prefix/src/boostProject</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>FDB_CLEAN_BUILD</Elem>
             <Elem>FDB_RELEASE</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
             <Elem>HAVE_OPENSSL_INIT_NO_ATEXIT</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2144,6 +2396,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2151,9 +2405,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2163,6 +2424,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2170,9 +2433,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2182,6 +2452,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2189,9 +2461,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2201,6 +2480,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2208,9 +2489,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2220,6 +2508,8 @@
             flavor2="11">
         <ccTool flags="6">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>/usr/include/boost/variant</pElem>
             <pElem>/usr/include/boost/system</pElem>
             <pElem>/usr/include/boost/system/detail</pElem>
@@ -2289,7 +2579,14 @@
             <pElem>/usr/include/c++/10/x86_64-redhat-linux</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>TLS_DISABLED</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2299,6 +2596,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2306,9 +2605,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2318,6 +2624,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2325,9 +2633,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2337,6 +2652,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2344,9 +2661,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2356,6 +2680,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2363,15 +2689,24 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/Status.actor.g.cpp" ex="false" tool="1" flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2379,9 +2714,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2391,6 +2733,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2398,9 +2742,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2410,6 +2761,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2417,9 +2770,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2429,6 +2789,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2436,9 +2798,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2448,6 +2817,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2455,9 +2826,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2467,6 +2845,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2474,9 +2854,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2486,6 +2873,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2493,9 +2882,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2505,6 +2901,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2512,9 +2910,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2524,6 +2929,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2531,15 +2938,24 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/pubsub.actor.g.cpp" ex="false" tool="1" flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2547,9 +2963,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2562,8 +2985,6 @@
             ex="false"
             tool="1"
             flavor2="11">
-        <ccTool flags="7">
-        </ccTool>
       </item>
       <item path="bld/fdbserver/rocksdb-prefix/src/rocksdb-build/build_version.cc"
             ex="false"
@@ -2580,6 +3001,7 @@
           <preprocessorList>
             <Elem>HAVE_PCLMUL</Elem>
             <Elem>HAVE_SSE42</Elem>
+            <Elem>NDEBUG</Elem>
             <Elem>OS_LINUX</Elem>
             <Elem>ROCKSDB_FALLOCATE_PRESENT</Elem>
             <Elem>ROCKSDB_LIB_IO_POSIX</Elem>
@@ -4392,6 +4814,8 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -4399,15 +4823,24 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/tester.actor.g.cpp" ex="false" tool="1" flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -4415,15 +4848,24 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/worker.actor.g.cpp" ex="false" tool="1" flavor2="11">
         <ccTool flags="1">
           <incDir>
+            <pElem>.</pElem>
+            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -4431,9 +4873,16 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
+            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
+            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
+            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>NDEBUG</Elem>
+            <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
+            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -5311,7 +5760,6 @@
             <pElem>bld/bindings/c</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c/foundationdb</pElem>
-            <pElem>bld/bindings/java</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -5444,7 +5892,6 @@
             <pElem>bld/fdbserver/workloads</pElem>
             <pElem>fdbserver/workloads</pElem>
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
           </incDir>
           <preprocessorList>
             <Elem>DTRACE_PROBES</Elem>
@@ -5458,7 +5905,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/contrib/monitoring</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -5478,7 +5924,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/fdbcli</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -5498,7 +5943,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/fdbclient</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -5518,7 +5962,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/fdbclient</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -5538,7 +5981,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/fdbmonitor</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -5558,7 +6000,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/fdbrpc</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -5578,7 +6019,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -5664,7 +6104,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/fdbclient</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -5712,7 +6151,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/fdbclient</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -5743,7 +6181,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/fdbclient</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -5767,7 +6204,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/fdbclient</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -5810,7 +6246,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/fdbclient</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -5837,7 +6272,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/fdbclient</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -5861,7 +6295,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/fdbclient</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -5881,7 +6314,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/fdbclient</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -5912,7 +6344,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/fdbclient</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -5932,7 +6363,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/fdbclient</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -5992,7 +6422,6 @@
             <pElem>.</pElem>
             <pElem>bld</pElem>
             <pElem>fdbrpc/libeio</pElem>
-            <pElem>bld/fdbrpc</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -6029,7 +6458,6 @@
             <pElem>.</pElem>
             <pElem>bld</pElem>
             <pElem>fdbrpc/libeio</pElem>
-            <pElem>bld/fdbrpc</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -6050,7 +6478,6 @@
             <pElem>.</pElem>
             <pElem>bld</pElem>
             <pElem>fdbrpc/libeio</pElem>
-            <pElem>bld/fdbrpc</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -6100,7 +6527,6 @@
             <pElem>.</pElem>
             <pElem>bld</pElem>
             <pElem>fdbrpc/libeio</pElem>
-            <pElem>bld/fdbrpc</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -6125,7 +6551,6 @@
             <pElem>.</pElem>
             <pElem>bld</pElem>
             <pElem>fdbrpc/libeio</pElem>
-            <pElem>bld/fdbrpc</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -6146,7 +6571,6 @@
             <pElem>.</pElem>
             <pElem>bld</pElem>
             <pElem>fdbrpc/libeio</pElem>
-            <pElem>bld/fdbrpc</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -6167,7 +6591,6 @@
             <pElem>.</pElem>
             <pElem>bld</pElem>
             <pElem>fdbrpc/libeio</pElem>
-            <pElem>bld/fdbrpc</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -6188,7 +6611,6 @@
             <pElem>.</pElem>
             <pElem>bld</pElem>
             <pElem>fdbrpc/libeio</pElem>
-            <pElem>bld/fdbrpc</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -6266,7 +6688,6 @@
             <pElem>.</pElem>
             <pElem>bld</pElem>
             <pElem>fdbrpc/libeio</pElem>
-            <pElem>bld/fdbrpc</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -6346,7 +6767,6 @@
             <pElem>bld/fdbserver/workloads</pElem>
             <pElem>fdbserver/workloads</pElem>
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -6459,7 +6879,6 @@
             <pElem>bld/fdbserver/workloads</pElem>
             <pElem>fdbserver/workloads</pElem>
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -6485,7 +6904,6 @@
             <pElem>bld/fdbserver/workloads</pElem>
             <pElem>fdbserver/workloads</pElem>
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -6621,7 +7039,6 @@
             <pElem>bld/fdbserver/workloads</pElem>
             <pElem>fdbserver/workloads</pElem>
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -6666,7 +7083,6 @@
             <pElem>bld/fdbserver/workloads</pElem>
             <pElem>fdbserver/workloads</pElem>
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -6721,7 +7137,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/fdbserver</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -6773,7 +7188,6 @@
             <pElem>bld/fdbserver/workloads</pElem>
             <pElem>fdbserver/workloads</pElem>
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7023,7 +7437,6 @@
             <pElem>bld/fdbserver/workloads</pElem>
             <pElem>fdbserver/workloads</pElem>
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7136,7 +7549,6 @@
             <pElem>bld/fdbserver/workloads</pElem>
             <pElem>fdbserver/workloads</pElem>
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
-            <pElem>bld/fdbserver</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7463,7 +7875,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7487,7 +7898,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7507,7 +7917,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7527,7 +7936,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7547,7 +7955,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7567,7 +7974,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7587,7 +7993,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7637,7 +8042,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7657,7 +8061,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7677,7 +8080,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7697,7 +8099,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7721,7 +8122,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7741,7 +8141,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7765,7 +8164,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7789,7 +8187,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7809,7 +8206,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7833,7 +8229,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7853,7 +8248,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7873,7 +8267,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7893,7 +8286,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7913,7 +8305,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7940,7 +8331,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7960,7 +8350,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -7980,7 +8369,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -8004,7 +8392,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -8024,7 +8411,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -8044,7 +8430,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
@@ -8064,7 +8449,6 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>bld/flow</pElem>
           </incDir>
           <preprocessorList>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>

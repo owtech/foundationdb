@@ -69,7 +69,7 @@ jobs:
       shell: bash
       run: |
         sudo apt update
-        sudo apt install -y sudo git cmake libboost-dev g++ build-essential libssl-dev default-jdk python3 python3-pip liblz4-dev
+        sudo apt install -y sudo git cmake libboost-dev g++ build-essential libssl-dev default-jdk python3 python3-pip liblz4-dev ninja-build
         sudo pip3 install virtualenv
         sudo apt install -y dirmngr gnupg apt-transport-https ca-certificates
         sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 3FA7E0328081BFF6A14DA29AA6A19B38D3D831EF
@@ -93,12 +93,12 @@ jobs:
       # Note the current convention is to use the -S and -B options here to specify source 
       # and build directories, but this is only available with CMake 3.13 and higher.  
       # The CMake binaries on the Github Actions machines are (as of this writing) 3.12
-      run: cmake -D FDB_RELEASE=${{needs.calc_ver.outputs.release_flag}} -DFDB_VERSION_SUFFIX=-${{needs.calc_ver.outputs.build_ver}} -DGENERATE_DEBUG_PACKAGES=OFF ${{github.workspace}}
+      run: cmake -D FDB_RELEASE=${{needs.calc_ver.outputs.release_flag}} -DFDB_VERSION_SUFFIX=-${{needs.calc_ver.outputs.build_ver}} -DGENERATE_DEBUG_PACKAGES=OFF -G Ninja ${{github.workspace}}
        
     - name: Build
       working-directory: ${{github.workspace}}/bld
       shell: bash
-      run: make -j 1
+      run: ninja -j 1
 
     - name: Build rpms
       working-directory: ${{github.workspace}}/bld
