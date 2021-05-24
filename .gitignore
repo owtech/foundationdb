@@ -99,3 +99,4 @@ flow/coveragetool/obj
 .DS_Store
 temp/
 /versions.target
+/Testing/Temporary/
