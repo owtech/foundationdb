@@ -272,6 +272,10 @@ configure_file(${CMAKE_SOURCE_DIR}/LICENSE ${CMAKE_BINARY_DIR}/License.txt COPYO
 ################################################################################
 # Filename of packages
 ################################################################################
+if(DEFINED BUILD_VERSION)
+  set(CPACK_RPM_PACKAGE_RELEASE "${BUILD_VERSION}")
+  set(CPACK_DEBIAN_PACKAGE_RELEASE "${BUILD_VERSION}")
+endif()
 
 # RPM filenames
 set(rpm-clients-filename "foundationdb-clients-${PROJECT_VERSION}${FDB_VERSION_SUFFIX}")
