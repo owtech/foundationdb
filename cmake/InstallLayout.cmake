@@ -126,26 +126,18 @@ configure_file(${CMAKE_SOURCE_DIR}/LICENSE ${CMAKE_BINARY_DIR}/License.txt COPYO
 ################################################################################
 # Filename of packages
 ################################################################################
-
-if(NOT FDB_RELEASE)
-  if(CURRENT_GIT_VERSION)
-    set(git_string ".${CURRENT_GIT_VERSION}")
-  endif()
-  set(CPACK_RPM_PACKAGE_RELEASE 0)
-  set(prerelease_string "-0${git_string}.PRERELEASE")
-else()
-  set(CPACK_RPM_PACKAGE_RELEASE 1)
-  set(prerelease_string "-1")
+if(DEFINED BUILD_VERSION)
+  set(CPACK_RPM_PACKAGE_RELEASE "${BUILD_VERSION}")
+  set(CPACK_DEBIAN_PACKAGE_RELEASE "${BUILD_VERSION}")
 endif()
 
-
 # RPM filenames
-set(rpm-clients-filename "foundationdb-clients-${PROJECT_VERSION}${prerelease_string}")
-set(rpm-server-filename "foundationdb-server-${PROJECT_VERSION}${prerelease_string}")
+set(rpm-clients-filename "foundationdb-clients-${PROJECT_VERSION}${FDB_VERSION_SUFFIX}")
+set(rpm-server-filename "foundationdb-server-${PROJECT_VERSION}${FDB_VERSION_SUFFIX}")
 
 # Deb filenames
-set(deb-clients-filename "foundationdb-clients_${PROJECT_VERSION}${prerelease_string}")
-set(deb-server-filename "foundationdb-server_${PROJECT_VERSION}${prerelease_string}")
+set(deb-clients-filename "foundationdb-clients_${PROJECT_VERSION}${FDB_VERSION_SUFFIX}")
+set(deb-server-filename "foundationdb-server_${PROJECT_VERSION}${FDB_VERSION_SUFFIX}")
 
 ################################################################################
 # Configuration for RPM

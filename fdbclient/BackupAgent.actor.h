@@ -68,6 +68,7 @@ public:
 	static const Key keyConfigStopWhenDoneKey;
 	static const Key keyStateStatus;
 	static const Key keyStateStop;
+	static const Key keyStateLogBeginVersion;
 	static const Key keyLastUid;
 	static const Key keyBeginKey;
 	static const Key keyEndKey;
@@ -297,7 +298,9 @@ public:
 	                        bool verbose = true,
 	                        Key addPrefix = Key(),
 	                        Key removePrefix = Key(),
-	                        bool lockDB = true);
+	                        bool lockDB = true,
+	                        bool incrementalBackupOnly = false,
+	                        Version beginVersion = -1);
 	Future<Version> restore(Database cx,
 	                        Optional<Database> cxOrig,
 	                        Key tagName,
@@ -308,7 +311,9 @@ public:
 	                        KeyRange range = normalKeys,
 	                        Key addPrefix = Key(),
 	                        Key removePrefix = Key(),
-	                        bool lockDB = true) {
+	                        bool lockDB = true,
+	                        bool incrementalBackupOnly = false,
+	                        Version beginVersion = -1) {
 		Standalone<VectorRef<KeyRangeRef>> rangeRef;
 		rangeRef.push_back_deep(rangeRef.arena(), range);
 		return restore(cx,
@@ -321,7 +326,9 @@ public:
 		               verbose,
 		               addPrefix,
 		               removePrefix,
-		               lockDB);
+		               lockDB,
+		               incrementalBackupOnly,
+		               beginVersion);
 	}
 	Future<Version> atomicRestore(Database cx,
 	                              Key tagName,
@@ -359,17 +366,25 @@ public:
 	                          std::string tagName,
 	                          Standalone<VectorRef<KeyRangeRef>> backupRanges,
 	                          bool stopWhenDone = true,
-	                          bool partitionedLog = false);
+	                          bool partitionedLog = false,
+	                          bool incrementalBackupOnly = false);
 	Future<Void> submitBackup(Database cx,
 	                          Key outContainer,
 	                          int snapshotIntervalSeconds,
 	                          std::string tagName,
 	                          Standalone<VectorRef<KeyRangeRef>> backupRanges,
 	                          bool stopWhenDone = true,
-	                          bool partitionedLog = false) {
+	                          bool partitionedLog = false,
+	                          bool incrementalBackupOnly = false) {
 		return runRYWTransactionFailIfLocked(cx, [=](Reference<ReadYourWritesTransaction> tr) {
-			return submitBackup(
-			    tr, outContainer, snapshotIntervalSeconds, tagName, backupRanges, stopWhenDone, partitionedLog);
+			return submitBackup(tr,
+			                    outContainer,
+			                    snapshotIntervalSeconds,
+			                    tagName,
+			                    backupRanges,
+			                    stopWhenDone,
+			                    partitionedLog,
+			                    incrementalBackupOnly);
 		});
 	}
 
@@ -906,6 +921,8 @@ public:
 
 	// Set to true if partitioned log is enabled (only useful if backup worker is also enabled).
 	KeyBackedProperty<bool> partitionedLogEnabled() { return configSpace.pack(LiteralStringRef(__FUNCTION__)); }
+	// Set to true if only requesting incremental backup without base snapshot.
+	KeyBackedProperty<bool> incrementalBackupOnly() { return configSpace.pack(LiteralStringRef(__FUNCTION__)); }
 
 	// Latest version for which all prior versions have saved by backup workers.
 	KeyBackedProperty<Version> latestBackupWorkerSavedVersion() {
@@ -934,8 +951,9 @@ public:
 		auto workerEnabled = backupWorkerEnabled().get(tr);
 		auto plogEnabled = partitionedLogEnabled().get(tr);
 		auto workerVersion = latestBackupWorkerSavedVersion().get(tr);
+		auto incrementalBackup = incrementalBackupOnly().get(tr);
 		return map(success(lastLog) && success(firstSnapshot) && success(workerEnabled) && success(plogEnabled) &&
-		               success(workerVersion),
+		               success(workerVersion) && success(incrementalBackup),
 		           [=](Void) -> Optional<Version> {
 			           // The latest log greater than the oldest snapshot is the restorable version
 			           Optional<Version> logVersion = workerEnabled.get().present() && workerEnabled.get().get() &&
@@ -945,6 +963,10 @@ public:
 			           if (logVersion.present() && firstSnapshot.get().present() &&
 			               logVersion.get() > firstSnapshot.get().get()) {
 				           return std::max(logVersion.get() - 1, firstSnapshot.get().get());
+			           }
+			           if (logVersion.present() && incrementalBackup.isReady() && incrementalBackup.get().present() &&
+			               incrementalBackup.get().get()) {
+				           return logVersion.get() - 1;
 			           }
 			           return {};
 		           });

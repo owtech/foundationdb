@@ -136,6 +136,7 @@ enum {
 	OPT_BACKUPKEYS,
 	OPT_WAITFORDONE,
 	OPT_BACKUPKEYS_FILTER,
+	OPT_INCREMENTALONLY,
 
 	// Backup Modify
 	OPT_MOD_ACTIVE_INTERVAL,
@@ -149,6 +150,7 @@ enum {
 	OPT_PREFIX_REMOVE,
 	OPT_RESTORE_CLUSTERFILE_DEST,
 	OPT_RESTORE_CLUSTERFILE_ORIG,
+	OPT_RESTORE_BEGIN_VERSION,
 
 	// Shared constants
 	OPT_CLUSTERFILE,
@@ -248,6 +250,7 @@ CSimpleOpt::SOption g_rgBackupStartOptions[] = {
 	{ OPT_DEVHELP, "--dev-help", SO_NONE },
 	{ OPT_KNOB, "--knob_", SO_REQ_SEP },
 	{ OPT_BLOB_CREDENTIALS, "--blob_credentials", SO_REQ_SEP },
+	{ OPT_INCREMENTALONLY, "--incremental", SO_NONE },
 #ifndef TLS_DISABLED
 	TLS_OPTION_FLAGS
 #endif
@@ -1092,6 +1095,10 @@ static void printBackupUsage(bool devhelp) {
 	       "                 remove mutations for it. By default this is set to one hour.\n");
 	printf("  --delete_data\n"
 	       "                 This flag will cause cleanup to remove mutations for the most stale backup or DR.\n");
+	printf("  --incremental\n"
+	       "                 Performs incremental backup without the base backup.\n"
+	       "                 This option indicates to the backup agent that it will only need to record the log files, "
+	       "and ignore the range files.\n");
 #ifndef TLS_DISABLED
 	printf(TLS_HELP);
 #endif
@@ -1148,6 +1155,14 @@ static void printRestoreUsage(bool devhelp) {
 	printf("  --trace_format FORMAT\n"
 	       "                 Select the format of the trace files. xml (the default) and json are supported.\n"
 	       "                 Has no effect unless --log is specified.\n");
+	printf("  --incremental\n"
+	       "                 Performs incremental restore without the base backup.\n"
+	       "                 This tells the backup agent to only replay the log files from the backup source.\n"
+	       "                 This also allows a restore to be performed into a non-empty destination database.\n");
+	printf("  --begin_version\n"
+	       "                 To be used in conjunction with incremental restore.\n"
+	       "                 Indicates to the backup agent to only begin replaying log files from a certain version, "
+	       "instead of the entire set.\n");
 #ifndef TLS_DISABLED
 	printf(TLS_HELP);
 #endif
@@ -1867,7 +1882,8 @@ ACTOR Future<Void> submitBackup(Database db,
                                 bool dryRun,
                                 bool waitForCompletion,
                                 bool stopWhenDone,
-                                bool usePartitionedLog) {
+                                bool usePartitionedLog,
+                                bool incrementalBackupOnly) {
 	try {
 		state FileBackupAgent backupAgent;
 
@@ -1914,8 +1930,14 @@ ACTOR Future<Void> submitBackup(Database db,
 		}
 
 		else {
-			wait(backupAgent.submitBackup(
-			    db, KeyRef(url), snapshotIntervalSeconds, tagName, backupRanges, stopWhenDone, usePartitionedLog));
+			wait(backupAgent.submitBackup(db,
+			                              KeyRef(url),
+			                              snapshotIntervalSeconds,
+			                              tagName,
+			                              backupRanges,
+			                              stopWhenDone,
+			                              usePartitionedLog,
+			                              incrementalBackupOnly));
 
 			// Wait for the backup to complete, if requested
 			if (waitForCompletion) {
@@ -2211,20 +2233,20 @@ Reference<IBackupContainer> openBackupContainer(const char* name, std::string de
 	return c;
 }
 
-// Submit the restore request to the database if "performRestore" is true. Otherwise,
-// check if the restore can be performed.
 ACTOR Future<Void> runRestore(Database db,
                               std::string originalClusterFile,
                               std::string tagName,
                               std::string container,
                               Standalone<VectorRef<KeyRangeRef>> ranges,
+                              Version beginVersion,
                               Version targetVersion,
                               std::string targetTimestamp,
                               bool performRestore,
                               bool verbose,
                               bool waitForDone,
                               std::string addPrefix,
-                              std::string removePrefix) {
+                              std::string removePrefix,
+                              bool incrementalBackupOnly) {
 	if (ranges.empty()) {
 		ranges.push_back_deep(ranges.arena(), normalKeys);
 	}
@@ -2270,12 +2292,14 @@ ACTOR Future<Void> runRestore(Database db,
 
 			BackupDescription desc = wait(bc->describeBackup());
 
-			if (!desc.maxRestorableVersion.present()) {
+			if (incrementalBackupOnly && desc.contiguousLogEnd.present()) {
+				targetVersion = desc.contiguousLogEnd.get() - 1;
+			} else if (desc.maxRestorableVersion.present()) {
+				targetVersion = desc.maxRestorableVersion.get();
+			} else {
 				fprintf(stderr, "The specified backup is not restorable to any version.\n");
 				throw restore_error();
 			}
-
-			targetVersion = desc.maxRestorableVersion.get();
 
 			if (verbose)
 				printf("Using target restore version %" PRId64 "\n", targetVersion);
@@ -2291,7 +2315,10 @@ ACTOR Future<Void> runRestore(Database db,
 			                                                   targetVersion,
 			                                                   verbose,
 			                                                   KeyRef(addPrefix),
-			                                                   KeyRef(removePrefix)));
+			                                                   KeyRef(removePrefix),
+			                                                   true,
+			                                                   incrementalBackupOnly,
+			                                                   beginVersion));
 
 			if (waitForDone && verbose) {
 				// If restore is now complete then report version restored
@@ -3227,11 +3254,13 @@ int main(int argc, char* argv[]) {
 		Standalone<VectorRef<KeyRangeRef>> backupKeys;
 		Standalone<VectorRef<KeyRangeRef>> backupKeysFilter;
 		int maxErrors = 20;
+		Version beginVersion = invalidVersion;
 		Version restoreVersion = invalidVersion;
 		std::string restoreTimestamp;
 		bool waitForDone = false;
 		bool stopWhenDone = true;
 		bool usePartitionedLog = false; // Set to true to use new backup system
+		bool incrementalBackupOnly = false;
 		bool forceAction = false;
 		bool trace = false;
 		bool quietDisplay = false;
@@ -3487,6 +3516,9 @@ int main(int argc, char* argv[]) {
 			case OPT_USE_PARTITIONED_LOG:
 				usePartitionedLog = true;
 				break;
+			case OPT_INCREMENTALONLY:
+				incrementalBackupOnly = true;
+				break;
 			case OPT_RESTORECONTAINER:
 				restoreContainer = args->OptionArg();
 				// If the url starts with '/' then prepend "file://" for backwards compatibility
@@ -3512,6 +3544,17 @@ int main(int argc, char* argv[]) {
 					printHelpTeaser(argv[0]);
 					return FDB_EXIT_ERROR;
 				}
+				break;
+			}
+			case OPT_RESTORE_BEGIN_VERSION: {
+				const char* a = args->OptionArg();
+				long long ver = 0;
+				if (!sscanf(a, "%lld", &ver)) {
+					fprintf(stderr, "ERROR: Could not parse database beginVersion `%s'\n", a);
+					printHelpTeaser(argv[0]);
+					return FDB_EXIT_ERROR;
+				}
+				beginVersion = ver;
 				break;
 			}
 			case OPT_RESTORE_VERSION: {
@@ -3895,7 +3938,8 @@ int main(int argc, char* argv[]) {
 				                           dryRun,
 				                           waitForDone,
 				                           stopWhenDone,
-				                           usePartitionedLog));
+				                           usePartitionedLog,
+				                           incrementalBackupOnly));
 				break;
 			}
 
@@ -4056,13 +4100,15 @@ int main(int argc, char* argv[]) {
 				                         tagName,
 				                         restoreContainer,
 				                         backupKeys,
+				                         beginVersion,
 				                         restoreVersion,
 				                         restoreTimestamp,
 				                         !dryRun,
 				                         !quietDisplay,
 				                         waitForDone,
 				                         addPrefix,
-				                         removePrefix));
+				                         removePrefix,
+				                         incrementalBackupOnly));
 				break;
 			case RESTORE_WAIT:
 				f = stopAfter(success(ba.waitRestore(db, KeyRef(tagName), true)));

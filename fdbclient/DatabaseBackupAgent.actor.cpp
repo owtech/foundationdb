@@ -1253,6 +1253,10 @@ struct CopyDiffLogsTaskFunc : TaskFuncBase {
 			    .detail("LogUID", task->params[BackupAgentBase::keyConfigLogUid]);
 		}
 
+		// set the log version to the state
+		tr->set(StringRef(states.pack(DatabaseBackupAgent::keyStateLogBeginVersion)),
+		        BinaryWriter::toValue(beginVersion, Unversioned()));
+
 		if (!stopWhenDone.present()) {
 			state Reference<TaskFuture> allPartsDone = futureBucket->future(tr);
 			std::vector<Future<Key>> addTaskVector;
@@ -2984,6 +2988,9 @@ public:
 				state Future<Optional<Key>> fBackupKeysPacked =
 				    tr->get(backupAgent->config.get(BinaryWriter::toValue(logUid, Unversioned()))
 				                .pack(BackupAgentBase::keyConfigBackupRanges));
+				state Future<Optional<Value>> flogVersionKey =
+				    tr->get(backupAgent->states.get(BinaryWriter::toValue(logUid, Unversioned()))
+				                .pack(BackupAgentBase::keyStateLogBeginVersion));
 
 				int backupStateInt = wait(backupAgent->getStateValue(tr, logUid));
 				state BackupAgentBase::enumState backupState = (BackupAgentBase::enumState)backupStateInt;
@@ -3000,7 +3007,13 @@ public:
 					}
 
 					state Optional<Value> stopVersionKey = wait(fStopVersionKey);
-
+					Optional<Value> logVersionKey = wait(flogVersionKey);
+					state std::string logVersionText =
+					    logVersionKey.present()
+					        ? ". Last log version is " +
+					              format("%lld",
+					                     BinaryReader::fromStringRef<Version>(logVersionKey.get(), Unversioned()))
+					        : "";
 					Optional<Key> backupKeysPacked = wait(fBackupKeysPacked);
 
 					state Standalone<VectorRef<KeyRangeRef>> backupRanges;
@@ -3019,8 +3032,8 @@ public:
 						    "The DR on tag `" + tagNameDisplay + "' is NOT a complete copy of the primary database.\n";
 						break;
 					case BackupAgentBase::STATE_RUNNING_DIFFERENTIAL:
-						statusText +=
-						    "The DR on tag `" + tagNameDisplay + "' is a complete copy of the primary database.\n";
+						statusText += "The DR on tag `" + tagNameDisplay +
+						              "' is a complete copy of the primary database" + logVersionText + ".\n";
 						break;
 					case BackupAgentBase::STATE_COMPLETED: {
 						Version stopVersion =
@@ -3032,13 +3045,13 @@ public:
 					} break;
 					case BackupAgentBase::STATE_PARTIALLY_ABORTED: {
 						statusText += "The previous DR on tag `" + tagNameDisplay + "' " +
-						              BackupAgentBase::getStateText(backupState) + ".\n";
+						              BackupAgentBase::getStateText(backupState) + logVersionText + ".\n";
 						statusText += "Abort the DR with --cleanup before starting a new DR.\n";
 						break;
 					}
 					default:
 						statusText += "The previous DR on tag `" + tagNameDisplay + "' " +
-						              BackupAgentBase::getStateText(backupState) + ".\n";
+						              BackupAgentBase::getStateText(backupState) + logVersionText + ".\n";
 						break;
 					}
 				}
