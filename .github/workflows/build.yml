@@ -105,11 +105,20 @@ jobs:
       shell: bash
       run: cpack -G RPM
 
+    - name: Build deb
+      working-directory: ${{github.workspace}}/bld
+      shell: bash
+      run: cpack -G DEB
+
+    - name: Remove versioned
+      shell: bash
+      run: rm -rf ${{github.workspace}}bld/packages/*${{needs.calc_ver.outputs.full_ver}}.versioned*
+
     - name: Upload result
       uses: nanoufo/action-upload-artifacts-and-release-assets@v1.4
       with:
         path: |
-          ${{github.workspace}}/bld/packages/*${{needs.calc_ver.outputs.full_ver}}*
+          ${{github.workspace}}/bld/packages/*${{needs.calc_ver.outputs.full_ver}}.*
         upload-release-files: ${{ needs.calc_ver.outputs.release_flag }}
         release-upload-url: ${{ needs.calc_ver.outputs.release_upload_url }}
         if-no-files-found: error
