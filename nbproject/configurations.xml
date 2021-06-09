@@ -971,6 +971,7 @@
         <in>serialize.cpp</in>
         <in>stacktrace.amalgamation.cpp</in>
         <in>version.cpp</in>
+        <in>xxhash.c</in>
       </df>
       <df name="monitoring">
         <in>actor_flamegraph.cpp</in>
@@ -1101,10 +1102,18 @@
       </item>
       <item path="bindings/c/test/mako/mako.c" ex="false" tool="0" flavor2="10">
         <cTool flags="4">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </cTool>
       </item>
       <item path="bindings/c/test/mako/utils.c" ex="false" tool="0" flavor2="10">
         <cTool flags="4">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </cTool>
       </item>
       <item path="bindings/c/test/mako/zipf.c" ex="false" tool="0" flavor2="3">
@@ -1131,14 +1140,26 @@
             tool="0"
             flavor2="10">
         <cTool flags="4">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </cTool>
       </item>
       <item path="bindings/c/test/ryw_benchmark.c" ex="false" tool="0" flavor2="10">
         <cTool flags="4">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </cTool>
       </item>
       <item path="bindings/c/test/txn_size_test.c" ex="false" tool="0" flavor2="10">
         <cTool flags="4">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </cTool>
       </item>
       <item path="bindings/c/test/workloads/SimpleWorkload.cpp"
@@ -1179,12 +1200,14 @@
             <pElem>bld/bindings/c/foundationdb</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -1216,12 +1239,14 @@
             <pElem>bld/bindings/c/foundationdb</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -1242,12 +1267,14 @@
             <pElem>bld/bindings/c/foundationdb</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -1381,6 +1408,10 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbclient/BackupAgentBase.actor.g.cpp"
@@ -1388,6 +1419,10 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbclient/BackupContainer.actor.g.cpp"
@@ -1395,6 +1430,10 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbclient/BlobStore.actor.g.cpp"
@@ -1402,6 +1441,10 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbclient/DatabaseBackupAgent.actor.g.cpp"
@@ -1409,10 +1452,18 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbclient/FDBOptions.g.cpp" ex="false" tool="1" flavor2="11">
         <ccTool flags="1">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbclient/FailureMonitorClient.actor.g.cpp"
@@ -1442,10 +1493,18 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbclient/HTTP.actor.g.cpp" ex="false" tool="1" flavor2="11">
         <ccTool flags="1">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbclient/KeyRangeMap.actor.g.cpp"
@@ -1453,6 +1512,10 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbclient/ManagementAPI.actor.g.cpp"
@@ -1460,6 +1523,10 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbclient/MetricLogger.actor.g.cpp"
@@ -1467,6 +1534,10 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbclient/MonitorLeader.actor.g.cpp"
@@ -1474,6 +1545,10 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbclient/MultiVersionTransaction.actor.g.cpp"
@@ -1481,6 +1556,10 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbclient/NativeAPI.actor.g.cpp"
@@ -1488,6 +1567,10 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbclient/ReadYourWrites.actor.g.cpp"
@@ -1495,6 +1578,10 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbclient/SpecialKeySpace.actor.g.cpp"
@@ -1502,6 +1589,10 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbclient/StatusClient.actor.g.cpp"
@@ -1509,6 +1600,10 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbclient/TagThrottle.actor.g.cpp"
@@ -1516,6 +1611,10 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbclient/TaskBucket.actor.g.cpp"
@@ -1523,6 +1622,10 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbclient/ThreadSafeTransaction.actor.g.cpp"
@@ -1530,6 +1633,10 @@
             tool="1"
             flavor2="11">
         <ccTool flags="1">
+          <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
+          </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbrpc/ActorFuzz.actor.g.cpp" ex="false" tool="1" flavor2="11">
@@ -1604,8 +1711,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1613,16 +1718,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1632,8 +1732,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1641,16 +1739,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1660,8 +1753,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1669,16 +1760,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1688,8 +1774,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1697,16 +1781,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1716,8 +1795,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1725,16 +1802,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1744,8 +1816,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1753,16 +1823,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1772,8 +1837,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1781,16 +1844,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1800,8 +1858,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1809,16 +1865,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1828,8 +1879,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1837,16 +1886,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1856,8 +1900,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1865,16 +1907,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1884,8 +1921,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1893,16 +1928,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1912,8 +1942,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1921,16 +1949,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1940,8 +1963,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1949,16 +1970,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1968,8 +1984,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -1977,16 +1991,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -1996,8 +2005,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2005,16 +2012,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2024,8 +2026,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2033,16 +2033,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2052,8 +2047,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2061,16 +2054,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2080,8 +2068,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2089,16 +2075,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2108,8 +2089,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2117,16 +2096,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2136,8 +2110,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2145,16 +2117,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2164,8 +2131,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2173,16 +2138,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2192,8 +2152,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2201,16 +2159,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2220,8 +2173,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2229,16 +2180,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2248,8 +2194,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2257,16 +2201,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2276,8 +2215,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2285,16 +2222,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2304,8 +2236,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2313,16 +2243,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2332,8 +2257,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2341,24 +2264,17 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/Restore.actor.g.cpp" ex="false" tool="1" flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>fdbserver</pElem>
             <pElem>bld/fdbserver</pElem>
             <pElem>bindings/c</pElem>
@@ -2375,18 +2291,11 @@
             <pElem>bld/boostProject-prefix/src/boostProject</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>FDB_CLEAN_BUILD</Elem>
             <Elem>FDB_RELEASE</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
             <Elem>HAVE_OPENSSL_INIT_NO_ATEXIT</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2396,8 +2305,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2405,16 +2312,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2424,8 +2326,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2433,16 +2333,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2452,8 +2347,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2461,16 +2354,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2480,8 +2368,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2489,16 +2375,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2508,8 +2389,6 @@
             flavor2="11">
         <ccTool flags="6">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>/usr/include/boost/variant</pElem>
             <pElem>/usr/include/boost/system</pElem>
             <pElem>/usr/include/boost/system/detail</pElem>
@@ -2579,14 +2458,7 @@
             <pElem>/usr/include/c++/10/x86_64-redhat-linux</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
             <Elem>TLS_DISABLED</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2596,8 +2468,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2605,16 +2475,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2624,8 +2489,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2633,16 +2496,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2652,8 +2510,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2661,16 +2517,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2680,8 +2531,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2689,24 +2538,17 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/Status.actor.g.cpp" ex="false" tool="1" flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2714,16 +2556,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2733,8 +2570,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2742,16 +2577,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2761,8 +2591,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2770,16 +2598,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2789,8 +2612,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2798,16 +2619,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2817,8 +2633,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2826,16 +2640,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2845,8 +2654,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2854,16 +2661,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2873,8 +2675,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2882,16 +2682,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2901,8 +2696,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2910,16 +2703,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2929,8 +2717,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2938,24 +2724,17 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/pubsub.actor.g.cpp" ex="false" tool="1" flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -2963,16 +2742,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -2985,6 +2759,8 @@
             ex="false"
             tool="1"
             flavor2="11">
+        <ccTool flags="7">
+        </ccTool>
       </item>
       <item path="bld/fdbserver/rocksdb-prefix/src/rocksdb-build/build_version.cc"
             ex="false"
@@ -3001,7 +2777,6 @@
           <preprocessorList>
             <Elem>HAVE_PCLMUL</Elem>
             <Elem>HAVE_SSE42</Elem>
-            <Elem>NDEBUG</Elem>
             <Elem>OS_LINUX</Elem>
             <Elem>ROCKSDB_FALLOCATE_PRESENT</Elem>
             <Elem>ROCKSDB_LIB_IO_POSIX</Elem>
@@ -4814,8 +4589,6 @@
             flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -4823,24 +4596,17 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/tester.actor.g.cpp" ex="false" tool="1" flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -4848,24 +4614,17 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/fdbserver/worker.actor.g.cpp" ex="false" tool="1" flavor2="11">
         <ccTool flags="1">
           <incDir>
-            <pElem>.</pElem>
-            <pElem>bld</pElem>
             <pElem>bindings/c</pElem>
             <pElem>bld/bindings/c</pElem>
             <pElem>bld/fdbserver/workloads</pElem>
@@ -4873,16 +4632,11 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
-            <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
-            <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
-            <Elem>CMAKE_BUILD</Elem>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>NDEBUG</Elem>
-            <Elem>NO_INTELLISENSE</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
-            <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -5578,8 +5332,10 @@
             flavor2="11">
         <ccTool flags="1">
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -5589,24 +5345,30 @@
             flavor2="11">
         <ccTool flags="1">
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/flow/Net2.actor.g.cpp" ex="false" tool="1" flavor2="11">
         <ccTool flags="1">
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
       <item path="bld/flow/Profiler.actor.g.cpp" ex="false" tool="1" flavor2="11">
         <ccTool flags="1">
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -5664,8 +5426,10 @@
       <item path="bld/flow/TLSConfig.actor.g.cpp" ex="false" tool="1" flavor2="11">
         <ccTool flags="1">
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -5675,8 +5439,10 @@
             flavor2="11">
         <ccTool flags="1">
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
           </preprocessorList>
         </ccTool>
       </item>
@@ -5731,12 +5497,14 @@
             <pElem>bld/bindings/c/foundationdb</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -5762,12 +5530,14 @@
             <pElem>bld/bindings/c/foundationdb</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -5810,32 +5580,40 @@
             <pElem>bld/bindings/c/foundationdb</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
           </preprocessorList>
         </ccTool>
       </folder>
       <folder path="0/bld/documentation">
         <ccTool>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
           </preprocessorList>
         </ccTool>
       </folder>
       <folder path="0/bld/fdbbackup">
         <ccTool>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
           </preprocessorList>
         </ccTool>
       </folder>
       <folder path="0/bld/fdbcli">
         <ccTool>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
           </preprocessorList>
         </ccTool>
       </folder>
@@ -5853,8 +5631,10 @@
             <pElem>fdbrpc/libeio</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
           </preprocessorList>
         </ccTool>
       </folder>
@@ -5894,8 +5674,10 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
           </preprocessorList>
         </ccTool>
@@ -5907,12 +5689,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -5926,12 +5710,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -5945,12 +5731,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -5964,12 +5752,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -5983,12 +5773,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -6002,12 +5794,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -6021,12 +5815,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -6106,12 +5902,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -6153,12 +5951,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -6183,12 +5983,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -6206,12 +6008,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -6248,12 +6052,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -6274,12 +6080,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -6297,12 +6105,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -6316,12 +6126,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -6346,12 +6158,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -6365,12 +6179,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -6424,12 +6240,14 @@
             <pElem>fdbrpc/libeio</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -6460,12 +6278,14 @@
             <pElem>fdbrpc/libeio</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -6480,12 +6300,14 @@
             <pElem>fdbrpc/libeio</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -6529,12 +6351,14 @@
             <pElem>fdbrpc/libeio</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -6553,12 +6377,14 @@
             <pElem>fdbrpc/libeio</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -6573,12 +6399,14 @@
             <pElem>fdbrpc/libeio</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -6593,12 +6421,14 @@
             <pElem>fdbrpc/libeio</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -6613,12 +6443,14 @@
             <pElem>fdbrpc/libeio</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -6690,12 +6522,14 @@
             <pElem>fdbrpc/libeio</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -6769,12 +6603,14 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
@@ -6881,12 +6717,14 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
@@ -6906,12 +6744,14 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
@@ -7041,12 +6881,14 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
@@ -7085,12 +6927,14 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
@@ -7139,12 +6983,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
@@ -7190,12 +7036,14 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
@@ -7439,12 +7287,14 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
@@ -7551,12 +7401,14 @@
             <pElem>bld/fdbserver/rocksdb-prefix/src/rocksdb/include</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>SSD_ROCKSDB_EXPERIMENTAL</Elem>
@@ -7877,12 +7729,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -7900,12 +7754,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -7919,12 +7775,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -7938,12 +7796,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -7957,12 +7817,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -7976,12 +7838,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -7995,12 +7859,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -8016,21 +7882,16 @@
           <incDir>
             <pElem>.</pElem>
             <pElem>bld</pElem>
-            <pElem>flow</pElem>
-            <pElem>bld/flow</pElem>
-            <pElem>flow/-lpthread</pElem>
-            <pElem>bld/boostProject-prefix/src/boostProject</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
-            <Elem>FDB_CLEAN_BUILD</Elem>
-            <Elem>FDB_RELEASE</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
-            <Elem>HAVE_OPENSSL_INIT_NO_ATEXIT</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -8044,12 +7905,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -8063,12 +7926,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -8082,12 +7947,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -8101,12 +7968,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -8124,12 +7993,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -8143,12 +8014,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -8166,12 +8039,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -8189,12 +8064,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -8208,12 +8085,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -8231,12 +8110,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -8250,12 +8131,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -8269,12 +8152,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -8288,12 +8173,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -8307,12 +8194,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -8333,12 +8222,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -8352,12 +8243,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -8371,12 +8264,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -8394,12 +8289,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -8413,12 +8310,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -8432,12 +8331,14 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
@@ -8451,17 +8352,23 @@
             <pElem>bld</pElem>
           </incDir>
           <preprocessorList>
+            <Elem>BOOST_BIND_GLOBAL_PLACEHOLDERS</Elem>
             <Elem>BOOST_ERROR_CODE_HEADER_ONLY</Elem>
             <Elem>BOOST_SYSTEM_NO_DEPRECATED</Elem>
             <Elem>CMAKE_BUILD</Elem>
             <Elem>DTRACE_PROBES</Elem>
             <Elem>HAS_ALIGNED_ALLOC</Elem>
             <Elem>HAVE_OPENSSL</Elem>
+            <Elem>HAVE_OPENSSL_INIT_NO_AT_EXIT</Elem>
             <Elem>NDEBUG</Elem>
             <Elem>NO_INTELLISENSE</Elem>
             <Elem>USE_UCONTEXT</Elem>
           </preprocessorList>
         </ccTool>
+      </item>
+      <item path="flow/xxhash.c" ex="false" tool="0" flavor2="10">
+        <cTool flags="4">
+        </cTool>
       </item>
       <item path="monitoring/actor_flamegraph.cpp" ex="false" tool="1" flavor2="11">
         <ccTool flags="1">
