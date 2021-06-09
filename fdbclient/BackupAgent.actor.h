@@ -300,6 +300,7 @@ public:
 	                        Key removePrefix = Key(),
 	                        bool lockDB = true,
 	                        bool incrementalBackupOnly = false,
+	                        bool inconsistentSnapshotOnly = false,
 	                        Version beginVersion = -1);
 	Future<Version> restore(Database cx,
 	                        Optional<Database> cxOrig,
@@ -313,6 +314,7 @@ public:
 	                        Key removePrefix = Key(),
 	                        bool lockDB = true,
 	                        bool incrementalBackupOnly = false,
+	                        bool inconsistentSnapshotOnly = false,
 	                        Version beginVersion = -1) {
 		Standalone<VectorRef<KeyRangeRef>> rangeRef;
 		rangeRef.push_back_deep(rangeRef.arena(), range);
@@ -328,6 +330,7 @@ public:
 		               removePrefix,
 		               lockDB,
 		               incrementalBackupOnly,
+		               inconsistentSnapshotOnly,
 		               beginVersion);
 	}
 	Future<Version> atomicRestore(Database cx,
@@ -362,6 +365,7 @@ public:
 
 	Future<Void> submitBackup(Reference<ReadYourWritesTransaction> tr,
 	                          Key outContainer,
+	                          int initialSnapshotIntervalSeconds,
 	                          int snapshotIntervalSeconds,
 	                          std::string tagName,
 	                          Standalone<VectorRef<KeyRangeRef>> backupRanges,
@@ -370,6 +374,7 @@ public:
 	                          bool incrementalBackupOnly = false);
 	Future<Void> submitBackup(Database cx,
 	                          Key outContainer,
+	                          int initialSnapshotIntervalSeconds,
 	                          int snapshotIntervalSeconds,
 	                          std::string tagName,
 	                          Standalone<VectorRef<KeyRangeRef>> backupRanges,
@@ -379,6 +384,7 @@ public:
 		return runRYWTransactionFailIfLocked(cx, [=](Reference<ReadYourWritesTransaction> tr) {
 			return submitBackup(tr,
 			                    outContainer,
+			                    initialSnapshotIntervalSeconds,
 			                    snapshotIntervalSeconds,
 			                    tagName,
 			                    backupRanges,
@@ -842,6 +848,11 @@ public:
 	// Coalesced set of ranges already dispatched for writing.
 	typedef KeyBackedMap<Key, bool> RangeDispatchMapT;
 	RangeDispatchMapT snapshotRangeDispatchMap() { return configSpace.pack(LiteralStringRef(__FUNCTION__)); }
+
+	// Interval to use for the first (initial) snapshot.
+	KeyBackedProperty<int64_t> initialSnapshotIntervalSeconds() {
+		return configSpace.pack(LiteralStringRef(__FUNCTION__));
+	}
 
 	// Interval to use for determining the target end version for new snapshots
 	KeyBackedProperty<int64_t> snapshotIntervalSeconds() { return configSpace.pack(LiteralStringRef(__FUNCTION__)); }

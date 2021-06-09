@@ -1299,10 +1299,6 @@ void Net2::run() {
 		while (!ready.empty()) {
 			++countTasks;
 			currentTaskID = ready.top().taskID;
-			if (currentTaskID < minTaskID) {
-				trackAtPriority(currentTaskID, taskBegin);
-				minTaskID = currentTaskID;
-			}
 			priorityMetric = static_cast<int64_t>(currentTaskID);
 			Task* task = ready.top().task;
 			ready.pop();
@@ -1315,10 +1311,16 @@ void Net2::run() {
 				TraceEvent(SevError, "TaskError").error(unknown_error());
 			}
 
+			if (currentTaskID < minTaskID) {
+				trackAtPriority(currentTaskID, taskBegin);
+				minTaskID = currentTaskID;
+			}
+
 			double tscNow = timestampCounter();
 			double newTaskBegin = timer_monotonic();
 			if (check_yield(TaskPriority::Max, tscNow)) {
 				checkForSlowTask(tscBegin, tscNow, newTaskBegin - taskBegin, currentTaskID);
+				taskBegin = newTaskBegin;	
 				FDB_TRACE_PROBE(run_loop_yield);
 				++countYields;
 				break;

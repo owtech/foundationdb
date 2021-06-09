@@ -387,6 +387,19 @@ JsonBuilderObject getLagObject(int64_t versions) {
 	return lag;
 }
 
+static JsonBuilderObject getBounceImpactInfo(int recoveryStatusCode) {
+	JsonBuilderObject bounceImpact;
+
+	if (recoveryStatusCode == RecoveryStatus::fully_recovered) {
+		bounceImpact["can_clean_bounce"] = true;
+	} else {
+		bounceImpact["can_clean_bounce"] = false;
+		bounceImpact["reason"] = "cluster hasn't fully recovered yet";
+	}
+
+	return bounceImpact;
+}
+
 struct MachineMemoryInfo {
 	double memoryUsage;
 	double aggregateLimit;
@@ -478,6 +491,13 @@ struct RolesInfo {
 			obj["mutation_bytes"] = StatusCounter(storageMetrics.getValue("MutationBytes")).getStatus();
 			obj["mutations"] = StatusCounter(storageMetrics.getValue("Mutations")).getStatus();
 			obj.setKeyRawNumber("local_rate", storageMetrics.getValue("LocalRate"));
+			try {
+				obj["fetched_versions"] = StatusCounter(storageMetrics.getValue("FetchedVersions")).getStatus();
+				obj["fetches_from_logs"] = StatusCounter(storageMetrics.getValue("FetchesFromLogs")).getStatus();
+			} catch (Error& e) {
+				if (e.code() != error_code_attribute_not_found)
+					throw e;
+			}
 
 			Version version = storageMetrics.getInt64("Version");
 			Version durableVersion = storageMetrics.getInt64("DurableVersion");
@@ -604,6 +624,11 @@ struct RolesInfo {
 			TraceEventFields const& commitLatencyBands = metrics.at("CommitLatencyBands");
 			if (commitLatencyBands.size()) {
 				obj["commit_latency_bands"] = addLatencyBandInfo(commitLatencyBands);
+			}
+
+			TraceEventFields const& commitBatchingWindowSize = metrics.at("CommitBatchingWindowSize");
+			if (commitBatchingWindowSize.size()) {
+				obj["commit_batching_window_size"] = addLatencyStatistics(commitBatchingWindowSize);
 			}
 		} catch (Error& e) {
 			if (e.code() != error_code_attribute_not_found) {
@@ -1084,6 +1109,7 @@ ACTOR static Future<JsonBuilderObject> recoveryStateStatusFetcher(WorkerDetails 
 		} else if (mStatusCode == RecoveryStatus::locking_old_transaction_servers) {
 			message["missing_logs"] = md.getValue("MissingIDs").c_str();
 		}
+
 		// TODO:  time_in_recovery: 0.5
 		//        time_in_state: 0.1
 
@@ -1742,7 +1768,7 @@ ACTOR static Future<vector<std::pair<MasterProxyInterface, EventMap>>> getProxie
 	    getServerMetrics(db->get().client.proxies,
 	                     address_workers,
 	                     std::vector<std::string>{
-	                         "GRVLatencyMetrics", "CommitLatencyMetrics", "GRVLatencyBands", "CommitLatencyBands" }));
+	                         "GRVLatencyMetrics", "CommitLatencyMetrics", "GRVLatencyBands", "CommitLatencyBands", "CommitBatchingWindowSize" }));
 
 	return results;
 }
@@ -2107,6 +2133,13 @@ static JsonBuilderObject tlogFetcher(int* logFaultTolerance,
 	int localSetsWithNonNegativeFaultTolerance = 0;
 
 	for (const auto& tLogSet : tLogs) {
+		if (tLogSet.tLogs.size() == 0) {
+			// We can have LogSets where there are no tLogs but some LogRouters. It's the way
+			// recruiting is implemented for old LogRouters in TagPartitionedLogSystem, where
+			// it adds an empty LogSet for missing locality.
+			continue;
+		}
+
 		int failedLogs = 0;
 		for (auto& log : tLogSet.tLogs) {
 			JsonBuilderObject logObj;
@@ -2123,6 +2156,7 @@ static JsonBuilderObject tlogFetcher(int* logFaultTolerance,
 		}
 
 		if (tLogSet.isLocal) {
+			ASSERT_WE_THINK(tLogSet.tLogReplicationFactor > 0);
 			int currentFaultTolerance = tLogSet.tLogReplicationFactor - 1 - tLogSet.tLogWriteAntiQuorum - failedLogs;
 			if (currentFaultTolerance >= 0) {
 				localSetsWithNonNegativeFaultTolerance++;
@@ -2617,6 +2651,7 @@ ACTOR Future<StatusReply> clusterGetStatus(
 
 		statusObj["protocol_version"] = format("%" PRIx64, currentProtocolVersion.version());
 		statusObj["connection_string"] = coordinators.ccf->getConnectionString().toString();
+		statusObj["bounce_impact"] = getBounceImpactInfo(statusCode);
 
 		state Optional<DatabaseConfiguration> configuration;
 		state Optional<LoadConfigurationResult> loadResult;

@@ -4,8 +4,6 @@ fdb_install_packages(TGZ DEB EL7 VERSIONED)
 fdb_install_dirs(BIN SBIN LIB FDBMONITOR INCLUDE ETC LOG DATA BACKUPAGENT)
 message(STATUS "FDB_INSTALL_DIRS -> ${FDB_INSTALL_DIRS}")
 
-# 'map' from (destination, package) to path
-# format vars like install_destination_for_${destination}_${package}
 install_destinations(TGZ
   BIN bin
   SBIN sbin
@@ -26,7 +24,7 @@ install_destinations(DEB
   INCLUDE usr/include
   ETC etc/foundationdb
   LOG var/log/foundationdb
-  DATA var/lib/foundationdb)
+  DATA var/lib/foundationdb/data)
 copy_install_destinations(DEB EL7)
 install_destinations(EL7 LIB usr/lib64)
 
@@ -76,6 +74,13 @@ configure_file("${PROJECT_SOURCE_DIR}/packaging/multiversion/clients/postinst" "
 set(LIB_DIR lib64)
 configure_file("${PROJECT_SOURCE_DIR}/packaging/multiversion/clients/postinst" "${script_dir}/clients/postinst-el7" @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/packaging/multiversion/clients/prerm" "${script_dir}/clients" @ONLY)
+
+
+################################################################################
+# Move Docker Setup
+################################################################################
+
+file(COPY "${PROJECT_SOURCE_DIR}/packaging/docker" DESTINATION "${PROJECT_BINARY_DIR}/packages/")
 
 ################################################################################
 # General CPack configuration

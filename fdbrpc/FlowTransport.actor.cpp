@@ -147,8 +147,13 @@ NetworkMessageReceiver* EndpointMap::get(Endpoint::Token const& token) {
 TaskPriority EndpointMap::getPriority(Endpoint::Token const& token) {
 	uint32_t index = token.second();
 	if (index < data.size() && data[index].token().first() == token.first() &&
-	    ((data[index].token().second() & 0xffffffff00000000LL) | index) == token.second())
-		return static_cast<TaskPriority>(data[index].token().second());
+	    ((data[index].token().second() & 0xffffffff00000000LL) | index) == token.second()) {
+		auto res = static_cast<TaskPriority>(data[index].token().second());
+		// we don't allow this priority to be "misused" for other stuff as we won't even
+		// attempt to find an endpoint if UnknownEndpoint is returned here
+		ASSERT(res != TaskPriority::UnknownEndpoint);
+		return res;
+	}
 	return TaskPriority::UnknownEndpoint;
 }
 
@@ -737,6 +742,13 @@ ACTOR Future<Void> connectionKeeper(Reference<Peer> self,
 
 				conn->close();
 				conn = Reference<IConnection>();
+
+				// Old versions will throw this error, and we don't want to forget their protocol versions.
+				// This means we can't tell the difference between an old protocol version and one we
+				// can no longer connect to.
+				if (e.code() != error_code_incompatible_protocol_version) {
+					self->protocolVersion->set(Optional<ProtocolVersion>());
+				}
 			}
 
 			// Clients might send more packets in response, which needs to go out on the next connection
@@ -764,7 +776,8 @@ Peer::Peer(TransportData* transport, NetworkAddress const& destination)
     incompatibleProtocolVersionNewer(false), peerReferences(-1), bytesReceived(0), lastDataPacketSentTime(now()),
     pingLatencies(destination.isPublic() ? FLOW_KNOBS->PING_SAMPLE_AMOUNT : 1), lastLoggedBytesReceived(0),
     bytesSent(0), lastLoggedBytesSent(0), lastLoggedTime(0.0), connectOutgoingCount(0), connectIncomingCount(0),
-    connectFailedCount(0), connectLatencies(destination.isPublic() ? FLOW_KNOBS->NETWORK_CONNECT_SAMPLE_AMOUNT : 1) {
+    connectFailedCount(0), connectLatencies(destination.isPublic() ? FLOW_KNOBS->NETWORK_CONNECT_SAMPLE_AMOUNT : 1),
+    protocolVersion(Reference<AsyncVar<Optional<ProtocolVersion>>>(new AsyncVar<Optional<ProtocolVersion>>())) {
 	IFailureMonitor::failureMonitor().setStatus(destination, FailureStatus(false));
 }
 
@@ -862,8 +875,18 @@ TransportData::~TransportData() {
 	}
 }
 
-ACTOR static void deliver(TransportData* self, Endpoint destination, ArenaReader reader, bool inReadSocket) {
-	TaskPriority priority = self->endpoints.getPriority(destination.token);
+// This actor looks up the task associated with an endpoint
+// and sends the message to it. The actual deserialization will
+// be done by that task (see NetworkMessageReceiver).
+ACTOR static void deliver(TransportData* self,
+                          Endpoint destination,
+                          TaskPriority priority,
+                          ArenaReader reader,
+                          bool inReadSocket) {
+	// We want to run the task at the right priority. If the priority
+	// is higher than the current priority (which is ReadSocket) we
+	// can just upgrade. Otherwise we'll context switch so that we
+	// don't block other tasks that might run with a higher priority.
 	if (priority < TaskPriority::ReadSocket || !inReadSocket) {
 		wait(delay(0, priority));
 	} else {
@@ -907,9 +930,6 @@ ACTOR static void deliver(TransportData* self, Endpoint destination, ArenaReader
 			}
 		}
 	}
-
-	if (inReadSocket)
-		g_network->setCurrentTask(TaskPriority::ReadSocket);
 }
 
 static void scanPackets(TransportData* transport,
@@ -1019,7 +1039,16 @@ static void scanPackets(TransportData* transport,
 		}
 
 		ASSERT(!reader.empty());
-		deliver(transport, Endpoint({ peerAddress }, token), std::move(reader), true);
+		TaskPriority priority = transport->endpoints.getPriority(token);
+		// we ignore packets to unknown endpoints if they're not going to a stream anyways, so we can just
+		// return here. The main place where this seems to happen is if a ReplyPromise is not waited on
+		// long enough.
+		// It would be slightly more elegant/readable to put this if-block into the deliver actor, but if
+		// we have many messages to UnknownEndpoint we want to optimize earlier. As deliver is an actor it
+		// will allocate some state on the heap and this prevents it from doing that.
+		if (priority != TaskPriority::UnknownEndpoint || (token.first() & TOKEN_STREAM_FLAG) != 0) {
+			deliver(transport, Endpoint({ peerAddress }, token), priority, std::move(reader), true);
+		}
 
 		unprocessed_begin = p = p + packetLen;
 	}
@@ -1044,12 +1073,12 @@ static int getNewBufferSize(const uint8_t* begin, const uint8_t* end, const Netw
 	                          packetLen + sizeof(uint32_t) * (peerAddress.isTLS() ? 2 : 3));
 }
 
+// This actor exists whenever there is an open or opening connection, whether incoming or outgoing
+// For incoming connections conn is set and peer is initially nullptr; for outgoing connections it is the reverse
 ACTOR static Future<Void> connectionReader(TransportData* transport,
                                            Reference<IConnection> conn,
                                            Reference<Peer> peer,
                                            Promise<Reference<Peer>> onConnected) {
-	// This actor exists whenever there is an open or opening connection, whether incoming or outgoing
-	// For incoming connections conn is set and peer is initially nullptr; for outgoing connections it is the reverse
 
 	state Arena arena;
 	state uint8_t* unprocessed_begin = nullptr;
@@ -1148,7 +1177,11 @@ ACTOR static Future<Void> connectionReader(TransportData* transport,
 							}
 
 							compatible = false;
-							if (!protocolVersion.hasMultiVersionClient()) {
+							if (!protocolVersion.hasInexpensiveMultiVersionClient()) {
+								if(peer) {
+									peer->protocolVersion->set(protocolVersion);
+								}
+
 								// Older versions expected us to hang up. It may work even if we don't hang up here, but
 								// it's safer to keep the old behavior.
 								throw incompatible_protocol_version();
@@ -1198,6 +1231,7 @@ ACTOR static Future<Void> connectionReader(TransportData* transport,
 							onConnected.send(peer);
 							wait(delay(0)); // Check for cancellation
 						}
+						peer->protocolVersion->set(peerProtocolVersion);
 					}
 				}
 				if (compatible) {
@@ -1463,7 +1497,11 @@ static void sendLocal(TransportData* self, ISerializeSource const& what, const E
 #endif
 
 	ASSERT(copy.size() > 0);
-	deliver(self, destination, ArenaReader(copy.arena(), copy, AssumeVersion(currentProtocolVersion)), false);
+	TaskPriority priority = self->endpoints.getPriority(destination.token);
+	if (priority != TaskPriority::UnknownEndpoint || (destination.token.first() & TOKEN_STREAM_FLAG) != 0) {
+		deliver(
+		    self, destination, priority, ArenaReader(copy.arena(), copy, AssumeVersion(currentProtocolVersion)), false);
+	}
 }
 
 static ReliablePacket* sendPacket(TransportData* self,
@@ -1601,6 +1639,16 @@ Reference<Peer> FlowTransport::sendUnreliable(ISerializeSource const& what,
 
 Reference<AsyncVar<bool>> FlowTransport::getDegraded() {
 	return self->degraded;
+}
+
+// Returns the protocol version of the peer at the specified address. The result is returned as an AsyncVar that
+// can be used to monitor for changes of a peer's protocol. The protocol version will be unset in the event that
+// there is no connection established to the peer.
+//
+// Note that this function does not establish a connection to the peer. In order to obtain a peer's protocol
+// version, some other mechanism should be used to connect to that peer.
+Reference<AsyncVar<Optional<ProtocolVersion>>> FlowTransport::getPeerProtocolAsyncVar(NetworkAddress addr) {
+	return self->peers.at(addr)->protocolVersion;
 }
 
 void FlowTransport::resetConnection(NetworkAddress address) {

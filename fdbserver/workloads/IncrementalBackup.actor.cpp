@@ -61,7 +61,7 @@ struct IncrementalBackupWorkload : TestWorkload {
 			backupRanges.push_back_deep(backupRanges.arena(), normalKeys);
 			TraceEvent("IBackupSubmitAttempt");
 			try {
-				wait(self->backupAgent.submitBackup(cx, self->backupDir, 1e8, self->tag.toString(), backupRanges, false,
+				wait(self->backupAgent.submitBackup(cx, self->backupDir, 0, 1e8, self->tag.toString(), backupRanges, false,
 				                                    false, true));
 			} catch (Error& e) {
 				if (e.code() != error_code_backup_duplicate) {

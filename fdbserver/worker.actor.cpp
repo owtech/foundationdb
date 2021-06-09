@@ -547,11 +547,12 @@ ACTOR Future<Void> registrationClient(Reference<AsyncVar<Optional<ClusterControl
 			}
 		}
 
-		Future<RegisterWorkerReply> registrationReply =
-		    ccInterface->get().present()
-		        ? brokenPromiseToNever(ccInterface->get().get().registerWorker.getReply(request))
-		        : Never();
-		choose {
+		state bool ccInterfacePresent = ccInterface->get().present();
+		state Future<RegisterWorkerReply> registrationReply =
+		    ccInterfacePresent ? brokenPromiseToNever(ccInterface->get().get().registerWorker.getReply(request))
+		                       : Never();
+		state double startTime = now();
+		loop choose {
 			when(RegisterWorkerReply reply = wait(registrationReply)) {
 				processClass = reply.processClass;
 				asyncPriorityInfo->set(reply.priorityInfo);
@@ -590,14 +591,24 @@ ACTOR Future<Void> registrationClient(Reference<AsyncVar<Optional<ClusterControl
 					        cacheProcessFuture, scInterf, Optional<std::pair<uint16_t, StorageServerInterface>>()));
 					scInterf->set(std::make_pair(reply.storageCache.get(), recruited));
 				}
+
+				TraceEvent("WorkerRegisterReply")
+				    .detail("CCID", ccInterface->get().get().id())
+				    .detail("ProcessClass", reply.processClass.toString());
+				break;
 			}
-			when(wait(ccInterface->onChange())) {}
-			when(wait(ddInterf->onChange())) {}
-			when(wait(rkInterf->onChange())) {}
+			when(wait(delay(SERVER_KNOBS->UNKNOWN_CC_TIMEOUT))) {
+				if (!ccInterfacePresent) {
+					TraceEvent(SevWarn, "WorkerRegisterTimeout").detail("WaitTime", now() - startTime);
+				}
+			}
+			when(wait(ccInterface->onChange())) { break; }
+			when(wait(ddInterf->onChange())) { break; }
+			when(wait(rkInterf->onChange())) { break; }
 			when(wait(scInterf->onChange())) {}
-			when(wait(degraded->onChange())) {}
-			when(wait(FlowTransport::transport().onIncompatibleChanged())) {}
-			when(wait(issues->onChange())) {}
+			when(wait(degraded->onChange())) { break; }
+			when(wait(FlowTransport::transport().onIncompatibleChanged())) { break; }
+			when(wait(issues->onChange())) { break; }
 		}
 	}
 }
