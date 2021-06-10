@@ -84,7 +84,7 @@ message(STATUS "Current git version ${CURRENT_GIT_VERSION}")
 set(FDB_PACKAGE_NAME "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}")
 set(FDB_VERSION ${PROJECT_VERSION})
 set(FDB_VERSION_PLAIN ${FDB_VERSION})
-configure_file(${CMAKE_SOURCE_DIR}/versions.target.cmake ${CMAKE_SOURCE_DIR}/versions.target)
+# configure_file(${CMAKE_SOURCE_DIR}/versions.target.cmake ${CMAKE_SOURCE_DIR}/versions.target)
 
 if(NOT DEFINED BUILD_VERSION)
   if(NOT FDB_RELEASE)
