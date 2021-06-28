@@ -55,7 +55,7 @@ struct WriteDuringReadWorkload : TestWorkload {
 		slowModeStart = getOption(options, LiteralStringRef("slowModeStart"), 1000.0);
 		numOps = getOption(options, LiteralStringRef("numOps"), 21);
 		rarelyCommit = getOption(options, LiteralStringRef("rarelyCommit"), false);
-		maximumTotalData = getOption(options, LiteralStringRef("maximumTotalData"), 7e6);
+		maximumTotalData = getOption(options, LiteralStringRef("maximumTotalData"), 3e6);
 		minNode = getOption(options, LiteralStringRef("minNode"), 0);
 		useSystemKeys = getOption(options, LiteralStringRef("useSystemKeys"), deterministicRandom()->random01() < 0.5);
 		adjacentKeys = deterministicRandom()->random01() < 0.5;
@@ -734,7 +734,9 @@ ACTOR Future<Void> randomTransaction(Database cx, WriteDuringReadWorkload* self,
 	state bool readAheadDisabled = deterministicRandom()->random01() < 0.5;
 	state bool snapshotRYWDisabled = deterministicRandom()->random01() < 0.5;
 	state bool useBatchPriority = deterministicRandom()->random01() < 0.5;
-	state int64_t timebomb = deterministicRandom()->random01() < 0.01 ? deterministicRandom()->randomInt64(1, 6000) : 0;
+	state int64_t timebomb = (FLOW_KNOBS->MAX_BUGGIFIED_DELAY == 0.0 && deterministicRandom()->random01() < 0.01)
+	                             ? deterministicRandom()->randomInt64(1, 6000)
+	                             : 0; // timebomb check can fail incorrectly if simulation injects delay longer than the timebomb
 	state std::vector<Future<Void>> operations;
 	state ActorCollection commits(false);
 	state std::vector<Future<Void>> watches;
