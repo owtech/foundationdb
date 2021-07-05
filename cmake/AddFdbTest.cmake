@@ -331,15 +331,10 @@ function(package_bindingtester)
 
   set(generated_binding_files python/fdb/fdboptions.py)
   if(WITH_JAVA)
-    if(NOT FDB_RELEASE)
-      set(prerelease_string "-PRERELEASE")
-    else()
-      set(prerelease_string "")
-    endif()
     add_custom_command(
       TARGET copy_binding_output_files
       COMMAND ${CMAKE_COMMAND} -E copy
-        ${CMAKE_BINARY_DIR}/packages/fdb-java-${CMAKE_PROJECT_VERSION}${prerelease_string}.jar
+        ${CMAKE_BINARY_DIR}/packages/fdb-java-${CMAKE_PROJECT_VERSION}${FDB_VERSION_SUFFIX}.jar
         ${bdir}/tests/java/foundationdb-client.jar
       COMMENT "Copy Java bindings for bindingtester")
     add_dependencies(copy_binding_output_files fat-jar)
