@@ -330,9 +330,9 @@ else()
     -fvisibility=hidden
     -Wreturn-type
     -fPIC)
-  if (CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^x86")
-    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wclass-memaccess>)
-  endif()
+#  if (CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^x86")
+#    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wclass-memaccess>)
+#  endif()
   if (GPERFTOOLS_FOUND AND GCC)
     add_compile_options(
       -fno-builtin-malloc
