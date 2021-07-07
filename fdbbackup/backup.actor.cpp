@@ -3272,6 +3272,7 @@ int main(int argc, char* argv[]) {
 		bool waitForDone = false;
 		bool stopWhenDone = true;
 		bool usePartitionedLog = false; // Set to true to use new backup system
+		bool incrementalBackupOnly = false;
 		bool onlyAppyMutationLogs = false;
 		bool inconsistentSnapshotOnly = false;
 		bool forceAction = false;
@@ -3533,6 +3534,7 @@ int main(int argc, char* argv[]) {
 				usePartitionedLog = true;
 				break;
 			case OPT_INCREMENTALONLY:
+				incrementalBackupOnly = true;
 				onlyAppyMutationLogs = true;
 				break;
 			case OPT_RESTORECONTAINER:
