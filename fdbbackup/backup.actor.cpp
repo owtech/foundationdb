@@ -2254,7 +2254,7 @@ ACTOR Future<Void> runRestore(Database db,
                               bool waitForDone,
                               std::string addPrefix,
                               std::string removePrefix,
-                              bool incrementalBackupOnly,
+                              bool onlyAppyMutationLogs,
                               bool inconsistentSnapshotOnly) {
 	if (ranges.empty()) {
 		ranges.push_back_deep(ranges.arena(), normalKeys);
@@ -2301,7 +2301,7 @@ ACTOR Future<Void> runRestore(Database db,
 
 			BackupDescription desc = wait(bc->describeBackup());
 
-			if (incrementalBackupOnly && desc.contiguousLogEnd.present()) {
+			if (onlyAppyMutationLogs && desc.contiguousLogEnd.present()) {
 				targetVersion = desc.contiguousLogEnd.get() - 1;
 			} else if (desc.maxRestorableVersion.present()) {
 				targetVersion = desc.maxRestorableVersion.get();
@@ -2325,7 +2325,10 @@ ACTOR Future<Void> runRestore(Database db,
 			                                                   verbose,
 			                                                   KeyRef(addPrefix),
 			                                                   KeyRef(removePrefix),
-			                                                   inconsistentSnapshotOnly));
+			                                                   true,
+			                                                   onlyAppyMutationLogs,
+			                                                   inconsistentSnapshotOnly,
+			                                                   beginVersion));
 
 			if (waitForDone && verbose) {
 				// If restore is now complete then report version restored
@@ -3270,6 +3273,7 @@ int main(int argc, char* argv[]) {
 		bool stopWhenDone = true;
 		bool usePartitionedLog = false; // Set to true to use new backup system
 		bool incrementalBackupOnly = false;
+		bool onlyAppyMutationLogs = false;
 		bool inconsistentSnapshotOnly = false;
 		bool forceAction = false;
 		bool trace = false;
@@ -3531,6 +3535,7 @@ int main(int argc, char* argv[]) {
 				break;
 			case OPT_INCREMENTALONLY:
 				incrementalBackupOnly = true;
+				onlyAppyMutationLogs = true;
 				break;
 			case OPT_RESTORECONTAINER:
 				restoreContainer = args->OptionArg();
@@ -4126,7 +4131,7 @@ int main(int argc, char* argv[]) {
 				                         waitForDone,
 				                         addPrefix,
 				                         removePrefix,
-				                         incrementalBackupOnly,
+				                         onlyAppyMutationLogs,
 				                         inconsistentSnapshotOnly));
 				break;
 			case RESTORE_WAIT:
