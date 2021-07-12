@@ -1,0 +1,29 @@
+testTitle=SubmitBackup
+    testName=IncrementalBackup
+    simBackupAgents=BackupToFile
+    tag=default
+    submitOnly=true
+
+testTitle=CycleTest
+    testName=Cycle
+    clearAfterTest=true
+    simBackupAgents=BackupToFile
+    nodeCount=3000
+    transactionsPerSecond=3000.0
+    testDuration=120.0
+    expectedRate=0
+
+testTitle=SubmitRestore
+    testName=IncrementalBackup
+    clearAfterTest=false
+    simBackupAgents=BackupToFile
+    tag=default
+    restoreOnly=true
+
+testTitle=VerifyCycle
+    testName=Cycle
+    checkOnly=true
+    nodeCount=3000
+    transactionsPerSecond=3000.0
+    testDuration=10.0
+    expectedRate=0

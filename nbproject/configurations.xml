@@ -1035,7 +1035,7 @@
         </makeTool>
         <preBuild>
           <preBuildCommandWorkingDir>bld</preBuildCommandWorkingDir>
-          <preBuildCommand>cmake -DCMAKE_CXX_STANDARD_LIBRARIES="-lz" -G Ninja ..</preBuildCommand>
+          <preBuildCommand>cmake -DCMAKE_CXX_STANDARD_LIBRARIES="-lz" -G Ninja -DBUILD_VERSION=2.ow.1 ..</preBuildCommand>
         </preBuild>
       </makefileType>
       <item path="/usr/share/cmake/Modules/CMakeCCompilerABI.c"
