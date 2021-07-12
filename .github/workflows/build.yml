@@ -100,6 +100,11 @@ jobs:
       shell: bash
       run: ninja -j 1
 
+    - name: Tests
+      working-directory: ${{github.workspace}}/bld
+      shell: bash
+      run: ctest
+
     - name: Build rpms
       working-directory: ${{github.workspace}}/bld
       shell: bash
