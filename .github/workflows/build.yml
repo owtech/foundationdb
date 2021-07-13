@@ -103,7 +103,7 @@ jobs:
     - name: Tests
       working-directory: ${{github.workspace}}/bld
       shell: bash
-      run: ctest
+      run: ctest -V
 
     - name: Build rpms
       working-directory: ${{github.workspace}}/bld
