@@ -241,7 +241,7 @@ function(create_correctness_package)
   endif()
   set(out_dir "${CMAKE_BINARY_DIR}/correctness")
   stage_correctness_package(OUT_DIR ${out_dir} CONTEXT "correctness" OUT_FILES package_files)
-  set(tar_file ${CMAKE_BINARY_DIR}/packages/correctness-${CMAKE_PROJECT_VERSION}.tar.gz)
+  set(tar_file ${CMAKE_BINARY_DIR}/packages/correctness-${CMAKE_PROJECT_VERSION}${FDB_VERSION_SUFFIX}.tar.gz)
   add_custom_command(
     OUTPUT ${tar_file}
     DEPENDS ${package_files}
