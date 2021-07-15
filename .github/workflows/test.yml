@@ -1,0 +1,58 @@
+name: Build
+
+on:
+  push:
+    branches: ["test-*"]
+    workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sudo wget crudini git python3 python3-pip
+          sudo pip3 install wheel setuptools python-dateutil lxml
+
+      - name: Install FoundationDb
+        shell: bash
+        run: |
+          mkdir deb
+          pushd deb
+          wget https://www.foundationdb.org/downloads/6.3.15/ubuntu/installers/foundationdb-clients_6.3.15-1_amd64.deb https://www.foundationdb.org/downloads/6.3.15/ubuntu/installers/foundationdb-server_6.3.15-1_amd64.deb
+          sudo apt-get install -y ./foundationdb-clients_6.3.15-1_amd64.deb ./foundationdb-server_6.3.15-1_amd64.deb
+          popd
+          sudo systemctl stop foundationdb
+          MY_IP=`hostname -I | awk '{print $1}'`
+          sudo sed -i s/127.0.0.1/$MY_IP/ /etc/foundationdb/fdb.cluster
+          sudo crudini --set /etc/foundationdb/foundationdb.conf fdbserver memory 4GiB
+          sudo systemctl start foundationdb
+          pip3 install foundationdb
+
+      - name: Download correcness archive
+        shell: bash
+        run: |
+          wget https://github.com/oleg68/foundationdb/releases/download/6.3.16-3.ow/correctness-6.3.16-3.ow.4.tar.gz
+
+      - name: Download joshua
+        shell: bash
+        run: |
+          git clone https://github.com/FoundationDB/fdb-joshua.git
+
+      - name: run joshua-agent
+        shell: bash
+        run: |
+          podman pull docker.io/osamarin68/foundationdb:joshua-agent-8-6.3
+          podman create --name joshua-agent -v /etc/foundationdb:/etc/foundationdb -it foundationdb:joshua-agent-8-6.3
+          podman start joshua-agent
+
+      - name: run tests
+        shell: bash
+        working-directory: ${{github.workspace}}/fdb-joshua
+        run: |
+          python3 -m joshua.joshua start --tarball ${{github.workspace}}/correctness-6.3.16-3.ow.4.tar.gz
+          python3 -m joshua.joshua tail
+
