@@ -991,6 +991,7 @@
                    projectFiles="true"
                    root=".github/workflows">
       <itemPath>.github/workflows/build.yml</itemPath>
+      <itemPath>/home/oleg/work/fdb/FoundationDb/.github/workflows/test.yml</itemPath>
     </logicalFolder>
     <logicalFolder name="ExternalFiles"
                    displayName="Важные файлы"
@@ -1038,6 +1039,11 @@
           <preBuildCommand>cmake -DCMAKE_CXX_STANDARD_LIBRARIES="-lz" -G Ninja -DBUILD_VERSION=2.ow.1 ..</preBuildCommand>
         </preBuild>
       </makefileType>
+      <item path="/home/oleg/work/fdb/FoundationDb/.github/workflows/test.yml"
+            ex="false"
+            tool="3"
+            flavor2="0">
+      </item>
       <item path="/usr/share/cmake/Modules/CMakeCCompilerABI.c"
             ex="false"
             tool="0"
