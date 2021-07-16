@@ -1,4 +1,4 @@
-name: Build
+name: Test
 
 on:
   push:
@@ -8,6 +8,13 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      JOSHUA_DB_VER: "6.3.15"
+      N_OF_TESTS: 500 # to fit in 360 minutes job run limit
+      JOSHUA_AGENT_URL: "docker.io/osamarin68"
+      JOSHUA_AGENT_TAG: "8.6.3"
+      CORRECTNESS_URL: "https://github.com/oleg68/foundationdb/releases/download/6.3.16-3.ow"
+      CORRECTNESS_NAME: "correctness-6.3.16-3.ow.4.tar.gz"
 
     steps:
       - name: Install dependencies
@@ -22,8 +29,8 @@ jobs:
         run: |
           mkdir deb
           pushd deb
-          wget https://www.foundationdb.org/downloads/6.3.15/ubuntu/installers/foundationdb-clients_6.3.15-1_amd64.deb https://www.foundationdb.org/downloads/6.3.15/ubuntu/installers/foundationdb-server_6.3.15-1_amd64.deb
-          sudo apt-get install -y ./foundationdb-clients_6.3.15-1_amd64.deb ./foundationdb-server_6.3.15-1_amd64.deb
+          wget https://www.foundationdb.org/downloads/${{ env.JOSHUA_DB_VER }}/ubuntu/installers/foundationdb-clients_${{ env.JOSHUA_DB_VER }}-1_amd64.deb https://www.foundationdb.org/downloads/${{ env.JOSHUA_DB_VER }}/ubuntu/installers/foundationdb-server_${{ env.JOSHUA_DB_VER }}-1_amd64.deb
+          sudo apt-get install -y ./foundationdb-clients_${{ env.JOSHUA_DB_VER }}-1_amd64.deb ./foundationdb-server_${{ env.JOSHUA_DB_VER }}-1_amd64.deb
           popd
           sudo systemctl stop foundationdb
           MY_IP=`hostname -I | awk '{print $1}'`
@@ -34,8 +41,9 @@ jobs:
 
       - name: Download correcness archive
         shell: bash
+        working-directory: ${{github.workspace}}
         run: |
-          wget https://github.com/oleg68/foundationdb/releases/download/6.3.16-3.ow/correctness-6.3.16-3.ow.4.tar.gz
+          wget ${{ env.CORRECTNESS_URL }}/${{ env.CORRECTNESS_NAME }}
 
       - name: Download joshua
         shell: bash
@@ -45,14 +53,15 @@ jobs:
       - name: run joshua-agent
         shell: bash
         run: |
-          podman pull docker.io/osamarin68/foundationdb:joshua-agent-8-6.3
-          podman create --name joshua-agent -v /etc/foundationdb:/etc/foundationdb -it foundationdb:joshua-agent-8-6.3
+          podman pull ${{ JOSHUA_AGENT_URL }}/joshua-agent:${{ JOSHUA_AGENT_TAG }}
+          podman create --name joshua-agent -v /etc/foundationdb:/etc/foundationdb -it joshua-agent:${{ JOSHUA_AGENT_TAG }}
           podman start joshua-agent
 
       - name: run tests
         shell: bash
         working-directory: ${{github.workspace}}/fdb-joshua
         run: |
-          python3 -m joshua.joshua start --tarball ${{github.workspace}}/correctness-6.3.16-3.ow.4.tar.gz
+          podman ps
+          python3 -m joshua.joshua start --tarball ${{github.workspace}}/${{ env.CORRECTNESS_NAME }} --max-runs ${{ env.N_OF_TESTS }}
           python3 -m joshua.joshua tail
 
