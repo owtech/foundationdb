@@ -176,10 +176,17 @@ jobs:
 
       - name: Download the correctness package
         uses: actions/download-artifact@v2
+        id: download_correctness
         with:
           name: correctness-${{needs.calc_ver.outputs.full_ver}}.tar.gz
-          path: ${{github.workspace}}/correctness-${{needs.calc_ver.outputs.full_ver}}.tar.gz
 
+      - name: 'Echo download path'
+        run: echo ${{steps.download_correctness.outputs.download-path}}
+        
+      - name: Display structure of downloaded files
+        run: ls -R
+        working-directory: ${{github.workspace}}
+        
       - name: Download joshua
         shell: bash
         run: |
@@ -197,5 +204,5 @@ jobs:
         working-directory: ${{github.workspace}}/fdb-joshua
         run: |
           podman ps
-          python3 -m joshua.joshua start --tarball ${{github.workspace}}/correctness-${{needs.calc_ver.outputs.full_ver}}.tar.gz --max-runs ${{ env.N_OF_TESTS }}
-          python3 -m joshua.joshua tail
+          python3 -m joshua.joshua start --tarball ${{github.workspace}}/correctness-${{needs.calc_ver.outputs.full_ver}}.tar.gz --max-runs ${{ env.N_OF_TESTS }} && \
+            python3 -m joshua.joshua tail
