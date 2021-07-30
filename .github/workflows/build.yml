@@ -76,6 +76,19 @@ jobs:
         sudo sh -c 'echo "deb https://download.mono-project.com/repo/ubuntu stable-bionic main" > /etc/apt/sources.list.d/mono-official-stable.list'
         sudo apt update
         sudo apt install -y mono-complete
+        patch /usr/local/share/cmake-3.21/Modules/Internal/CPack/CPackRPM.cmake <<EOF || true
+        @@ -11,9 +11,7 @@
+	     if(PACKAGE_NAME)
+	       set(PACKAGE_NAME " -n ${PACKAGE_NAME}")
+	     endif()
+        -    set(${TYPE}_
+        -      "%${TYPE}${PACKAGE_NAME}\n"
+        -      "${VAR}\n" PARENT_SCOPE)
+        +    set(${TYPE}_ "%${TYPE}${PACKAGE_NAME}\n${VAR}\n" PARENT_SCOPE)
+	   else()
+	     set(${TYPE} "" PARENT_SCOPE)
+	   endif()
+        EOF
 
     - name: Checkout
       uses: actions/checkout@v2
