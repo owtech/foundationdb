@@ -1,0 +1,13 @@
+--- /usr/local/share/cmake-3.21/Modules/Internal/CPack/CPackRPM.cmake	2021-07-14 14:14:53.000000000 +0000
++++ /usr/local/share/cmake-3.21/Modules/Internal/CPack/CPackRPM.new.cmake	2021-07-30 19:14:10.013350314 +0000
+@@ -11,9 +11,7 @@
+     if(PACKAGE_NAME)
+       set(PACKAGE_NAME " -n ${PACKAGE_NAME}")
+     endif()
+-    set(${TYPE}_
+-      "%${TYPE}${PACKAGE_NAME}\n"
+-      "${VAR}\n" PARENT_SCOPE)
++    set(${TYPE}_ "%${TYPE}${PACKAGE_NAME}\n${VAR}\n" PARENT_SCOPE)
+   else()
+     set(${TYPE} "" PARENT_SCOPE)
+   endif()
