@@ -3908,7 +3908,8 @@ struct StartFullRestoreTaskFunc : RestoreTaskFuncBase {
 				Version destVersion = wait(tr->getReadVersion());
 				TraceEvent("FileRestoreVersionUpgrade")
 				    .detail("RestoreVersion", restoreVersion)
-				    .detail("Dest", destVersion);
+				    .detail("Dest", destVersion)
+				    .detail("InconsistentSnapshotOnly", inconsistentSnapshotOnly);
 				if (destVersion <= restoreVersion) {
 					TEST(true); // Forcing restored cluster to higher version
 					tr->set(minRequiredCommitVersionKey, BinaryWriter::toValue(restoreVersion + 1, Unversioned()));
@@ -4017,7 +4018,8 @@ struct StartFullRestoreTaskFunc : RestoreTaskFuncBase {
 				    .detail("FileCount", nFiles)
 				    .detail("FileBlockCount", nFileBlocks)
 				    .detail("TransactionBytes", txBytes)
-				    .detail("TaskInstance", THIS_ADDR);
+				    .detail("TaskInstance", THIS_ADDR)
+				    .detail("InconsistentSnapshotOnly", inconsistentSnapshotOnly);
 
 				start = i;
 				tr->reset();
@@ -4523,6 +4525,7 @@ public:
 		restore.stateEnum().set(tr, ERestoreState::QUEUED);
 		restore.restoreVersion().set(tr, restoreVersion);
 		restore.onlyAppyMutationLogs().set(tr, onlyAppyMutationLogs);
+		TraceEvent("InconsistentSnapshotOnlyInBackupAgent").detail("Value", inconsistentSnapshotOnly);
 		restore.inconsistentSnapshotOnly().set(tr, inconsistentSnapshotOnly);
 		restore.beginVersion().set(tr, beginVersion);
 		if (BUGGIFY && restoreRanges.size() == 1) {

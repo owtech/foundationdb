@@ -2315,6 +2315,7 @@ ACTOR Future<Void> runRestore(Database db,
 		}
 
 		if (performRestore) {
+			TraceEvent("InconsistentSnapshotOnlyBeforeSentToBackupAgent").detail("Value", inconsistentSnapshotOnly);
 			Version restoredVersion = wait(backupAgent.restore(db,
 			                                                   origDb,
 			                                                   KeyRef(tagName),
@@ -2325,7 +2326,7 @@ ACTOR Future<Void> runRestore(Database db,
 			                                                   verbose,
 			                                                   KeyRef(addPrefix),
 			                                                   KeyRef(removePrefix),
-			                                                   true,
+			                                                   /* lockDB = */ true,
 			                                                   onlyAppyMutationLogs,
 			                                                   inconsistentSnapshotOnly,
 			                                                   beginVersion));
@@ -3588,6 +3589,7 @@ int main(int argc, char* argv[]) {
 			}
 			case OPT_RESTORE_INCONSISTENT_SNAPSHOT_ONLY: {
 				inconsistentSnapshotOnly = true;
+				TraceEvent("InconsistentSnapshotOnlyFlagSet").detail("Value", inconsistentSnapshotOnly);
 				break;
 			}
 #ifdef _WIN32
