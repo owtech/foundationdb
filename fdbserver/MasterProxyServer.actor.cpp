@@ -118,9 +118,19 @@ struct ProxyStats {
 	Deque<int> requestBuckets;
 	double lastBucketBegin;
 	double bucketInterval;
+	Reference<Histogram> grvConfirmEpochLiveDist;
+	Reference<Histogram> grvGetCommittedVersionRpcDist;
 
 	int64_t maxComputeNS;
 	int64_t minComputeNS;
+	Reference<Histogram> commitBatchQueuingDist;
+	Reference<Histogram> getCommitVersionDist;
+	std::vector<Reference<Histogram>> resolverDist;
+	Reference<Histogram> resolutionDist;
+	Reference<Histogram> postResolutionDist;
+	Reference<Histogram> processingMutationDist;
+	Reference<Histogram> tlogLoggingDist;
+	Reference<Histogram> replyCommitDist;
 
 	void updateRequestBuckets() {
 		while (now() - lastBucketBegin > bucketInterval) {
@@ -160,6 +170,27 @@ struct ProxyStats {
 	                    NotifiedVersion* pCommittedVersion,
 	                    int64_t* commitBatchesMemBytesCountPtr)
 	  : cc("ProxyStats", id.toString()), recentRequests(0), lastBucketBegin(now()), maxComputeNS(0), minComputeNS(1e12),
+	    commitBatchQueuingDist(Histogram::getHistogram(LiteralStringRef("MasterProxy"),
+	                                                   LiteralStringRef("CommitBatchQueuing"),
+	                                                   Histogram::Unit::microseconds)),
+	    getCommitVersionDist(Histogram::getHistogram(LiteralStringRef("MasterProxy"),
+	                                                 LiteralStringRef("GetCommitVersion"),
+	                                                 Histogram::Unit::microseconds)),
+	    resolutionDist(Histogram::getHistogram(LiteralStringRef("MasterProxy"),
+	                                           LiteralStringRef("Resolution"),
+	                                           Histogram::Unit::microseconds)),
+	    postResolutionDist(Histogram::getHistogram(LiteralStringRef("MasterProxy"),
+	                                               LiteralStringRef("PostResolutionQueuing"),
+	                                               Histogram::Unit::microseconds)),
+	    processingMutationDist(Histogram::getHistogram(LiteralStringRef("MasterProxy"),
+	                                                   LiteralStringRef("ProcessingMutation"),
+	                                                   Histogram::Unit::microseconds)),
+	    tlogLoggingDist(Histogram::getHistogram(LiteralStringRef("MasterProxy"),
+	                                            LiteralStringRef("TlogLogging"),
+	                                            Histogram::Unit::microseconds)),
+	    replyCommitDist(Histogram::getHistogram(LiteralStringRef("MasterProxy"),
+	                                            LiteralStringRef("ReplyCommit"),
+	                                            Histogram::Unit::microseconds)),
 	    bucketInterval(FLOW_KNOBS->BASIC_LOAD_BALANCE_UPDATE_RATE / FLOW_KNOBS->BASIC_LOAD_BALANCE_BUCKETS),
 	    txnRequestIn("TxnRequestIn", cc), txnRequestOut("TxnRequestOut", cc), txnRequestErrors("TxnRequestErrors", cc),
 	    txnStartIn("TxnStartIn", cc), txnStartOut("TxnStartOut", cc), txnStartBatch("TxnStartBatch", cc),
@@ -210,7 +241,13 @@ struct ProxyStats {
 	                           SERVER_KNOBS->LATENCY_SAMPLE_SIZE),
 	    systemGRVQueueSize(0), defaultGRVQueueSize(0), batchGRVQueueSize(0), transactionRateAllowed(0),
 	    batchTransactionRateAllowed(0), transactionLimit(0), batchTransactionLimit(0),
-	    percentageOfDefaultGRVQueueProcessed(0), percentageOfBatchGRVQueueProcessed(0) {
+	    percentageOfDefaultGRVQueueProcessed(0), percentageOfBatchGRVQueueProcessed(0),
+	    grvConfirmEpochLiveDist(Histogram::getHistogram(LiteralStringRef("MasterProxy"),
+	                                                    LiteralStringRef("GrvConfirmEpochLive"),
+	                                                    Histogram::Unit::microseconds)),
+	    grvGetCommittedVersionRpcDist(Histogram::getHistogram(LiteralStringRef("MasterProxy"),
+	                                                          LiteralStringRef("GrvGetCommittedVersionRpc"),
+	                                                          Histogram::Unit::microseconds)) {
 		specialCounter(cc, "LastAssignedCommitVersion", [this]() { return this->lastCommitVersionAssigned; });
 		specialCounter(cc, "Version", [pVersion]() { return *pVersion; });
 		specialCounter(cc, "CommittedVersion", [pCommittedVersion]() { return pCommittedVersion->get(); });
@@ -992,6 +1029,14 @@ ACTOR Future<Void> releaseResolvingAfter(ProxyCommitData* self, Future<Void> rel
 	return Void();
 }
 
+ACTOR static Future<ResolveTransactionBatchReply> trackResolutionMetrics(Reference<Histogram> dist,
+                                                                         Future<ResolveTransactionBatchReply> in) {
+	state double startTime = now();
+	ResolveTransactionBatchReply reply = wait(in);
+	dist->sampleSeconds(now() - startTime);
+	return reply;
+}
+
 // Try to identify recovery transaction and backup's apply mutations (blind writes).
 // Both cannot be rejected and are approximated by looking at first mutation
 // starting with 0xff.
@@ -1077,6 +1122,7 @@ ACTOR Future<Void> commitBatch(ProxyCommitData* self,
 	TEST(self->latestLocalCommitBatchResolving.get() < localBatchNumber - 1);
 	wait(self->latestLocalCommitBatchResolving.whenAtLeast(localBatchNumber - 1));
 	double queuingDelay = g_network->now() - timeStart;
+	self->stats.commitBatchQueuingDist->sampleSeconds(queuingDelay);
 	if ((queuingDelay > (double)SERVER_KNOBS->MAX_READ_TRANSACTION_LIFE_VERSIONS / SERVER_KNOBS->VERSIONS_PER_SECOND ||
 	     (g_network->isSimulated() && BUGGIFY_WITH_PROB(0.01))) &&
 	    SERVER_KNOBS->PROXY_REJECT_BATCH_QUEUED_TOO_LONG && canReject(trs)) {
@@ -1111,6 +1157,7 @@ ACTOR Future<Void> commitBatch(ProxyCommitData* self,
 		g_traceBatch.addEvent(
 		    "CommitDebug", debugID.get().first(), "MasterProxyServer.commitBatch.GettingCommitVersion");
 
+	state double beforeGettingCommitVersion = now();
 	GetCommitVersionRequest req(
 	    self->commitVersionRequestNumber++, self->mostRecentProcessedRequestNumber, self->dbgid);
 	GetCommitVersionReply versionReply =
@@ -1119,6 +1166,7 @@ ACTOR Future<Void> commitBatch(ProxyCommitData* self,
 
 	self->stats.txnCommitVersionAssigned += trs.size();
 	self->stats.lastCommitVersionAssigned = versionReply.version;
+	self->stats.getCommitVersionDist->sampleSeconds(now() - beforeGettingCommitVersion);
 
 	state Version commitVersion = versionReply.version;
 	state Version prevVersion = versionReply.prevVersion;
@@ -1134,6 +1182,7 @@ ACTOR Future<Void> commitBatch(ProxyCommitData* self,
 	if (debugID.present())
 		g_traceBatch.addEvent("CommitDebug", debugID.get().first(), "MasterProxyServer.commitBatch.GotCommitVersion");
 
+	state double resolutionStart = now();
 	ResolutionRequestBuilder requests(self, commitVersion, prevVersion, self->version);
 	int conflictRangeCount = 0;
 	state int64_t maxTransactionBytes = 0;
@@ -1157,8 +1206,9 @@ ACTOR Future<Void> commitBatch(ProxyCommitData* self,
 	vector<Future<ResolveTransactionBatchReply>> replies;
 	for (int r = 0; r < self->resolvers.size(); r++) {
 		requests.requests[r].debugID = debugID;
-		replies.push_back(brokenPromiseToNever(
-		    self->resolvers[r].resolve.getReply(requests.requests[r], TaskPriority::ProxyResolverReply)));
+		replies.push_back(trackResolutionMetrics(self->stats.resolverDist[r],
+		                                         brokenPromiseToNever(self->resolvers[r].resolve.getReply(
+		                                             requests.requests[r], TaskPriority::ProxyResolverReply))));
 	}
 
 	state vector<vector<int>> transactionResolverMap = std::move(requests.transactionResolverMap);
@@ -1182,13 +1232,17 @@ ACTOR Future<Void> commitBatch(ProxyCommitData* self,
 	/////// Phase 2: Resolution (waiting on the network; pipelined)
 	state vector<ResolveTransactionBatchReply> resolution = wait(getAll(replies));
 
+	self->stats.resolutionDist->sampleSeconds(now() - resolutionStart);
 	if (debugID.present())
 		g_traceBatch.addEvent("CommitDebug", debugID.get().first(), "MasterProxyServer.commitBatch.AfterResolution");
 
 	////// Phase 3: Post-resolution processing (CPU bound except for very rare situations; ordered; currently atomic but
 	/// doesn't need to be)
+	state double postResolutionStart = now();
 	TEST(self->latestLocalCommitBatchLogging.get() < localBatchNumber - 1); // Queuing post-resolution commit processing
 	wait(self->latestLocalCommitBatchLogging.whenAtLeast(localBatchNumber - 1));
+	state double postResolutionQueuing = now();
+	self->stats.postResolutionDist->sampleSeconds(postResolutionQueuing - postResolutionStart);
 	wait(yield(TaskPriority::ProxyCommitYield1));
 
 	state double computeStart = g_network->timer();
@@ -1597,9 +1651,10 @@ ACTOR Future<Void> commitBatch(ProxyCommitData* self,
 		self->stats.minComputeNS =
 		    std::min<int64_t>(self->stats.minComputeNS, 1e9 * self->commitComputePerOperation[latencyBucket]);
 	}
+	self->stats.processingMutationDist->sampleSeconds(now() - postResolutionQueuing);
 
 	/////// Phase 4: Logging (network bound; pipelined up to MAX_READ_TRANSACTION_LIFE_VERSIONS (limited by loop above))
-
+	state double tLoggingStart = now();
 	try {
 		choose {
 			when(Version ver = wait(loggingComplete)) {
@@ -1627,9 +1682,11 @@ ACTOR Future<Void> commitBatch(ProxyCommitData* self,
 		self->txsPopVersions.emplace_back(commitVersion, msg.popTo);
 	}
 	self->logSystem->popTxs(msg.popTo);
+	self->stats.tlogLoggingDist->sampleSeconds(now() - tLoggingStart);
 
 	/////// Phase 5: Replies (CPU bound; no particular order required, though ordered execution would be best for
 	/// latency)
+	state double replyStart = now();
 	if (prevVersion && commitVersion - prevVersion < SERVER_KNOBS->MAX_VERSIONS_IN_FLIGHT / 2)
 		debug_advanceMinCommittedVersion(UID(), commitVersion);
 
@@ -1738,6 +1795,7 @@ ACTOR Future<Void> commitBatch(ProxyCommitData* self,
 	self->commitBatchesMemBytesCount -= currentBatchMemBytesCount;
 	ASSERT_ABORT(self->commitBatchesMemBytesCount >= 0);
 	wait(releaseFuture);
+	self->stats.replyCommitDist->sampleSeconds(now() - replyStart);
 	return Void();
 }
 
@@ -1767,6 +1825,8 @@ ACTOR Future<GetReadVersionReply> getLiveCommittedVersion(ProxyCommitData* commi
 	//     and no other proxy could have already committed anything without first ending the epoch
 	++commitData->stats.txnStartBatch;
 
+	state double grvStart = now();
+
 	state vector<Future<GetReadVersionReply>> proxyVersions;
 	for (auto const& p : *otherProxies)
 		proxyVersions.push_back(brokenPromiseToNever(p.getRawCommittedVersion.getReply(
@@ -1778,6 +1838,8 @@ ACTOR Future<GetReadVersionReply> getLiveCommittedVersion(ProxyCommitData* commi
 	           now() - SERVER_KNOBS->REQUIRED_MIN_RECOVERY_DURATION > commitData->lastCommitTime.get()) {
 		wait(commitData->lastCommitTime.whenAtLeast(now() - SERVER_KNOBS->REQUIRED_MIN_RECOVERY_DURATION));
 	}
+	state double grvConfirmEpochLive = now();
+	commitData->stats.grvConfirmEpochLiveDist->sampleSeconds(grvConfirmEpochLive - grvStart);
 
 	if (debugID.present()) {
 		g_traceBatch.addEvent(
@@ -1785,6 +1847,9 @@ ACTOR Future<GetReadVersionReply> getLiveCommittedVersion(ProxyCommitData* commi
 	}
 
 	vector<GetReadVersionReply> versions = wait(getAll(proxyVersions));
+
+	commitData->stats.grvGetCommittedVersionRpcDist->sampleSeconds(now() - grvConfirmEpochLive);
+
 	GetReadVersionReply rep;
 	rep.version = commitData->committedVersion.get();
 	rep.locked = commitData->locked;
@@ -2493,6 +2558,12 @@ ACTOR Future<Void> masterProxyServerCore(MasterProxyInterface proxy,
 
 	commitData.resolvers = commitData.db->get().resolvers;
 	ASSERT(commitData.resolvers.size() != 0);
+	for (int i = 0; i < commitData.resolvers.size(); ++i) {
+		commitData.stats.resolverDist.push_back(
+		    Histogram::getHistogram(LiteralStringRef("MasterProxy"),
+		                            "ToResolver_" + commitData.resolvers[i].id().toString(),
+		                            Histogram::Unit::microseconds));
+	}
 
 	auto rs = commitData.keyResolvers.modify(allKeys);
 	for (auto r = rs.begin(); r != rs.end(); ++r)
