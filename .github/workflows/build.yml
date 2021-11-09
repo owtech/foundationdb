@@ -25,7 +25,7 @@ jobs:
       id: vers
       shell: bash
       run: |
-        git fetch --prune --unshallow --tags
+        git fetch --prune --unshallow --tags --force
         GIT_VERSION=`git describe --tags`
         PROJECT_VERSION=`echo $GIT_VERSION | cut -d- -f1`
         BUILD_VERSION=`echo $GIT_VERSION | cut -d- -f2-3 --output-delimiter=.`
