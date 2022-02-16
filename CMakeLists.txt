@@ -18,7 +18,7 @@
 # limitations under the License.
 cmake_minimum_required(VERSION 3.13)
 project(foundationdb
-  VERSION 6.3.22
+  VERSION 6.3.23
   DESCRIPTION "FoundationDB is a scalable, fault-tolerant, ordered key-value store with full ACID transactions."
   HOMEPAGE_URL "http://www.foundationdb.org/"
   LANGUAGES C CXX ASM)
@@ -79,28 +79,34 @@ message(STATUS "Current git version ${CURRENT_GIT_VERSION}")
 ################################################################################
 # Version information
 ################################################################################
+if (FDB_RELEASE_CANDIDATE)
+    set(FDB_RELEASE_CANDIDATE_VERSION 1 CACHE STRING "release candidate version")
+    set(FDB_VERSION ${PROJECT_VERSION}-rc${FDB_RELEASE_CANDIDATE_VERSION})
+else()
+    if(NOT DEFINED BUILD_VERSION)
+	  if(NOT FDB_RELEASE)
+	    if(CURRENT_GIT_VERSION)
+	      set(git_string ".${CURRENT_GIT_VERSION}")
+	    endif()
+	    set(BUILD_VERSION "0${git_string}.PRERELEASE")
+	  else()
+	    set(BUILD_VERSION "1")
+	  endif()
+	endif()
 
-set(FDB_PACKAGE_NAME "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}")
-set(FDB_VERSION ${PROJECT_VERSION})
-set(FDB_VERSION_PLAIN ${FDB_VERSION})
-# configure_file(${CMAKE_SOURCE_DIR}/versions.target.cmake ${CMAKE_SOURCE_DIR}/versions.target)
-
-if(NOT DEFINED BUILD_VERSION)
-  if(NOT FDB_RELEASE)
-    if(CURRENT_GIT_VERSION)
-      set(git_string ".${CURRENT_GIT_VERSION}")
-    endif()
-    set(BUILD_VERSION "0${git_string}.PRERELEASE")
-  else()
-    set(BUILD_VERSION "1")
-  endif()
+    set(FDB_VERSION "${PROJECT_VERSION}-${BUILD_VERSION}")
 endif()
-
-set(FDB_VERSION_SUFFIX "-${BUILD_VERSION}")
+set(FDB_VERSION_PLAIN ${FDB_VERSION})
+string(REPLACE "." ";" FDB_VERSION_LIST ${FDB_VERSION_PLAIN})
+list(GET FDB_VERSION_LIST 0 FDB_MAJOR)
+list(GET FDB_VERSION_LIST 1 FDB_MINOR)
+list(GET FDB_VERSION_LIST 2 FDB_PATCH)
+set(FDB_PACKAGE_NAME "${FDB_MAJOR}.${FDB_MINOR}")
+# configure_file(${CMAKE_SOURCE_DIR}/versions.target.cmake ${CMAKE_SOURCE_DIR}/versions.target)
+file(WRITE ${CMAKE_BINARY_DIR}/version.txt ${FDB_VERSION})
 
 message(STATUS "FDB package name is ${FDB_PACKAGE_NAME}")
 message(STATUS "FDB version is ${FDB_VERSION}")
-message(STATUS "FDB version suffix is ${FDB_VERSION_SUFFIX}")
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/fdbclient/versions.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/fdbclient/versions.h)
 
 
