@@ -73,6 +73,7 @@ public:
 		LocalityData locality;
 		ProcessClass startingClass;
 		TDMetricCollection tdmetrics;
+		ChaosMetrics chaosMetrics;
 		HistogramRegistry histograms;
 		std::map<NetworkAddress, Reference<IListener>> listenerMap;
 		std::map<NetworkAddress, Reference<IUDPSocket>> boundUDPSockets;
@@ -409,6 +410,7 @@ public:
 	std::vector<Optional<Standalone<StringRef>>> primarySatelliteDcIds;
 	std::vector<Optional<Standalone<StringRef>>> remoteSatelliteDcIds;
 	TSSMode tssMode;
+	std::map<NetworkAddress, bool> corruptWorkerMap;
 
 	// Used by workloads that perform reconfigurations
 	int testerCount;
@@ -424,6 +426,8 @@ public:
 	bool hasDiffProtocolProcess; // true if simulator is testing a process with a different version
 	bool setDiffProtocol; // true if a process with a different protocol version has been started
 
+	bool allowStorageMigrationTypeChange = false;
+
 	flowGlobalType global(int id) const final { return getCurrentProcess()->global(id); };
 	void setGlobal(size_t id, flowGlobalType v) final { getCurrentProcess()->setGlobal(id, v); };
 
@@ -438,6 +442,13 @@ public:
 	}
 
 	static thread_local ProcessInfo* currentProcess;
+
+	bool checkInjectedCorruption() {
+		auto iter = corruptWorkerMap.find(currentProcess->address);
+		if (iter != corruptWorkerMap.end())
+			return iter->second;
+		return false;
+	}
 
 protected:
 	Mutex mutex;

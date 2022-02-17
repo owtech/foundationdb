@@ -80,24 +80,30 @@ message(STATUS "Current git version ${CURRENT_GIT_VERSION}")
 ################################################################################
 # Version information
 ################################################################################
-
-set(FDB_PACKAGE_NAME "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}")
-set(FDB_VERSION ${PROJECT_VERSION})
-set(FDB_VERSION_PLAIN ${FDB_VERSION})
-# configure_file(${CMAKE_SOURCE_DIR}/versions.target.cmake ${CMAKE_SOURCE_DIR}/versions.target)
-
-if(NOT DEFINED BUILD_VERSION)
-  if(NOT FDB_RELEASE)
-    if(CURRENT_GIT_VERSION)
-      set(git_string ".${CURRENT_GIT_VERSION}")
-    endif()
-    set(BUILD_VERSION "0${git_string}.PRERELEASE")
-  else()
-    set(BUILD_VERSION "1")
-  endif()
+if (FDB_RELEASE_CANDIDATE)
+    set(FDB_RELEASE_CANDIDATE_VERSION 1 CACHE STRING "release candidate version")
+    set(FDB_VERSION ${PROJECT_VERSION}-rc${FDB_RELEASE_CANDIDATE_VERSION})
+else()
+    if(NOT DEFINED BUILD_VERSION)
+	  if(NOT FDB_RELEASE)
+	    if(CURRENT_GIT_VERSION)
+	      set(git_string ".${CURRENT_GIT_VERSION}")
+	    endif()
+	    set(BUILD_VERSION "0${git_string}.PRERELEASE")
+	  else()
+	    set(BUILD_VERSION "1")
+	  endif()
+	endif()
+    set(FDB_VERSION "${PROJECT_VERSION}-${BUILD_VERSION}")
 endif()
-
-set(FDB_VERSION_SUFFIX "-${BUILD_VERSION}")
+set(FDB_VERSION_PLAIN ${FDB_VERSION})
+string(REPLACE "." ";" FDB_VERSION_LIST ${FDB_VERSION_PLAIN})
+list(GET FDB_VERSION_LIST 0 FDB_MAJOR)
+list(GET FDB_VERSION_LIST 1 FDB_MINOR)
+list(GET FDB_VERSION_LIST 2 FDB_PATCH)
+set(FDB_PACKAGE_NAME "${FDB_MAJOR}.${FDB_MINOR}")
+# configure_file(${CMAKE_SOURCE_DIR}/versions.target.cmake ${CMAKE_SOURCE_DIR}/versions.target)
+file(WRITE ${CMAKE_BINARY_DIR}/version.txt ${FDB_VERSION})
 
 message(STATUS "FDB package name is ${FDB_PACKAGE_NAME}")
 message(STATUS "FDB version is ${FDB_VERSION}")
@@ -180,7 +186,7 @@ add_subdirectory(fdbbackup)
 add_subdirectory(contrib)
 add_subdirectory(tests)
 add_subdirectory(flowbench EXCLUDE_FROM_ALL)
-if(WITH_PYTHON)
+if(WITH_PYTHON AND WITH_C_BINDING)
   add_subdirectory(bindings)
 endif()
 if(WITH_DOCUMENTATION)
@@ -206,13 +212,12 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/fdbclient/BuildFlags.h.in ${CMAKE_CUR
 ################################################################################
 # process compile commands for IDE
 ################################################################################
-
 if (CMAKE_EXPORT_COMPILE_COMMANDS AND WITH_PYTHON)
   add_custom_command(
 	  OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/compile_commands.json
-	  COMMAND $<TARGET_FILE:Python::Interpreter> ${CMAKE_CURRENT_SOURCE_DIR}/build/gen_compile_db.py
+	  COMMAND $<TARGET_FILE:Python::Interpreter> ${CMAKE_CURRENT_SOURCE_DIR}/contrib/gen_compile_db.py
 	  ARGS -b ${CMAKE_CURRENT_BINARY_DIR} -s ${CMAKE_CURRENT_SOURCE_DIR} -o ${CMAKE_CURRENT_SOURCE_DIR}/compile_commands.json ${CMAKE_CURRENT_BINARY_DIR}/compile_commands.json
-	  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/build/gen_compile_db.py ${CMAKE_CURRENT_BINARY_DIR}/compile_commands.json
+	  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/contrib/gen_compile_db.py ${CMAKE_CURRENT_BINARY_DIR}/compile_commands.json
 	  COMMENT "Build compile commands for IDE"
 	)
   add_custom_target(processed_compile_commands ALL DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/compile_commands.json ${CMAKE_CURRENT_BINARY_DIR}/compile_commands.json)

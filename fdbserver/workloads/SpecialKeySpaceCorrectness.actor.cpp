@@ -781,6 +781,7 @@ struct SpecialKeySpaceCorrectnessWorkload : TestWorkload {
 					    Value(worker.processClass.toString())); // Set it as the same class type as before, thus only
 					                                            // class source will be changed
 					wait(tx->commit());
+					tx->reset();
 					Optional<Value> class_source = wait(tx->get(
 					    Key("process/class_source/" + address)
 					        .withPrefix(
@@ -806,7 +807,8 @@ struct SpecialKeySpaceCorrectnessWorkload : TestWorkload {
 			try {
 				tx->setOption(FDBTransactionOptions::SPECIAL_KEY_SPACE_ENABLE_WRITES);
 				// lock the database
-				tx->set(SpecialKeySpace::getManagementApiCommandPrefix("lock"), LiteralStringRef(""));
+				UID uid = deterministicRandom()->randomUniqueID();
+				tx->set(SpecialKeySpace::getManagementApiCommandPrefix("lock"), uid.toString());
 				// commit
 				wait(tx->commit());
 				break;
@@ -824,6 +826,10 @@ struct SpecialKeySpaceCorrectnessWorkload : TestWorkload {
 					// special_key_space_management_api_error_msg schema validation
 					ASSERT(schemaMatch(schema, valueObj, errorStr, SevError, true));
 					ASSERT(valueObj["command"].get_str() == "lock" && !valueObj["retriable"].get_bool());
+					break;
+				} else if (e.code() == error_code_database_locked) {
+					// Database is already locked. This can happen if a previous attempt
+					// failed with unknown_result.
 					break;
 				} else {
 					wait(tx->onError(e));

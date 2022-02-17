@@ -1048,8 +1048,9 @@ std::map<std::string, std::function<void(const std::string&)>> testSpecGlobalKey
 	  [](const std::string& value) { TraceEvent("TestParserTest").detail("ParsedStorageEngineExcludeTypes", ""); } },
 	{ "maxTLogVersion",
 	  [](const std::string& value) { TraceEvent("TestParserTest").detail("ParsedMaxTLogVersion", ""); } },
-	{ "disableTss",
-	  [](const std::string& value) { TraceEvent("TestParserTest").detail("ParsedDisableTSS", ""); } }
+	{ "disableTss", [](const std::string& value) { TraceEvent("TestParserTest").detail("ParsedDisableTSS", ""); } },
+	{ "extraMachineCountDC",
+	  [](const std::string& value) { TraceEvent("TestParserTest").detail("ParsedExtraMachineCountDC", value); } }
 };
 
 std::map<std::string, std::function<void(const std::string& value, TestSpec* spec)>> testSpecTestKeys = {
@@ -1176,6 +1177,11 @@ std::map<std::string, std::function<void(const std::string& value, TestSpec* spe
 	  [](const std::string& value, TestSpec* spec) {
 	      if (value == "true")
 		      spec->phases = TestWorkload::CHECK;
+	  } },
+	{ "restorePerpetualWiggleSetting",
+	  [](const std::string& value, TestSpec* spec) {
+	      if (value == "false")
+		      spec->restorePerpetualWiggleSetting = false;
 	  } },
 };
 
@@ -1441,7 +1447,7 @@ ACTOR Future<Void> runTests(Reference<AsyncVar<Optional<struct ClusterController
 		cx = openDBOnServer(dbInfo);
 	}
 
-	state Future<Void> disabler = disableConnectionFailuresAfter(450, "Tester");
+	state Future<Void> disabler = disableConnectionFailuresAfter(FLOW_KNOBS->SIM_SPEEDUP_AFTER_SECONDS, "Tester");
 
 	// Change the configuration (and/or create the database) if necessary
 	printf("startingConfiguration:%s start\n", startingConfiguration.toString().c_str());

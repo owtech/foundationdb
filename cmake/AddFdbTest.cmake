@@ -243,7 +243,7 @@ function(create_correctness_package)
   endif()
   set(out_dir "${CMAKE_BINARY_DIR}/correctness")
   stage_correctness_package(OUT_DIR ${out_dir} CONTEXT "correctness" OUT_FILES package_files)
-  set(tar_file ${CMAKE_BINARY_DIR}/packages/correctness-${CMAKE_PROJECT_VERSION}.tar.gz)
+  set(tar_file ${CMAKE_BINARY_DIR}/packages/correctness-${FDB_VERSION}.tar.gz)
   add_custom_command(
     OUTPUT ${tar_file}
     DEPENDS ${package_files}
@@ -270,7 +270,7 @@ function(create_valgrind_correctness_package)
   if(USE_VALGRIND)
     set(out_dir "${CMAKE_BINARY_DIR}/valgrind_correctness")
     stage_correctness_package(OUT_DIR ${out_dir} CONTEXT "valgrind correctness" OUT_FILES package_files)
-    set(tar_file ${CMAKE_BINARY_DIR}/packages/valgrind-${CMAKE_PROJECT_VERSION}.tar.gz)
+    set(tar_file ${CMAKE_BINARY_DIR}/packages/valgrind-${FDB_VERSION}.tar.gz)
     add_custom_command(
       OUTPUT ${tar_file}
       DEPENDS ${package_files}
@@ -330,11 +330,12 @@ function(package_bindingtester)
     COMMENT "Copy Flow tester for bindingtester")
 
   set(generated_binding_files python/fdb/fdboptions.py)
-  if(WITH_JAVA)
+  if(WITH_JAVA_BINDING)
+    set(not_fdb_release_string "")
     add_custom_command(
       TARGET copy_binding_output_files
       COMMAND ${CMAKE_COMMAND} -E copy
-        ${CMAKE_BINARY_DIR}/packages/fdb-java-${CMAKE_PROJECT_VERSION}${FDB_VERSION_SUFFIX}.jar
+        ${CMAKE_BINARY_DIR}/packages/fdb-java-${FDB_VERSION}${not_fdb_release_string}.jar
         ${bdir}/tests/java/foundationdb-client.jar
       COMMENT "Copy Java bindings for bindingtester")
     add_dependencies(copy_binding_output_files fat-jar)
@@ -342,7 +343,7 @@ function(package_bindingtester)
     set(generated_binding_files ${generated_binding_files} java/foundationdb-tests.jar)
   endif()
 
-  if(WITH_GO AND NOT OPEN_FOR_IDE)
+  if(WITH_GO_BINDING AND NOT OPEN_FOR_IDE)
     add_dependencies(copy_binding_output_files fdb_go_tester fdb_go)
     add_custom_command(
       TARGET copy_binding_output_files
@@ -363,7 +364,7 @@ function(package_bindingtester)
   add_custom_target(copy_bindingtester_binaries
     DEPENDS ${outfiles} "${CMAKE_BINARY_DIR}/bindingtester.touch" copy_binding_output_files)
   add_dependencies(copy_bindingtester_binaries strip_only_fdbserver strip_only_fdbcli strip_only_fdb_c)
-  set(tar_file ${CMAKE_BINARY_DIR}/packages/bindingtester-${CMAKE_PROJECT_VERSION}.tar.gz)
+  set(tar_file ${CMAKE_BINARY_DIR}/packages/bindingtester-${FDB_VERSION}.tar.gz)
   add_custom_command(
     OUTPUT ${tar_file}
     COMMAND ${CMAKE_COMMAND} -E tar czf ${tar_file} *
@@ -373,6 +374,7 @@ function(package_bindingtester)
   add_dependencies(bindingtester copy_bindingtester_binaries)
 endfunction()
 
+# Creates a single cluster before running the specified command (usually a ctest test)
 function(add_fdbclient_test)
   set(options DISABLED ENABLED)
   set(oneValueArgs NAME)
@@ -396,7 +398,71 @@ function(add_fdbclient_test)
             --build-dir ${CMAKE_BINARY_DIR}
             --
             ${T_COMMAND})
-  set_tests_properties("${T_NAME}" PROPERTIES TIMEOUT 60) 
+  set_tests_properties("${T_NAME}" PROPERTIES TIMEOUT 60)
+endfunction()
+
+# Creates a cluster file for a nonexistent cluster before running the specified command 
+# (usually a ctest test)
+function(add_unavailable_fdbclient_test)
+  set(options DISABLED ENABLED)
+  set(oneValueArgs NAME TEST_TIMEOUT)
+  set(multiValueArgs COMMAND)
+  cmake_parse_arguments(T "${options}" "${oneValueArgs}" "${multiValueArgs}" "${ARGN}")
+  if(OPEN_FOR_IDE)
+    return()
+  endif()
+  if(NOT T_ENABLED AND T_DISABLED)
+    return()
+  endif()
+  if(NOT T_NAME)
+    message(FATAL_ERROR "NAME is a required argument for add_unavailable_fdbclient_test")
+  endif()
+  if(NOT T_COMMAND)
+    message(FATAL_ERROR "COMMAND is a required argument for add_unavailable_fdbclient_test")
+  endif()
+  message(STATUS "Adding unavailable client test ${T_NAME}")
+  add_test(NAME "${T_NAME}"
+  COMMAND ${Python_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/TestRunner/fake_cluster.py
+          --output-dir ${CMAKE_BINARY_DIR}
+          --
+          ${T_COMMAND})
+  if (T_TEST_TIMEOUT)
+    set_tests_properties("${T_NAME}" PROPERTIES TIMEOUT ${T_TEST_TIMEOUT})
+  else()
+    # default timeout
+    set_tests_properties("${T_NAME}" PROPERTIES TIMEOUT 60)
+  endif()
+  set_tests_properties("${T_NAME}" PROPERTIES ENVIRONMENT UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1)
+endfunction()
+
+# Creates 3 distinct clusters before running the specified command.
+# This is useful for testing features that require multiple clusters (like the
+# multi-cluster FDB client)
+function(add_multi_fdbclient_test)
+  set(options DISABLED ENABLED)
+  set(oneValueArgs NAME)
+  set(multiValueArgs COMMAND)
+  cmake_parse_arguments(T "${options}" "${oneValueArgs}" "${multiValueArgs}" "${ARGN}")
+  if(OPEN_FOR_IDE)
+    return()
+  endif()
+  if(NOT T_ENABLED AND T_DISABLED)
+    return()
+  endif()
+  if(NOT T_NAME)
+    message(FATAL_ERROR "NAME is a required argument for add_multi_fdbclient_test")
+  endif()
+  if(NOT T_COMMAND)
+    message(FATAL_ERROR "COMMAND is a required argument for add_multi_fdbclient_test")
+  endif()
+  message(STATUS "Adding Client test ${T_NAME}")
+  add_test(NAME "${T_NAME}"
+    COMMAND ${CMAKE_SOURCE_DIR}/tests/TestRunner/tmp_multi_cluster.py
+            --build-dir ${CMAKE_BINARY_DIR}
+            --clusters 3
+            --
+            ${T_COMMAND})
+  set_tests_properties("${T_NAME}" PROPERTIES TIMEOUT 60)
 endfunction()
 
 function(add_java_test)

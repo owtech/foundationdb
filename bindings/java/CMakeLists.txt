@@ -182,7 +182,7 @@ set(MANIFEST_FILE ${CMAKE_CURRENT_BINARY_DIR}/resources/META-INF/MANIFEST.MF)
 file(WRITE ${MANIFEST_FILE} ${MANIFEST_TEXT})
 
 add_jar(fdb-java ${JAVA_BINDING_SRCS} ${GENERATED_JAVA_FILES} ${CMAKE_SOURCE_DIR}/LICENSE
-  OUTPUT_DIR ${PROJECT_BINARY_DIR}/lib VERSION ${CMAKE_PROJECT_VERSION} MANIFEST ${MANIFEST_FILE})
+  OUTPUT_DIR ${PROJECT_BINARY_DIR}/lib VERSION ${FDB_VERSION} MANIFEST ${MANIFEST_FILE})
 add_dependencies(fdb-java fdb_java_options fdb_java)
 
 if(NOT OPEN_FOR_IDE)
@@ -237,7 +237,12 @@ if(NOT OPEN_FOR_IDE)
     COMMENT "Copy jni library for fat jar")
   add_custom_target(copy_lib DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/lib_copied)
   add_dependencies(copy_lib unpack_jar)
-  set(target_jar ${jar_destination}/fdb-java-${CMAKE_PROJECT_VERSION}${FDB_VERSION_SUFFIX}.jar)
+  if(NOT FDB_RELEASE)
+    set(not_fdb_release_string "")
+  else()
+    set(not_fdb_release_string "")
+  endif()
+  set(target_jar ${jar_destination}/fdb-java-${FDB_VERSION}${not_fdb_release_string}.jar)
   add_custom_command(OUTPUT ${target_jar}
     COMMAND ${Java_JAR_EXECUTABLE} cfm ${target_jar} ${unpack_dir}/META-INF/MANIFEST.MF .
     WORKING_DIRECTORY ${unpack_dir}
@@ -245,7 +250,7 @@ if(NOT OPEN_FOR_IDE)
     COMMENT "Build ${target_jar}")
   add_jar(foundationdb-tests SOURCES ${JAVA_TESTS_SRCS} INCLUDE_JARS fdb-java)
   add_dependencies(foundationdb-tests fdb_java_options)
-  set(tests_jar ${jar_destination}/fdb-java-${CMAKE_PROJECT_VERSION}${prerelease_string}-tests.jar)
+  set(tests_jar ${jar_destination}/fdb-java-${FDB_VERSION}${not_fdb_release_string}-tests.jar)
   add_custom_command(OUTPUT ${tests_jar}
     COMMAND ${CMAKE_COMMAND} -E copy foundationdb-tests.jar "${tests_jar}"
     WORKING_DIRECTORY .
@@ -303,7 +308,7 @@ if(NOT OPEN_FOR_IDE)
   if(RUN_JUNIT_TESTS)
     # Sets up the JUnit testing structure to run through ctest
     #
-    # To add a new junit test, add the class to the JAVA_JUNIT_TESTS variable in `src/tests.cmake`. Note that if you run a Suite, 
+    # To add a new junit test, add the class to the JAVA_JUNIT_TESTS variable in `src/tests.cmake`. Note that if you run a Suite,
     # ctest will NOT display underlying details of the suite itself, so it's best to avoid junit suites in general. Also,
     # if you need a different runner other than JUnitCore, you'll have to modify this so be aware.
     #
@@ -311,8 +316,8 @@ if(NOT OPEN_FOR_IDE)
     #
     # ctest .
     #
-    # from the ${BUILD_DIR}/bindings/java subdirectory. 
-    # 
+    # from the ${BUILD_DIR}/bindings/java subdirectory.
+    #
     # Note: if you are running from ${BUILD_DIR}, additional tests of the native logic will be run. To avoid these, use
     #
     # ctest . -R java-unit
@@ -320,15 +325,15 @@ if(NOT OPEN_FOR_IDE)
     # ctest has lots of flexible command options, so be sure to refer to its documentation if you want to do something specific(documentation
     # can be found at https://cmake.org/cmake/help/v3.19/manual/ctest.1.html)
 
-    add_jar(fdb-junit SOURCES ${JAVA_JUNIT_TESTS} ${JUNIT_RESOURCES} INCLUDE_JARS fdb-java 
-            ${CMAKE_BINARY_DIR}/packages/junit-jupiter-api-5.7.1.jar 
+    add_jar(fdb-junit SOURCES ${JAVA_JUNIT_TESTS} ${JUNIT_RESOURCES} INCLUDE_JARS fdb-java
+            ${CMAKE_BINARY_DIR}/packages/junit-jupiter-api-5.7.1.jar
             ${CMAKE_BINARY_DIR}/packages/junit-jupiter-engine-5.7.1.jar
             ${CMAKE_BINARY_DIR}/packages/junit-jupiter-params-5.7.1.jar
             ${CMAKE_BINARY_DIR}/packages/opentest4j-1.2.0.jar
             ${CMAKE_BINARY_DIR}/packages/apiguardian-api-1.1.1.jar
     )
     get_property(junit_jar_path TARGET fdb-junit PROPERTY JAR_FILE)
-    
+
     add_test(NAME java-unit
       COMMAND ${Java_JAVA_EXECUTABLE}
             -classpath "${target_jar}:${junit_jar_path}:${JUNIT_CLASSPATH}"
@@ -341,12 +346,12 @@ if(NOT OPEN_FOR_IDE)
   if(RUN_JAVA_INTEGRATION_TESTS)
     # Set up the integration tests. These tests generally require a running database server to function properly. Most tests
     # should be written such that they can be run in parallel with other integration tests (e.g. try to use a unique key range for each test
-    # whenever possible), because it's a reasonable assumption that a single server will be shared among multiple tests, and might do so 
+    # whenever possible), because it's a reasonable assumption that a single server will be shared among multiple tests, and might do so
     # concurrently.
     #
     # Integration tests are run through ctest the same way as unit tests, but their label is prefixed with the entry 'integration-'.
-    # Note that most java integration tests will fail if they can't quickly connect to a running FDB instance(depending on how the test is written, anyway). 
-    # However, if you want to explicitly skip them, you can run 
+    # Note that most java integration tests will fail if they can't quickly connect to a running FDB instance(depending on how the test is written, anyway).
+    # However, if you want to explicitly skip them, you can run
     #
     # `ctest -E integration`
     #
@@ -363,8 +368,8 @@ if(NOT OPEN_FOR_IDE)
     # empty, consider generating a random prefix for the keys you write, use
     # the directory layer with a unique path, etc.)
     #
-    add_jar(fdb-integration SOURCES ${JAVA_INTEGRATION_TESTS} ${JAVA_INTEGRATION_RESOURCES} INCLUDE_JARS fdb-java 
-            ${CMAKE_BINARY_DIR}/packages/junit-jupiter-api-5.7.1.jar 
+    add_jar(fdb-integration SOURCES ${JAVA_INTEGRATION_TESTS} ${JAVA_INTEGRATION_RESOURCES} INCLUDE_JARS fdb-java
+            ${CMAKE_BINARY_DIR}/packages/junit-jupiter-api-5.7.1.jar
             ${CMAKE_BINARY_DIR}/packages/junit-jupiter-engine-5.7.1.jar
             ${CMAKE_BINARY_DIR}/packages/junit-jupiter-params-5.7.1.jar
             ${CMAKE_BINARY_DIR}/packages/opentest4j-1.2.0.jar
@@ -377,7 +382,14 @@ if(NOT OPEN_FOR_IDE)
                     COMMAND ${Java_JAVA_EXECUTABLE}
                       -classpath "${target_jar}:${integration_jar_path}:${JUNIT_CLASSPATH}"
                       -Djava.library.path=${CMAKE_BINARY_DIR}/lib
-                      org.junit.platform.console.ConsoleLauncher "--details=summary" "--class-path=${integration_jar_path}" "--scan-classpath" "--disable-banner"
+                      org.junit.platform.console.ConsoleLauncher "--details=summary" "--class-path=${integration_jar_path}" "--scan-classpath" "--disable-banner" "-T MultiClient"
+    )
+
+    add_multi_fdbclient_test(NAME java-multi-integration
+                    COMMAND ${Java_JAVA_EXECUTABLE}
+                    -classpath "${target_jar}:${integration_jar_path}:${JUNIT_CLASSPATH}"
+                    -Djava.library.path=${CMAKE_BINARY_DIR}/lib
+                    org.junit.platform.console.ConsoleLauncher "--details=summary" "--class-path=${integration_jar_path}" "--scan-classpath" "--disable-banner" "-t MultiClient"
     )
 
   endif()

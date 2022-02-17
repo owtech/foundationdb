@@ -164,6 +164,7 @@ public:
 	double INITIAL_FAILURE_REACTION_DELAY;
 	double CHECK_TEAM_DELAY;
 	double PERPETUAL_WIGGLE_DELAY;
+	bool PERPETUAL_WIGGLE_DISABLE_REMOVER;
 	double LOG_ON_COMPLETION_DELAY;
 	int BEST_TEAM_MAX_TEAM_TRIES;
 	int BEST_TEAM_OPTION_COUNT;
@@ -208,6 +209,7 @@ public:
 	int DD_TEAMS_INFO_PRINT_YIELD_COUNT;
 	int DD_TEAM_ZERO_SERVER_LEFT_LOG_DELAY;
 	int DD_STORAGE_WIGGLE_PAUSE_THRESHOLD; // How many unhealthy relocations are ongoing will pause storage wiggle
+	int DD_STORAGE_WIGGLE_STUCK_THRESHOLD; // How many times bestTeamStuck accumulate will pause storage wiggle
 
 	// TeamRemover to remove redundant teams
 	bool TR_FLAG_DISABLE_MACHINE_TEAM_REMOVER; // disable the machineTeamRemover actor
@@ -224,10 +226,6 @@ public:
 
 	double DD_FAILURE_TIME;
 	double DD_ZERO_HEALTHY_TEAM_DELAY;
-
-	// Redwood Storage Engine
-	int PREFIX_TREE_IMMEDIATE_KEY_SIZE_LIMIT;
-	int PREFIX_TREE_IMMEDIATE_KEY_SIZE_MIN;
 
 	// KeyValueStore SQLITE
 	int CLEAR_BUFFER_SIZE;
@@ -277,6 +275,15 @@ public:
 	int64_t ROCKSDB_PERIODIC_COMPACTION_SECONDS;
 	int ROCKSDB_PREFIX_LEN;
 	int64_t ROCKSDB_BLOCK_CACHE_SIZE;
+	double ROCKSDB_METRICS_DELAY;
+	double ROCKSDB_READ_VALUE_TIMEOUT;
+	double ROCKSDB_READ_VALUE_PREFIX_TIMEOUT;
+	double ROCKSDB_READ_RANGE_TIMEOUT;
+	double ROCKSDB_READ_QUEUE_WAIT;
+	int ROCKSDB_READ_QUEUE_SOFT_MAX;
+	int ROCKSDB_READ_QUEUE_HARD_MAX;
+	int ROCKSDB_FETCH_QUEUE_SOFT_MAX;
+	int ROCKSDB_FETCH_QUEUE_HARD_MAX;
 
 	// Leader election
 	int MAX_NOTIFICATIONS;
@@ -374,6 +381,7 @@ public:
 	double SIM_SHUTDOWN_TIMEOUT;
 	double SHUTDOWN_TIMEOUT;
 	double MASTER_SPIN_DELAY;
+	double CC_PRUNE_CLIENTS_INTERVAL;
 	double CC_CHANGE_DELAY;
 	double CC_CLASS_DELAY;
 	double WAIT_FOR_GOOD_RECRUITMENT_DELAY;
@@ -386,12 +394,39 @@ public:
 	double INCOMPATIBLE_PEERS_LOGGING_INTERVAL;
 	double VERSION_LAG_METRIC_INTERVAL;
 	int64_t MAX_VERSION_DIFFERENCE;
+	double INITIAL_UPDATE_CROSS_DC_INFO_DELAY; // The intial delay in a new Cluster Controller just started to refresh
+	                                           // the info of remote DC, such as remote DC health, and whether we need
+	                                           // to take remote DC health info when making failover decision.
+	double CHECK_REMOTE_HEALTH_INTERVAL; // Remote DC health refresh interval.
 	double FORCE_RECOVERY_CHECK_DELAY;
 	double RATEKEEPER_FAILURE_TIME;
 	double REPLACE_INTERFACE_DELAY;
 	double REPLACE_INTERFACE_CHECK_DELAY;
 	double COORDINATOR_REGISTER_INTERVAL;
 	double CLIENT_REGISTER_INTERVAL;
+	bool CC_ENABLE_WORKER_HEALTH_MONITOR;
+	double CC_WORKER_HEALTH_CHECKING_INTERVAL; // The interval of refreshing the degraded server list.
+	double CC_DEGRADED_LINK_EXPIRATION_INTERVAL; // The time period from the last degradation report after which a
+	                                             // degraded server is considered healthy.
+	double CC_MIN_DEGRADATION_INTERVAL; // The minimum interval that a server is reported as degraded to be considered
+	                                    // as degraded by Cluster Controller.
+	int CC_DEGRADED_PEER_DEGREE_TO_EXCLUDE; // The maximum number of degraded peers when excluding a server. When the
+	                                        // number of degraded peers is more than this value, we will not exclude
+	                                        // this server since it may because of server overload.
+	int CC_MAX_EXCLUSION_DUE_TO_HEALTH; // The max number of degraded servers to exclude by Cluster Controller due to
+	                                    // degraded health.
+	bool CC_HEALTH_TRIGGER_RECOVERY; // If true, cluster controller will kill the master to trigger recovery when
+	                                 // detecting degraded servers. If false, cluster controller only prints a warning.
+	double CC_TRACKING_HEALTH_RECOVERY_INTERVAL; // The number of recovery count should not exceed
+	                                             // CC_MAX_HEALTH_RECOVERY_COUNT within
+	                                             // CC_TRACKING_HEALTH_RECOVERY_INTERVAL.
+	int CC_MAX_HEALTH_RECOVERY_COUNT; // The max number of recoveries can be triggered due to worker health within
+	                                  // CC_TRACKING_HEALTH_RECOVERY_INTERVAL
+	bool CC_HEALTH_TRIGGER_FAILOVER; // Whether to enable health triggered failover in CC.
+	int CC_FAILOVER_DUE_TO_HEALTH_MIN_DEGRADATION; // The minimum number of degraded servers that can trigger a
+	                                               // failover.
+	int CC_FAILOVER_DUE_TO_HEALTH_MAX_DEGRADATION; // The maximum number of degraded servers that can trigger a
+	                                               // failover.
 
 	// Knobs used to select the best policy (via monte carlo)
 	int POLICY_RATING_TESTS; // number of tests per policy (in order to compare)
@@ -547,6 +582,8 @@ public:
 	double FETCH_KEYS_TOO_LONG_TIME_CRITERIA;
 	double MAX_STORAGE_COMMIT_TIME;
 	int64_t RANGESTREAM_LIMIT_BYTES;
+	bool QUICK_GET_VALUE_FALLBACK;
+	bool QUICK_GET_KEY_VALUES_FALLBACK;
 
 	// Wait Failure
 	int MAX_OUTSTANDING_WAIT_FAILURE_REQUESTS;
@@ -565,6 +602,12 @@ public:
 	                                                 // become the leader.
 	double MAX_DELAY_CC_WORST_FIT_CANDIDACY_SECONDS;
 	double DBINFO_FAILED_DELAY;
+	bool ENABLE_WORKER_HEALTH_MONITOR;
+	double WORKER_HEALTH_MONITOR_INTERVAL; // Interval between two health monitor health check.
+	int PEER_LATENCY_CHECK_MIN_POPULATION; // The minimum number of latency samples required to check a peer.
+	double PEER_LATENCY_DEGRADATION_PERCENTILE; // The percentile latency used to check peer health.
+	double PEER_LATENCY_DEGRADATION_THRESHOLD; // The latency threshold to consider a peer degraded.
+	double PEER_TIMEOUT_PERCENTAGE_DEGRADATION_THRESHOLD; // The percentage of timeout to consider a peer degraded.
 
 	// Test harness
 	double WORKER_POLL_DELAY;
@@ -649,8 +692,11 @@ public:
 	double FASTRESTORE_RATE_UPDATE_SECONDS; // how long to update appliers target write rate
 
 	int REDWOOD_DEFAULT_PAGE_SIZE; // Page size for new Redwood files
+	int REDWOOD_DEFAULT_EXTENT_SIZE; // Extent size for new Redwood files
+	int REDWOOD_DEFAULT_EXTENT_READ_SIZE; // Extent read size for Redwood files
+	int REDWOOD_EXTENT_CONCURRENT_READS; // Max number of simultaneous extent disk reads in progress.
 	int REDWOOD_KVSTORE_CONCURRENT_READS; // Max number of simultaneous point or range reads in progress.
-	int REDWOOD_COMMIT_CONCURRENT_READS; // Max number of concurrent reads done to support commit operations
+	bool REDWOOD_KVSTORE_RANGE_PREFETCH; // Whether to use range read prefetching
 	double REDWOOD_PAGE_REBUILD_MAX_SLACK; // When rebuilding pages, max slack to allow in page
 	int REDWOOD_LAZY_CLEAR_BATCH_SIZE_PAGES; // Number of pages to try to pop from the lazy delete queue and process at
 	                                         // once
@@ -661,7 +707,10 @@ public:
 	int64_t REDWOOD_REMAP_CLEANUP_WINDOW; // Remap remover lag interval in which to coalesce page writes
 	double REDWOOD_REMAP_CLEANUP_LAG; // Maximum allowed remap remover lag behind the cleanup window as a multiple of
 	                                  // the window size
-	double REDWOOD_LOGGING_INTERVAL;
+	int REDWOOD_PAGEFILE_GROWTH_SIZE_PAGES; // Number of pages to grow page file by
+	double REDWOOD_METRICS_INTERVAL; // How often to write RedwoodMetrics trace event
+	double REDWOOD_HISTOGRAM_INTERVAL; // How often to write trace events for Redwood histograms
+	bool REDWOOD_EVICT_UPDATED_PAGES; // Whether to prioritize eviction of updated pages from cache.
 
 	// Server request latency measurement
 	int LATENCY_SAMPLE_SIZE;

@@ -351,6 +351,7 @@ public:
 	Counter transactionGetKeyRequests;
 	Counter transactionGetValueRequests;
 	Counter transactionGetRangeRequests;
+	Counter transactionGetRangeAndFlatMapRequests;
 	Counter transactionGetRangeStreamRequests;
 	Counter transactionWatchRequests;
 	Counter transactionGetAddressesForKeyRequests;
@@ -375,6 +376,8 @@ public:
 	Counter transactionsProcessBehind;
 	Counter transactionsThrottled;
 	Counter transactionsExpensiveClearCostEstCount;
+	Counter transactionGrvFullBatches;
+	Counter transactionGrvTimedOutBatches;
 
 	ContinuousSample<double> latencies, readLatencies, commitLatencies, GRVLatencies, mutationsPerCommit,
 	    bytesPerCommit;
@@ -384,7 +387,7 @@ public:
 
 	int snapshotRywEnabled;
 
-	int transactionTracingEnabled;
+	bool transactionTracingSample;
 
 	Future<Void> logger;
 	Future<Void> throttleExpirer;
@@ -436,6 +439,8 @@ public:
 	// Removes the storage server and its TSS pair from the TSS mapping (if present).
 	// Requests to the storage server will no longer be duplicated to its pair TSS.
 	void removeTssMapping(StorageServerInterface const& ssi);
+
+	EventCacheHolder connectToDatabaseEventCacheHolder;
 };
 
 #endif

@@ -143,12 +143,26 @@ std::map<std::string, std::string> configForToken(std::string const& mode) {
 		}
 
 		if (key == "perpetual_storage_wiggle" && isInteger(value)) {
-			int ppWiggle = atoi(value.c_str());
+			int ppWiggle = std::stoi(value);
 			if (ppWiggle >= 2 || ppWiggle < 0) {
 				printf("Error: Only 0 and 1 are valid values of perpetual_storage_wiggle at present.\n");
 				return out;
 			}
 			out[p + key] = value;
+		}
+		if (key == "storage_migration_type") {
+			StorageMigrationType type;
+			if (value == "disabled") {
+				type = StorageMigrationType::DISABLED;
+			} else if (value == "aggressive") {
+				type = StorageMigrationType::AGGRESSIVE;
+			} else if (value == "gradual") {
+				type = StorageMigrationType::GRADUAL;
+			} else {
+				printf("Error: Only disabled|aggressive|gradual are valid for storage_migration_mode.\n");
+				return out;
+			}
+			out[p + key] = format("%d", type);
 		}
 		return out;
 	}
@@ -161,7 +175,7 @@ std::map<std::string, std::string> configForToken(std::string const& mode) {
 	} else if (mode == "ssd" || mode == "ssd-2") {
 		logType = KeyValueStoreType::SSD_BTREE_V2;
 		storeType = KeyValueStoreType::SSD_BTREE_V2;
-	} else if (mode == "ssd-redwood-experimental") {
+	} else if (mode == "ssd-redwood-1-experimental") {
 		logType = KeyValueStoreType::SSD_BTREE_V2;
 		storeType = KeyValueStoreType::SSD_REDWOOD_V1;
 	} else if (mode == "ssd-rocksdb-experimental") {
@@ -445,6 +459,8 @@ ACTOR Future<ConfigurationResult> changeConfig(Database cx, std::map<std::string
 	state Future<Void> tooLong = delay(60);
 	state Key versionKey = BinaryWriter::toValue(deterministicRandom()->randomUniqueID(), Unversioned());
 	state bool oldReplicationUsesDcId = false;
+	state bool warnPPWGradual = false;
+	state bool warnChangeStorageNoMigrate = false;
 	loop {
 		try {
 			tr.setOption(FDBTransactionOptions::PRIORITY_SYSTEM_IMMEDIATE);
@@ -615,6 +631,14 @@ ACTOR Future<ConfigurationResult> changeConfig(Database cx, std::map<std::string
 							return ConfigurationResult::NOT_ENOUGH_WORKERS;
 						}
 					}
+
+					if (newConfig.storageServerStoreType != oldConfig.storageServerStoreType &&
+					    newConfig.storageMigrationType == StorageMigrationType::DISABLED) {
+						return ConfigurationResult::STORAGE_MIGRATION_DISABLED;
+					} else if (newConfig.storageMigrationType == StorageMigrationType::GRADUAL &&
+					           newConfig.perpetualStorageWiggleSpeed == 0) {
+						warnPPWGradual = true;
+					}
 				}
 			}
 			if (creating) {
@@ -670,7 +694,12 @@ ACTOR Future<ConfigurationResult> changeConfig(Database cx, std::map<std::string
 			wait(tr.onError(e1));
 		}
 	}
-	return ConfigurationResult::SUCCESS;
+
+	if (warnPPWGradual) {
+		return ConfigurationResult::SUCCESS_WARN_PPW_GRADUAL;
+	} else {
+		return ConfigurationResult::SUCCESS;
+	}
 }
 
 ConfigureAutoResult parseConfig(StatusObject const& status) {
@@ -1137,14 +1166,24 @@ ACTOR Future<Optional<CoordinatorsResult>> changeQuorumChecker(Transaction* tr,
 	                                   StringRef(newName + ':' + deterministicRandom()->randomAlphaNumeric(32)));
 
 	if (g_network->isSimulated()) {
-		for (int i = 0; i < (desiredCoordinators->size() / 2) + 1; i++) {
-			auto addresses = g_simulator.getProcessByAddress((*desiredCoordinators)[i])->addresses;
+		int i = 0;
+		int protectedCount = 0;
+		while ((protectedCount < ((desiredCoordinators->size() / 2) + 1)) && (i < desiredCoordinators->size())) {
+			auto process = g_simulator.getProcessByAddress((*desiredCoordinators)[i]);
+			auto addresses = process->addresses;
 
-			g_simulator.protectedAddresses.insert(addresses.address);
+			if (!process->isReliable()) {
+				i++;
+				continue;
+			}
+
+			g_simulator.protectedAddresses.insert(process->addresses.address);
 			if (addresses.secondaryAddress.present()) {
-				g_simulator.protectedAddresses.insert(addresses.secondaryAddress.get());
+				g_simulator.protectedAddresses.insert(process->addresses.secondaryAddress.get());
 			}
 			TraceEvent("ProtectCoordinator").detail("Address", (*desiredCoordinators)[i]).backtrace();
+			protectedCount++;
+			i++;
 		}
 	}
 

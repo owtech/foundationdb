@@ -51,9 +51,10 @@ namespace SummarizeTest
             bool traceToStdout = false;
             try
             {
+                string joshuaSeed = System.Environment.GetEnvironmentVariable("JOSHUA_SEED");
                 byte[] seed = new byte[4];
                 new System.Security.Cryptography.RNGCryptoServiceProvider().GetBytes(seed);
-                random = new Random(new BinaryReader(new MemoryStream(seed)).ReadInt32());
+                random = new Random(joshuaSeed != null ? Convert.ToInt32(Int64.Parse(joshuaSeed) % 2147483648) : new BinaryReader(new MemoryStream(seed)).ReadInt32());
 
                 if (args.Length < 1)
                     return UsageMessage();
@@ -294,9 +295,16 @@ namespace SummarizeTest
                     string lastFolderName = Path.GetFileName(Path.GetDirectoryName(testFile));
                     if (lastFolderName.Contains("from_") || lastFolderName.Contains("to_")) // Only perform upgrade/downgrade tests from certain versions
                     {
-                        oldBinaryVersionLowerBound = lastFolderName.Split('_').Last();
+                        oldBinaryVersionLowerBound = lastFolderName.Split('_').ElementAt(1); // Assuming "from_*.*.*" appears first in the folder name
                     }
                     string oldBinaryVersionUpperBound = getFdbserverVersion(fdbserverName);
+                    if (lastFolderName.Contains("until_")) // Specify upper bound for old binary; "until_*.*.*" is assumed at the end if present
+                    {
+                        string givenUpperBound = lastFolderName.Split('_').Last();
+                        if (versionLessThan(givenUpperBound, oldBinaryVersionUpperBound)) {
+                            oldBinaryVersionUpperBound = givenUpperBound;
+                        }
+                    }
                     if (versionGreaterThanOrEqual("4.0.0", oldBinaryVersionUpperBound)) {
                         // If the binary under test is from 3.x, then allow upgrade tests from 3.x binaries.
                         oldBinaryVersionLowerBound = "0.0.0";
@@ -306,8 +314,22 @@ namespace SummarizeTest
                                                          Directory.GetFiles(oldBinaryFolder),
                                                          x => versionGreaterThanOrEqual(Path.GetFileName(x).Split('-').Last(), oldBinaryVersionLowerBound)
                                                            && versionLessThan(Path.GetFileName(x).Split('-').Last(), oldBinaryVersionUpperBound));
-                    oldBinaries = oldBinaries.Concat(currentBinary);
-                    oldServerName = random.Choice(oldBinaries.ToList<string>());
+                    if (!lastFolderName.Contains("until_")) {
+                        // only add current binary to the list of old binaries if "until_" is not specified in the folder name
+                        // <version> in until_<version> should be less or equal to the current binary version
+                        // otherwise, using "until_" makes no sense
+                        // thus, by definition, if "until_" appears, we do not want to run with the current binary version
+                        oldBinaries = oldBinaries.Concat(currentBinary);
+                    }
+                    List<string> oldBinariesList = oldBinaries.ToList<string>();
+                    if (oldBinariesList.Count == 0) {
+                        // In theory, restarting tests are named to have at least one old binary version to run
+                        // But if none of the provided old binaries fall in the range, we just skip the test
+                        Console.WriteLine("No available old binary version from {0} to {1}", oldBinaryVersionLowerBound, oldBinaryVersionUpperBound);
+                        return 0;
+                    } else {
+                        oldServerName = random.Choice(oldBinariesList);
+                    }
                 }
                 else
                 {
@@ -523,7 +545,8 @@ namespace SummarizeTest
                     consoleThread.Join();
 
                     var traceFiles = Directory.GetFiles(tempPath, "trace*.*").Where(s => s.EndsWith(".xml") || s.EndsWith(".json")).ToArray();
-                    if (traceFiles.Length == 0)
+                    // if no traces caused by the process failed then the result will include its stderr
+                    if (process.ExitCode == 0 && traceFiles.Length == 0)
                     {
                         if (!traceToStdout)
                         {
@@ -1581,8 +1604,8 @@ namespace SummarizeTest
         {
             Console.WriteLine("Version:         1.02");
 
-            Console.WriteLine("FDB Project Ver: " + "${CMAKE_PROJECT_VERSION}");
-            Console.WriteLine("FDB Version:     " + "${CMAKE_PROJECT_VERSION_MAJOR}" + "." + "${CMAKE_PROJECT_VERSION_MINOR}");
+            Console.WriteLine("FDB Project Ver: " + "${FDB_VERSION}");
+            Console.WriteLine("FDB Version:     " + "${FDB_VERSION_MAJOR}" + "." + "${FDB_VERSION_MINOR}");
             Console.WriteLine("Source Version:  " + "${CURRENT_GIT_VERSION}");
             return 1;
         }
