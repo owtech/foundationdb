@@ -5234,6 +5234,19 @@ static std::set<int> const& normalDataDistributorErrors() {
 	return s;
 }
 
+ACTOR template <class Req>
+Future<Void> sendSnapReq(RequestStream<Req> stream, Req req, Error e) {
+	ErrorOr<REPLY_TYPE(Req)> reply = wait(stream.tryGetReply(req));
+	if (reply.isError()) {
+		TraceEvent("SnapDataDistributor_ReqError")
+		    .error(reply.getError(), true)
+		    .detail("ConvertedErrorType", e.what())
+		    .detail("Peer", stream.getEndpoint().getPrimaryAddress());
+		throw e;
+	}
+	return Void();
+}
+
 // Validate that data the ServerDBInfo object is up-to-date
 ACTOR static Future<Void> ddSnapCreateValidateServerDBInfo(Database cx, ServerDBInfo db) {
 	state Transaction tr(cx);
@@ -5269,9 +5282,8 @@ ACTOR Future<Void> ddSnapCreateCore(DistributorSnapRequest snapReq, Reference<As
 		state std::vector<TLogInterface> tlogs = db->get().logSystemConfig.allLocalLogs(false);
 		std::vector<Future<Void>> disablePops;
 		for (const auto& tlog : tlogs) {
-			disablePops.push_back(transformErrors(
-			    throwErrorOr(tlog.disablePopRequest.tryGetReply(TLogDisablePopRequest(snapReq.snapUID))),
-			    snap_disable_tlog_pop_failed()));
+			disablePops.push_back(sendSnapReq(
+			    tlog.disablePopRequest, TLogDisablePopRequest{ snapReq.snapUID }, snap_disable_tlog_pop_failed()));
 		}
 		wait(waitForAll(disablePops));
 
@@ -5287,9 +5299,9 @@ ACTOR Future<Void> ddSnapCreateCore(DistributorSnapRequest snapReq, Reference<As
 		std::vector<Future<Void>> storageSnapReqs;
 		for (const auto& worker : storageWorkers) {
 			storageSnapReqs.push_back(
-			    transformErrors(throwErrorOr(worker.workerSnapReq.tryGetReply(WorkerSnapRequest(
-			                        snapReq.snapPayload, snapReq.snapUID, LiteralStringRef("storage")))),
-			                    snap_storage_failed()));
+			    sendSnapReq(worker.workerSnapReq,
+			                WorkerSnapRequest(snapReq.snapPayload, snapReq.snapUID, LiteralStringRef("storage")),
+			                snap_storage_failed()));
 		}
 		wait(waitForAll(storageSnapReqs));
 
@@ -5300,9 +5312,9 @@ ACTOR Future<Void> ddSnapCreateCore(DistributorSnapRequest snapReq, Reference<As
 		std::vector<Future<Void>> tLogSnapReqs;
 		for (const auto& tlog : tlogs) {
 			tLogSnapReqs.push_back(
-			    transformErrors(throwErrorOr(tlog.snapRequest.tryGetReply(
-			                        TLogSnapRequest(snapReq.snapPayload, snapReq.snapUID, LiteralStringRef("tlog")))),
-			                    snap_tlog_failed()));
+			    sendSnapReq(tlog.snapRequest,
+			                TLogSnapRequest(snapReq.snapPayload, snapReq.snapUID, LiteralStringRef("tlog")),
+			                snap_tlog_failed()));
 		}
 		wait(waitForAll(tLogSnapReqs));
 
@@ -5312,9 +5324,8 @@ ACTOR Future<Void> ddSnapCreateCore(DistributorSnapRequest snapReq, Reference<As
 		// enable tlog pop on local tlog nodes
 		std::vector<Future<Void>> enablePops;
 		for (const auto& tlog : tlogs) {
-			enablePops.push_back(
-			    transformErrors(throwErrorOr(tlog.enablePopRequest.tryGetReply(TLogEnablePopRequest(snapReq.snapUID))),
-			                    snap_enable_tlog_pop_failed()));
+			enablePops.push_back(sendSnapReq(
+			    tlog.enablePopRequest, TLogEnablePopRequest{ snapReq.snapUID }, snap_enable_tlog_pop_failed()));
 		}
 		wait(waitForAll(enablePops));
 
@@ -5329,9 +5340,9 @@ ACTOR Future<Void> ddSnapCreateCore(DistributorSnapRequest snapReq, Reference<As
 		std::vector<Future<Void>> coordSnapReqs;
 		for (const auto& worker : coordWorkers) {
 			coordSnapReqs.push_back(
-			    transformErrors(throwErrorOr(worker.workerSnapReq.tryGetReply(WorkerSnapRequest(
-			                        snapReq.snapPayload, snapReq.snapUID, LiteralStringRef("coord")))),
-			                    snap_coord_failed()));
+			    sendSnapReq(worker.workerSnapReq,
+			                WorkerSnapRequest(snapReq.snapPayload, snapReq.snapUID, LiteralStringRef("coord")),
+			                snap_coord_failed()));
 		}
 		wait(waitForAll(coordSnapReqs));
 		TraceEvent("SnapDataDistributor_AfterSnapCoords")
