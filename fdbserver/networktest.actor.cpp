@@ -511,13 +511,13 @@ struct P2PNetworkTest {
 
 		self->startTime = now();
 
-		printf("%d listeners, %d remotes, %d outgoing connections\n",
+		printf("%zd listeners, %zd remotes, %d outgoing connections\n",
 		       self->listeners.size(),
 		       self->remotes.size(),
 		       self->connectionsOut);
 		printf("Request size: %s\n", self->requestBytes.toString().c_str());
 		printf("Response size: %s\n", self->replyBytes.toString().c_str());
-		printf("Requests per outgoing session: %d\n", self->requests.toString().c_str());
+		printf("Requests per outgoing session: %s\n", self->requests.toString().c_str());
 		printf("Delay before socket read: %s\n", self->waitReadMilliseconds.toString().c_str());
 		printf("Delay before socket write: %s\n", self->waitWriteMilliseconds.toString().c_str());
 		printf("Delay before session close: %s\n", self->idleMilliseconds.toString().c_str());
