@@ -165,8 +165,9 @@ jobs:
         run: |
           mkdir deb
           pushd deb
-          wget https://www.foundationdb.org/downloads/${{ env.JOSHUA_DB_VER }}/ubuntu/installers/foundationdb-clients_${{ env.JOSHUA_DB_VER }}-1_amd64.deb https://www.foundationdb.org/downloads/${{ env.JOSHUA_DB_VER }}/ubuntu/installers/foundationdb-server_${{ env.JOSHUA_DB_VER }}-1_amd64.deb
-          sudo apt-get install -y ./foundationdb-clients_${{ env.JOSHUA_DB_VER }}-1_amd64.deb ./foundationdb-server_${{ env.JOSHUA_DB_VER }}-1_amd64.deb
+          MY_ARCH=`dpkg-architecture -q DEB_BUILD_ARCH`
+          wget https://github.com/apple/foundationdb/releases/download/${{ env.JOSHUA_DB_VER }}/foundationdb-clients_${{ env.JOSHUA_DB_VER }}-1_${MY_ARCH}.deb https://github.com/apple/foundationdb/releases/download/${{ env.JOSHUA_DB_VER }}/foundationdb-server_${{ env.JOSHUA_DB_VER }}_${MY_ARCH}.deb
+          sudo apt-get install -y ./foundationdb-clients_${{ env.JOSHUA_DB_VER }}-1_${MY_ARCH}.deb ./foundationdb-server_${{ env.JOSHUA_DB_VER }}-1_${MY_ARCH}.deb
           popd
           sudo systemctl stop foundationdb
           MY_IP=`hostname -I | awk '{print $1}'`
