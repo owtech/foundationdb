@@ -97,7 +97,7 @@ else()
     set(FDB_VERSION "${PROJECT_VERSION}-${BUILD_VERSION}")
 endif()
 set(FDB_VERSION_PLAIN ${FDB_VERSION})
-string(REPLACE "." ";" FDB_VERSION_LIST ${FDB_VERSION_PLAIN})
+string(REPLACE "." ";" FDB_VERSION_LIST ${PROJECT_VERSION})
 list(GET FDB_VERSION_LIST 0 FDB_MAJOR)
 list(GET FDB_VERSION_LIST 1 FDB_MINOR)
 list(GET FDB_VERSION_LIST 2 FDB_PATCH)
@@ -107,6 +107,7 @@ file(WRITE ${CMAKE_BINARY_DIR}/version.txt ${FDB_VERSION})
 
 message(STATUS "FDB package name is ${FDB_PACKAGE_NAME}")
 message(STATUS "FDB version is ${FDB_VERSION}")
+message(STATUS "FDB_PATCH is ${FDB_PATCH}")
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/fdbclient/versions.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/fdbclient/versions.h)
 
 

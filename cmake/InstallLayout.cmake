@@ -230,7 +230,7 @@ set(CPACK_RPM_SERVER-EL7_PRE_UNINSTALL_SCRIPT_FILE
   ${CMAKE_SOURCE_DIR}/packaging/rpm/scripts/preunserver.sh)
 
 set(CPACK_RPM_SERVER-EL7_PACKAGE_REQUIRES
-  "foundationdb-clients = ${FDB_MAJOR}.${FDB_MINOR}.${FDB_PATCH}")
+  "foundationdb-clients = ${FDB_VERSION}")
 
 set(CPACK_RPM_SERVER-VERSIONED_POST_INSTALL_SCRIPT_FILE
   ${CMAKE_BINARY_DIR}/packaging/multiversion/server/postinst-rpm)
