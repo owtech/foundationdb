@@ -60,6 +60,11 @@ else()
   set(ROCKSDB_LIBRARIES
       ${BINARY_DIR}/librocksdb.a)
 
+  find_library(URING_LIBRARY NAMES uring)
+  if(NOT URING_LIBRARY STREQUAL "URING_LIBRARY-NOTFOUND")
+      list(APPEND ROCKSDB_LIBRARIES ${URING_LIBRARY})
+  endif()
+
   ExternalProject_Get_Property(rocksdb SOURCE_DIR)
   set (ROCKSDB_INCLUDE_DIR "${SOURCE_DIR}/include")
 
