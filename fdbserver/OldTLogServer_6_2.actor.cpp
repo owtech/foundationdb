@@ -129,8 +129,8 @@ public:
 	Future<Void> commit() { return queue->commit(); }
 
 	// Implements IClosable
-	Future<Void> getError() override { return queue->getError(); }
-	Future<Void> onClosed() override { return queue->onClosed(); }
+	Future<Void> getError() const override { return queue->getError(); }
+	Future<Void> onClosed() const override { return queue->onClosed(); }
 	void dispose() override {
 		queue->dispose();
 		delete this;
@@ -1167,6 +1167,9 @@ ACTOR Future<Void> updateStorage(TLogData* self) {
 				}
 
 				wait(logData->queueCommittedVersion.whenAtLeast(nextVersion));
+				if (logData->queueCommittedVersion.get() == std::numeric_limits<Version>::max()) {
+					return Void();
+				}
 				wait(delay(0, TaskPriority::UpdateStorage));
 
 				//TraceEvent("TlogUpdatePersist", self->dbgid).detail("LogId", logData->logId).detail("NextVersion", nextVersion).detail("Version", logData->version.get()).detail("PersistentDataDurableVer", logData->persistentDataDurableVersion).detail("QueueCommitVer", logData->queueCommittedVersion.get()).detail("PersistDataVer", logData->persistentDataVersion);
@@ -1219,6 +1222,9 @@ ACTOR Future<Void> updateStorage(TLogData* self) {
 		//TraceEvent("UpdateStorageVer", logData->logId).detail("NextVersion", nextVersion).detail("PersistentDataVersion", logData->persistentDataVersion).detail("TotalSize", totalSize);
 
 		wait(logData->queueCommittedVersion.whenAtLeast(nextVersion));
+		if (logData->queueCommittedVersion.get() == std::numeric_limits<Version>::max()) {
+			return Void();
+		}
 		wait(delay(0, TaskPriority::UpdateStorage));
 
 		if (nextVersion > logData->persistentDataVersion) {
@@ -1377,7 +1383,7 @@ Version poppedVersion(Reference<LogData> self, Tag tag) {
 		if (tag == txsTag || tag.locality == tagLocalityTxs) {
 			return 0;
 		}
-		return self->recoveredAt;
+		return self->recoveredAt + 1;
 	}
 	return tagData->popped;
 }
@@ -1440,6 +1446,21 @@ ACTOR Future<Void> tLogPopCore(TLogData* self, Tag inputTag, Version to, Referen
 			}
 		}
 
+		uint64_t PoppedVersionLag = logData->persistentDataDurableVersion - logData->queuePoppedVersion;
+		if (SERVER_KNOBS->ENABLE_DETAILED_TLOG_POP_TRACE &&
+		    (logData->queuePoppedVersion > 0) && // avoid generating massive events at beginning
+		    (tagData->unpoppedRecovered ||
+		     PoppedVersionLag >=
+		         SERVER_KNOBS->TLOG_POPPED_VER_LAG_THRESHOLD_FOR_TLOGPOP_TRACE)) { // when recovery or long lag
+			TraceEvent("TLogPopDetails", logData->logId)
+			    .detail("Tag", tagData->tag.toString())
+			    .detail("UpTo", upTo)
+			    .detail("PoppedVersionLag", PoppedVersionLag)
+			    .detail("MinPoppedTag", logData->minPoppedTag.toString())
+			    .detail("QueuePoppedVersion", logData->queuePoppedVersion)
+			    .detail("UnpoppedRecovered", tagData->unpoppedRecovered ? "True" : "False")
+			    .detail("NothingPersistent", tagData->nothingPersistent ? "True" : "False");
+		}
 		if (upTo > logData->persistentDataDurableVersion)
 			wait(tagData->eraseMessagesBefore(upTo, self, logData, TaskPriority::TLogPop));
 		//TraceEvent("TLogPop", self->dbgid).detail("Tag", tag.toString()).detail("To", upTo);
@@ -1969,6 +1990,9 @@ ACTOR Future<Void> commitQueue(TLogData* self) {
 						wait(self->queueCommitEnd.whenAtLeast(self->queueCommitBegin) ||
 						     self->largeDiskQueueCommitBytes.onChange());
 					}
+					if (logData->queueCommittedVersion.get() == std::numeric_limits<Version>::max()) {
+						break;
+					}
 					self->sharedActors.send(doQueueCommit(self, logData, missingFinalCommit));
 					missingFinalCommit.clear();
 				}
@@ -2442,6 +2466,11 @@ void removeLog(TLogData* self, Reference<LogData> logData) {
 	} else {
 		throw worker_removed();
 	}
+	if (logData->queueCommittingVersion == 0) {
+		// If the removed tlog never attempted a queue commit, the update storage loop could become stuck waiting for
+		// queueCommittedVersion to advance.
+		logData->queueCommittedVersion.set(std::numeric_limits<Version>::max());
+	}
 }
 
 // copy data from old gene to new gene without desiarlzing
@@ -2814,9 +2843,9 @@ ACTOR Future<Void> restorePersistentState(TLogData* self,
 		logsByVersion.emplace_back(ver, id1);
 
 		TraceEvent("TLogPersistentStateRestore", self->dbgid)
-			.detail("LogId", logData->logId)
-			.detail("Ver", ver)
-			.detail("RecoveryCount", logData->recoveryCount);
+		    .detail("LogId", logData->logId)
+		    .detail("Ver", ver)
+		    .detail("RecoveryCount", logData->recoveryCount);
 		// Restore popped keys.  Pop operations that took place after the last (committed) updatePersistentDataVersion
 		// might be lost, but that is fine because we will get the corresponding data back, too.
 		tagKeys = prefixRange(rawId.withPrefix(persistTagPoppedKeys.begin));

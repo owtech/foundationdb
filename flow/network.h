@@ -306,6 +306,10 @@ struct NetworkAddressList {
 		return address.toString() + ", " + secondaryAddress.get().toString();
 	}
 
+	bool contains(const NetworkAddress& r) const {
+		return address == r || (secondaryAddress.present() && secondaryAddress.get() == r);
+	}
+
 	template <class Ar>
 	void serialize(Ar& ar) {
 		serializer(ar, address, secondaryAddress);
@@ -343,7 +347,8 @@ struct NetworkMetrics {
 
 	std::unordered_map<TaskPriority, struct PriorityStats> activeTrackers;
 	double lastRunLoopBusyness; // network thread busyness (measured every 5s by default)
-	std::atomic<double> networkBusyness; // network thread busyness which is returned to the the client (measured every 1s by default)
+	std::atomic<double>
+	    networkBusyness; // network thread busyness which is returned to the the client (measured every 1s by default)
 
 	// starvation trackers which keeps track of different task priorities
 	std::vector<struct PriorityStats> starvationTrackers;
@@ -482,7 +487,10 @@ public:
 		enNetworkAddressesFunc = 11,
 		enClientFailureMonitor = 12,
 		enSQLiteInjectedError = 13,
-		enGlobalConfig = 14
+		enGlobalConfig = 14,
+		enChaosMetrics = 15,
+		enDiskFailureInjector = 16,
+		enBitFlipper = 17
 	};
 
 	virtual void longTaskCheck(const char* name) {}
@@ -500,6 +508,10 @@ public:
 
 	virtual Future<class Void> delay(double seconds, TaskPriority taskID) = 0;
 	// The given future will be set after seconds have elapsed
+
+	virtual Future<class Void> orderedDelay(double seconds, TaskPriority taskID) = 0;
+	// The given future will be set after seconds have elapsed, delays with the same time and TaskPriority will be
+	// executed in the order they were issues
 
 	virtual Future<class Void> yield(TaskPriority taskID) = 0;
 	// The given future will be set immediately or after higher-priority tasks have executed
@@ -532,7 +544,10 @@ public:
 	virtual void onMainThread(Promise<Void>&& signal, TaskPriority taskID) = 0;
 	// Executes signal.send(Void()) on a/the thread belonging to this network
 
-	virtual THREAD_HANDLE startThread(THREAD_FUNC_RETURN (*func)(void*), void* arg) = 0;
+	virtual THREAD_HANDLE startThread(THREAD_FUNC_RETURN (*func)(void*),
+	                                  void* arg,
+	                                  int stackSize = 0,
+	                                  const char* name = nullptr) = 0;
 	// Starts a thread and returns a handle to it
 
 	virtual void run() = 0;
@@ -642,4 +657,118 @@ public:
 	// Returns the interface that should be used to make and accept socket connections
 };
 
+// Chaos Metrics - We periodically log chaosMetrics to make sure that chaos events are happening
+// Only includes DiskDelays which encapsulates all type delays and BitFlips for now
+// Expand as per need
+struct ChaosMetrics {
+
+	ChaosMetrics() { clear(); }
+
+	void clear() {
+		memset(this, 0, sizeof(ChaosMetrics));
+		startTime = g_network ? g_network->now() : 0;
+	}
+
+	unsigned int diskDelays;
+	unsigned int bitFlips;
+	double startTime;
+
+	void getFields(TraceEvent* e) {
+		std::pair<const char*, unsigned int> metrics[] = { { "DiskDelays", diskDelays }, { "BitFlips", bitFlips } };
+		if (e != nullptr) {
+			for (auto& m : metrics) {
+				char c = m.first[0];
+				if (c != 0) {
+					e->detail(m.first, m.second);
+				}
+			}
+		}
+	}
+};
+
+// This class supports injecting two type of disk failures
+// 1. Stalls: Every interval seconds, the disk will stall and no IO will complete for x seconds, where x is a randomly
+// chosen interval
+// 2. Slowdown: Random slowdown is injected to each disk operation for specified period of time
+struct DiskFailureInjector {
+	static DiskFailureInjector* injector() {
+		auto res = g_network->global(INetwork::enDiskFailureInjector);
+		if (!res) {
+			res = new DiskFailureInjector();
+			g_network->setGlobal(INetwork::enDiskFailureInjector, res);
+		}
+		return static_cast<DiskFailureInjector*>(res);
+	}
+
+	void setDiskFailure(double interval, double stallFor, double throttleFor) {
+		stallInterval = interval;
+		stallPeriod = stallFor;
+		stallUntil = std::max(stallUntil, g_network->now() + stallFor);
+		// random stall duration in ms (chosen once)
+		stallDuration = 0.001 * deterministicRandom()->randomInt(1, 5);
+		throttlePeriod = throttleFor;
+		throttleUntil = std::max(throttleUntil, g_network->now() + throttleFor);
+		TraceEvent("SetDiskFailure")
+		    .detail("Now", g_network->now())
+		    .detail("StallInterval", interval)
+		    .detail("StallPeriod", stallFor)
+		    .detail("StallUntil", stallUntil)
+		    .detail("ThrottlePeriod", throttleFor)
+		    .detail("ThrottleUntil", throttleUntil);
+	}
+
+	double getStallDelay() {
+		// If we are in a stall period and a stallInterval was specified, determine the
+		// delay to be inserted
+		if (((stallUntil - g_network->now()) > 0.0) && stallInterval) {
+			auto timeElapsed = fmod(g_network->now(), stallInterval);
+			return std::max(0.0, stallDuration - timeElapsed);
+		}
+		return 0.0;
+	}
+
+	double getThrottleDelay() {
+		// If we are in the throttle period, insert a random delay (in ms)
+		if ((throttleUntil - g_network->now()) > 0.0)
+			return (0.001 * deterministicRandom()->randomInt(1, 3));
+
+		return 0.0;
+	}
+
+	double getDiskDelay() { return getStallDelay() + getThrottleDelay(); }
+
+private: // members
+	double stallInterval = 0.0; // how often should the disk be stalled (0 meaning once, 10 meaning every 10 secs)
+	double stallPeriod; // Period of time disk stalls will be injected for
+	double stallUntil; // End of disk stall period
+	double stallDuration; // Duration of each stall
+	double throttlePeriod; // Period of time the disk will be slowed down for
+	double throttleUntil; // End of disk slowdown period
+
+private: // construction
+	DiskFailureInjector() = default;
+	DiskFailureInjector(DiskFailureInjector const&) = delete;
+};
+
+struct BitFlipper {
+	static BitFlipper* flipper() {
+		auto res = g_network->global(INetwork::enBitFlipper);
+		if (!res) {
+			res = new BitFlipper();
+			g_network->setGlobal(INetwork::enBitFlipper, res);
+		}
+		return static_cast<BitFlipper*>(res);
+	}
+
+	double getBitFlipPercentage() { return bitFlipPercentage; }
+
+	void setBitFlipPercentage(double percentage) { bitFlipPercentage = percentage; }
+
+private: // members
+	double bitFlipPercentage = 0.0;
+
+private: // construction
+	BitFlipper() = default;
+	BitFlipper(BitFlipper const&) = delete;
+};
 #endif

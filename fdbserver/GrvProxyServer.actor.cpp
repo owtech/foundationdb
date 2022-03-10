@@ -57,6 +57,8 @@ struct GrvProxyStats {
 	Deque<int> requestBuckets;
 	double lastBucketBegin;
 	double bucketInterval;
+	Reference<Histogram> grvConfirmEpochLiveDist;
+	Reference<Histogram> grvGetCommittedVersionRpcDist;
 
 	void updateRequestBuckets() {
 		while (now() - lastBucketBegin > bucketInterval) {
@@ -110,7 +112,13 @@ struct GrvProxyStats {
 	                          id,
 	                          SERVER_KNOBS->LATENCY_METRICS_LOGGING_INTERVAL,
 	                          SERVER_KNOBS->LATENCY_SAMPLE_SIZE),
-	    grvLatencyBands("GRVLatencyBands", id, SERVER_KNOBS->STORAGE_LOGGING_DELAY) {
+	    grvLatencyBands("GRVLatencyBands", id, SERVER_KNOBS->STORAGE_LOGGING_DELAY),
+	    grvConfirmEpochLiveDist(Histogram::getHistogram(LiteralStringRef("GrvProxy"),
+	                                                    LiteralStringRef("GrvConfirmEpochLive"),
+	                                                    Histogram::Unit::microseconds)),
+	    grvGetCommittedVersionRpcDist(Histogram::getHistogram(LiteralStringRef("GrvProxy"),
+	                                                          LiteralStringRef("GrvGetCommittedVersionRpc"),
+	                                                          Histogram::Unit::microseconds)) {
 		// The rate at which the limit(budget) is allowed to grow.
 		specialCounter(cc, "SystemGRVQueueSize", [this]() { return this->systemGRVQueueSize; });
 		specialCounter(cc, "DefaultGRVQueueSize", [this]() { return this->defaultGRVQueueSize; });
@@ -441,14 +449,14 @@ ACTOR Future<Void> queueGetReadVersionRequests(Reference<AsyncVar<ServerDBInfo>>
 					stats->txnSystemPriorityStartIn += req.transactionCount;
 					++stats->systemGRVQueueSize;
 					systemQueue->push_back(req);
-					systemQueue->span.addParent(req.spanContext);
+					// systemQueue->span.addParent(req.spanContext);
 				} else if (req.priority >= TransactionPriority::DEFAULT) {
 					++stats->txnRequestIn;
 					stats->txnStartIn += req.transactionCount;
 					stats->txnDefaultPriorityStartIn += req.transactionCount;
 					++stats->defaultGRVQueueSize;
 					defaultQueue->push_back(req);
-					defaultQueue->span.addParent(req.spanContext);
+					// defaultQueue->span.addParent(req.spanContext);
 				} else {
 					// Return error for batch_priority GRV requests
 					int64_t proxiesCount = std::max((int)db->get().client.grvProxies.size(), 1);
@@ -461,7 +469,7 @@ ACTOR Future<Void> queueGetReadVersionRequests(Reference<AsyncVar<ServerDBInfo>>
 						stats->txnBatchPriorityStartIn += req.transactionCount;
 						++stats->batchGRVQueueSize;
 						batchQueue->push_back(req);
-						batchQueue->span.addParent(req.spanContext);
+						// batchQueue->span.addParent(req.spanContext);
 					}
 				}
 			}
@@ -524,6 +532,8 @@ ACTOR Future<GetReadVersionReply> getLiveCommittedVersion(SpanID parentSpan,
 	//     and no other proxy could have already committed anything without first ending the epoch
 	state Span span("GP:getLiveCommittedVersion"_loc, parentSpan);
 	++grvProxyData->stats.txnStartBatch;
+
+	state double grvStart = now();
 	state Future<GetRawCommittedVersionReply> replyFromMasterFuture;
 	replyFromMasterFuture = grvProxyData->master.getLiveCommittedVersion.getReply(
 	    GetRawCommittedVersionRequest(span.context, debugID), TaskPriority::GetLiveCommittedVersionReply);
@@ -535,6 +545,8 @@ ACTOR Future<GetReadVersionReply> getLiveCommittedVersion(SpanID parentSpan,
 		wait(grvProxyData->lastCommitTime.whenAtLeast(now() - SERVER_KNOBS->REQUIRED_MIN_RECOVERY_DURATION));
 	}
 
+	state double grvConfirmEpochLive = now();
+	grvProxyData->stats.grvConfirmEpochLiveDist->sampleSeconds(grvConfirmEpochLive - grvStart);
 	if (debugID.present()) {
 		g_traceBatch.addEvent(
 		    "TransactionDebug", debugID.get().first(), "GrvProxyServer.getLiveCommittedVersion.confirmEpochLive");
@@ -544,6 +556,7 @@ ACTOR Future<GetReadVersionReply> getLiveCommittedVersion(SpanID parentSpan,
 	grvProxyData->minKnownCommittedVersion =
 	    std::max(grvProxyData->minKnownCommittedVersion, repFromMaster.minKnownCommittedVersion);
 
+	grvProxyData->stats.grvGetCommittedVersionRpcDist->sampleSeconds(now() - grvConfirmEpochLive);
 	GetReadVersionReply rep;
 	rep.version = repFromMaster.version;
 	rep.locked = repFromMaster.locked;
@@ -702,7 +715,7 @@ ACTOR static Future<Void> transactionStarter(GrvProxyInterface proxy,
 	state PrioritizedTransactionTagMap<ClientTagThrottleLimits> throttledTags;
 
 	state PromiseStream<double> normalGRVLatency;
-	state Span span;
+	// state Span span;
 
 	state int64_t midShardSize = SERVER_KNOBS->MIN_SHARD_BYTES;
 	addActor.send(monitorDDMetricsChanges(&midShardSize, db));
@@ -783,7 +796,7 @@ ACTOR static Future<Void> transactionStarter(GrvProxyInterface proxy,
 			} else {
 				break;
 			}
-			transactionQueue->span.swap(span);
+			// transactionQueue->span.swap(span);
 
 			auto& req = transactionQueue->front();
 			int tc = req.transactionCount;
@@ -864,7 +877,7 @@ ACTOR static Future<Void> transactionStarter(GrvProxyInterface proxy,
 		int batchGRVProcessed = 0;
 		for (int i = 0; i < start.size(); i++) {
 			if (start[i].size()) {
-				Future<GetReadVersionReply> readVersionReply = getLiveCommittedVersion(span.context,
+				Future<GetReadVersionReply> readVersionReply = getLiveCommittedVersion(UID() /*span.context*/,
 				                                                                       grvProxyData,
 				                                                                       i,
 				                                                                       debugID,
@@ -887,7 +900,7 @@ ACTOR static Future<Void> transactionStarter(GrvProxyInterface proxy,
 				batchGRVProcessed += batchPriTransactionsStarted[i];
 			}
 		}
-		span = Span(span.location);
+		// span = Span(span.location);
 
 		grvProxyData->stats.percentageOfDefaultGRVQueueProcessed =
 		    defaultQueueSize ? (double)defaultGRVProcessed / defaultQueueSize : 1;

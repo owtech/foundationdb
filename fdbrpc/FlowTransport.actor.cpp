@@ -18,7 +18,6 @@
  * limitations under the License.
  */
 
-#include "fdbclient/CoordinationInterface.h"
 #include "fdbrpc/FlowTransport.h"
 #include "flow/network.h"
 
@@ -28,7 +27,6 @@
 #include <memcheck.h>
 #endif
 
-#include "flow/crc32c.h"
 #include "fdbrpc/fdbrpc.h"
 #include "fdbrpc/FailureMonitor.h"
 #include "fdbrpc/HealthMonitor.h"
@@ -42,6 +40,8 @@
 #include "flow/ObjectSerializer.h"
 #include "flow/ProtocolVersion.h"
 #include "flow/UnitTest.h"
+#define XXH_INLINE_ALL
+#include "flow/xxhash.h"
 #include "flow/actorcompiler.h" // This must be the last #include.
 
 static NetworkAddressList g_currentDeliveryPeerAddress = NetworkAddressList();
@@ -308,6 +308,7 @@ ACTOR Future<Void> pingLatencyLogger(TransportData* self) {
 				    .detail("Count", peer->pingLatencies.getPopulationSize())
 				    .detail("BytesReceived", peer->bytesReceived - peer->lastLoggedBytesReceived)
 				    .detail("BytesSent", peer->bytesSent - peer->lastLoggedBytesSent)
+				    .detail("TimeoutCount", peer->timeoutCount)
 				    .detail("ConnectOutgoingCount", peer->connectOutgoingCount)
 				    .detail("ConnectIncomingCount", peer->connectIncomingCount)
 				    .detail("ConnectFailedCount", peer->connectFailedCount)
@@ -324,6 +325,7 @@ ACTOR Future<Void> pingLatencyLogger(TransportData* self) {
 				peer->connectLatencies.clear();
 				peer->lastLoggedBytesReceived = peer->bytesReceived;
 				peer->lastLoggedBytesSent = peer->bytesSent;
+				peer->timeoutCount = 0;
 				wait(delay(FLOW_KNOBS->PING_LOGGING_INTERVAL));
 			} else if (it == self->orderedAddresses.begin()) {
 				wait(delay(FLOW_KNOBS->PING_LOGGING_INTERVAL));
@@ -475,6 +477,7 @@ ACTOR Future<Void> connectionMonitor(Reference<Peer> peer) {
 		loop {
 			choose {
 				when(wait(delay(FLOW_KNOBS->CONNECTION_MONITOR_TIMEOUT))) {
+					peer->timeoutCount++;
 					if (startingBytes == peer->bytesReceived) {
 						if (peer->destination.isPublic()) {
 							peer->pingLatencies.addSample(now() - startTime);
@@ -793,8 +796,9 @@ Peer::Peer(TransportData* transport, NetworkAddress const& destination)
     reconnectionDelay(FLOW_KNOBS->INITIAL_RECONNECTION_TIME), compatible(true), outstandingReplies(0),
     incompatibleProtocolVersionNewer(false), peerReferences(-1), bytesReceived(0), lastDataPacketSentTime(now()),
     pingLatencies(destination.isPublic() ? FLOW_KNOBS->PING_SAMPLE_AMOUNT : 1), lastLoggedBytesReceived(0),
-    bytesSent(0), lastLoggedBytesSent(0), lastLoggedTime(0.0), connectOutgoingCount(0), connectIncomingCount(0),
-    connectFailedCount(0), connectLatencies(destination.isPublic() ? FLOW_KNOBS->NETWORK_CONNECT_SAMPLE_AMOUNT : 1),
+    bytesSent(0), lastLoggedBytesSent(0), timeoutCount(0), lastLoggedTime(0.0), connectOutgoingCount(0),
+    connectIncomingCount(0), connectFailedCount(0),
+    connectLatencies(destination.isPublic() ? FLOW_KNOBS->NETWORK_CONNECT_SAMPLE_AMOUNT : 1),
     protocolVersion(Reference<AsyncVar<Optional<ProtocolVersion>>>(new AsyncVar<Optional<ProtocolVersion>>())) {
 	IFailureMonitor::failureMonitor().setStatus(destination, FailureStatus(false));
 }
@@ -913,12 +917,12 @@ ACTOR static void deliver(TransportData* self,
                           TaskPriority priority,
                           ArenaReader reader,
                           bool inReadSocket) {
-	// We want to run the task at the right priority. If the priority
-	// is higher than the current priority (which is ReadSocket) we
-	// can just upgrade. Otherwise we'll context switch so that we
-	// don't block other tasks that might run with a higher priority.
+	// We want to run the task at the right priority. If the priority is higher than the current priority (which is
+	// ReadSocket) we can just upgrade. Otherwise we'll context switch so that we don't block other tasks that might run
+	// with a higher priority. ReplyPromiseStream needs to guarentee that messages are recieved in the order they were
+	// sent, so we are using orderedDelay.
 	if (priority < TaskPriority::ReadSocket || !inReadSocket) {
-		wait(delay(0, priority));
+		wait(orderedDelay(0, priority));
 	} else {
 		g_network->setCurrentTask(priority);
 	}
@@ -978,21 +982,22 @@ static void scanPackets(TransportData* transport,
 
 	const bool checksumEnabled = !peerAddress.isTLS();
 	loop {
-		uint32_t packetLen, packetChecksum;
+		uint32_t packetLen;
+		XXH64_hash_t packetChecksum;
 
-		// Retrieve packet length and checksum
+		// Read packet length if size is sufficient or stop
+		if (e - p < PACKET_LEN_WIDTH)
+			break;
+		packetLen = *(uint32_t*)p;
+		p += PACKET_LEN_WIDTH;
+
+		// Read checksum if present
 		if (checksumEnabled) {
-			if (e - p < sizeof(uint32_t) * 2)
+			// Read checksum if size is sufficient or stop
+			if (e - p < sizeof(packetChecksum))
 				break;
-			packetLen = *(uint32_t*)p;
-			p += PACKET_LEN_WIDTH;
-			packetChecksum = *(uint32_t*)p;
-			p += sizeof(uint32_t);
-		} else {
-			if (e - p < sizeof(uint32_t))
-				break;
-			packetLen = *(uint32_t*)p;
-			p += PACKET_LEN_WIDTH;
+			packetChecksum = *(XXH64_hash_t*)p;
+			p += sizeof(packetChecksum);
 		}
 
 		if (packetLen > FLOW_KNOBS->PACKET_LIMIT) {
@@ -1030,23 +1035,23 @@ static void scanPackets(TransportData* transport,
 				}
 			}
 
-			uint32_t calculatedChecksum = crc32c_append(0, p, packetLen);
+			XXH64_hash_t calculatedChecksum = XXH3_64bits(p, packetLen);
 			if (calculatedChecksum != packetChecksum) {
 				if (isBuggifyEnabled) {
 					TraceEvent(SevInfo, "ChecksumMismatchExp")
-					    .detail("PacketChecksum", (int)packetChecksum)
-					    .detail("CalculatedChecksum", (int)calculatedChecksum);
+					    .detail("PacketChecksum", packetChecksum)
+					    .detail("CalculatedChecksum", calculatedChecksum);
 				} else {
 					TraceEvent(SevWarnAlways, "ChecksumMismatchUnexp")
-					    .detail("PacketChecksum", (int)packetChecksum)
-					    .detail("CalculatedChecksum", (int)calculatedChecksum);
+					    .detail("PacketChecksum", packetChecksum)
+					    .detail("CalculatedChecksum", calculatedChecksum);
 				}
 				throw checksum_failed();
 			} else {
 				if (isBuggifyEnabled) {
 					TraceEvent(SevError, "ChecksumMatchUnexp")
-					    .detail("PacketChecksum", (int)packetChecksum)
-					    .detail("CalculatedChecksum", (int)calculatedChecksum);
+					    .detail("PacketChecksum", packetChecksum)
+					    .detail("CalculatedChecksum", calculatedChecksum);
 				}
 			}
 		}
@@ -1432,6 +1437,10 @@ NetworkAddress FlowTransport::getLocalAddress() const {
 	return self->localAddresses.address;
 }
 
+const std::unordered_map<NetworkAddress, Reference<Peer>>& FlowTransport::getAllPeers() const {
+	return self->peers;
+}
+
 std::map<NetworkAddress, std::pair<uint64_t, double>>* FlowTransport::getIncompatiblePeers() {
 	for (auto it = self->incompatiblePeers.begin(); it != self->incompatiblePeers.end();) {
 		if (self->multiVersionConnections.count(it->second.first)) {
@@ -1572,7 +1581,15 @@ static ReliablePacket* sendPacket(TransportData* self,
 
 	// Reserve some space for packet length and checksum, write them after serializing data
 	SplitBuffer packetInfoBuffer;
-	uint32_t len, checksum = 0;
+	uint32_t len;
+
+	// This is technically abstraction breaking but avoids XXH3_createState() and XXH3_freeState() which are just
+	// malloc/free
+	XXH3_state_t checksumState;
+	// Checksum will be calculated with buffer API if contiguous, else using stream API.  Mode is tracked here.
+	bool checksumStream = false;
+	XXH64_hash_t checksum;
+
 	int packetInfoSize = PACKET_LEN_WIDTH;
 	if (checksumEnabled) {
 		packetInfoSize += sizeof(checksum);
@@ -1597,10 +1614,37 @@ static ReliablePacket* sendPacket(TransportData* self,
 		while (checksumUnprocessedLength > 0) {
 			uint32_t processLength =
 			    std::min(checksumUnprocessedLength, (uint32_t)(checksumPb->bytes_written - prevBytesWritten));
-			checksum = crc32c_append(checksum, checksumPb->data() + prevBytesWritten, processLength);
+
+			// If not in checksum stream mode yet
+			if (!checksumStream) {
+				// If there is nothing left to process then calculate checksum directly
+				if (processLength == checksumUnprocessedLength) {
+					checksum = XXH3_64bits(checksumPb->data() + prevBytesWritten, processLength);
+				} else {
+					// Otherwise, initialize checksum state and switch to stream mode
+					if (XXH3_64bits_reset(&checksumState) != XXH_OK) {
+						throw internal_error();
+					}
+					checksumStream = true;
+				}
+			}
+
+			// If in checksum stream mode, update the checksum state
+			if (checksumStream) {
+				if (XXH3_64bits_update(&checksumState, checksumPb->data() + prevBytesWritten, processLength) !=
+				    XXH_OK) {
+					throw internal_error();
+				}
+			}
+
 			checksumUnprocessedLength -= processLength;
 			checksumPb = checksumPb->nextPacketBuffer();
 			prevBytesWritten = 0;
+		}
+
+		// If in checksum stream mode, get the final checksum
+		if (checksumStream) {
+			checksum = XXH3_64bits_digest(&checksumState);
 		}
 	}
 

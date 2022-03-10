@@ -29,7 +29,6 @@
 #define BOOST_DATE_TIME_NO_LIB
 #define BOOST_REGEX_NO_LIB
 #include <boost/asio.hpp>
-#include <boost/bind.hpp>
 #include <boost/date_time/posix_time/posix_time_types.hpp>
 #include <boost/range.hpp>
 #include <boost/algorithm/string/join.hpp>
@@ -161,6 +160,7 @@ public:
 	double timer() override { return ::timer(); };
 	double timer_monotonic() override { return ::timer_monotonic(); };
 	Future<Void> delay(double seconds, TaskPriority taskId) override;
+	Future<Void> orderedDelay(double seconds, TaskPriority taskId) override;
 	Future<class Void> yield(TaskPriority taskID) override;
 	bool check_yield(TaskPriority taskId) override;
 	TaskPriority getCurrentTask() const override { return currentTaskID; }
@@ -184,7 +184,7 @@ public:
 	}
 
 	bool isSimulated() const override { return false; }
-	THREAD_HANDLE startThread(THREAD_FUNC_RETURN (*func)(void*), void* arg) override;
+	THREAD_HANDLE startThread(THREAD_FUNC_RETURN (*func)(void*), void* arg, int stackSize, const char* name) override;
 
 	void getDiskBytes(std::string const& directory, int64_t& free, int64_t& total) override;
 	bool isAddressOnThisHost(NetworkAddress const& addr) const override;
@@ -226,6 +226,7 @@ public:
 	TaskPriority currentTaskID;
 	uint64_t tasksIssued;
 	TDMetricCollection tdmetrics;
+	ChaosMetrics chaosMetrics;
 	double currentTime;
 	// May be accessed off the network thread, e.g. by onMainThread
 	std::atomic<bool> stopped;
@@ -1188,6 +1189,9 @@ Net2::Net2(const TLSConfig& tlsConfig, bool useThreadPool, bool useMetrics)
 	if (useMetrics) {
 		setGlobal(INetwork::enTDMetrics, (flowGlobalType)&tdmetrics);
 	}
+	if (FLOW_KNOBS->ENABLE_CHAOS_FEATURES) {
+		setGlobal(INetwork::enChaosMetrics, (flowGlobalType)&chaosMetrics);
+	}
 	setGlobal(INetwork::enNetworkConnections, (flowGlobalType)network);
 	setGlobal(INetwork::enASIOService, (flowGlobalType)&reactor.ios);
 	setGlobal(INetwork::enBlobCredentialFiles, &blobCredentialFiles);
@@ -1513,7 +1517,7 @@ void Net2::run() {
 			double newTaskBegin = timer_monotonic();
 			if (check_yield(TaskPriority::Max, tscNow)) {
 				checkForSlowTask(tscBegin, tscNow, newTaskBegin - taskBegin, currentTaskID);
-				taskBegin = newTaskBegin;	
+				taskBegin = newTaskBegin;
 				FDB_TRACE_PROBE(run_loop_yield);
 				++countYields;
 				break;
@@ -1750,6 +1754,11 @@ Future<Void> Net2::delay(double seconds, TaskPriority taskId) {
 	return t->promise.getFuture();
 }
 
+Future<Void> Net2::orderedDelay(double seconds, TaskPriority taskId) {
+	// The regular delay already provides the required ordering property
+	return delay(seconds, taskId);
+}
+
 void Net2::onMainThread(Promise<Void>&& signal, TaskPriority taskID) {
 	if (stopped)
 		return;
@@ -1765,8 +1774,8 @@ void Net2::onMainThread(Promise<Void>&& signal, TaskPriority taskID) {
 	}
 }
 
-THREAD_HANDLE Net2::startThread(THREAD_FUNC_RETURN (*func)(void*), void* arg) {
-	return ::startThread(func, arg);
+THREAD_HANDLE Net2::startThread(THREAD_FUNC_RETURN (*func)(void*), void* arg, int stackSize, const char* name) {
+	return ::startThread(func, arg, stackSize, name);
 }
 
 Future<Reference<IConnection>> Net2::connect(NetworkAddress toAddr, const std::string& host) {

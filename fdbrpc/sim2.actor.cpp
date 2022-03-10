@@ -34,6 +34,7 @@
 #include "fdbrpc/IAsyncFile.h"
 #include "fdbrpc/AsyncFileCached.actor.h"
 #include "fdbrpc/AsyncFileNonDurable.actor.h"
+#include "fdbrpc/AsyncFileChaos.actor.h"
 #include "flow/crc32c.h"
 #include "fdbrpc/TraceFileIO.h"
 #include "flow/FaultInjection.h"
@@ -857,13 +858,17 @@ public:
 		ASSERT(taskID >= TaskPriority::Min && taskID <= TaskPriority::Max);
 		return delay(seconds, taskID, currentProcess);
 	}
-	Future<class Void> delay(double seconds, TaskPriority taskID, ProcessInfo* machine) {
+	Future<class Void> orderedDelay(double seconds, TaskPriority taskID) override {
+		ASSERT(taskID >= TaskPriority::Min && taskID <= TaskPriority::Max);
+		return delay(seconds, taskID, currentProcess, true);
+	}
+	Future<class Void> delay(double seconds, TaskPriority taskID, ProcessInfo* machine, bool ordered = false) {
 		ASSERT(seconds >= -0.0001);
 		seconds = std::max(0.0, seconds);
 		Future<Void> f;
 
-		if (!currentProcess->rebooting && machine == currentProcess && !currentProcess->shutdownSignal.isSet() &&
-		    FLOW_KNOBS->MAX_BUGGIFIED_DELAY > 0 &&
+		if (!ordered && !currentProcess->rebooting && machine == currentProcess &&
+		    !currentProcess->shutdownSignal.isSet() && FLOW_KNOBS->MAX_BUGGIFIED_DELAY > 0 &&
 		    deterministicRandom()->random01() < 0.25) { // FIXME: why doesnt this work when we are changing machines?
 			seconds += FLOW_KNOBS->MAX_BUGGIFIED_DELAY * pow(deterministicRandom()->random01(), 1000.0);
 		}
@@ -1004,9 +1009,9 @@ public:
 		THREAD_RETURN;
 	}
 
-	THREAD_HANDLE startThread(THREAD_FUNC_RETURN (*func)(void*), void* arg) override {
+	THREAD_HANDLE startThread(THREAD_FUNC_RETURN (*func)(void*), void* arg, int stackSize, const char* name) override {
 		SimThreadArgs* simArgs = new SimThreadArgs(func, arg);
-		return ::startThread(simStartThread, simArgs);
+		return ::startThread(simStartThread, simArgs, stackSize, name);
 	}
 
 	void getDiskBytes(std::string const& directory, int64_t& free, int64_t& total) override {
@@ -1185,6 +1190,9 @@ public:
 		m->protocolVersion = protocol;
 
 		m->setGlobal(enTDMetrics, (flowGlobalType)&m->tdmetrics);
+		if (FLOW_KNOBS->ENABLE_CHAOS_FEATURES) {
+			m->setGlobal(enChaosMetrics, (flowGlobalType)&m->chaosMetrics);
+		}
 		m->setGlobal(enNetworkConnections, (flowGlobalType)m->network);
 		m->setGlobal(enASIOTimedOut, (flowGlobalType) false);
 
@@ -1887,7 +1895,7 @@ public:
 
 		KillType ktResult, ktMin = kt;
 		for (auto& datacenterMachine : datacenterMachines) {
-			if (deterministicRandom()->random01() < 0.99) {
+			if (deterministicRandom()->random01() < 0.99 || forceKill) {
 				killMachine(datacenterMachine.first, kt, true, &ktResult);
 				if (ktResult != kt) {
 					TraceEvent(SevWarn, "KillDCFail")
@@ -2473,6 +2481,8 @@ Future<Reference<class IAsyncFile>> Sim2FileSystem::open(const std::string& file
 		f = AsyncFileDetachable::open(f);
 		if (FLOW_KNOBS->PAGE_WRITE_CHECKSUM_HISTORY > 0)
 			f = map(f, [=](Reference<IAsyncFile> r) { return Reference<IAsyncFile>(new AsyncFileWriteChecker(r)); });
+		if (FLOW_KNOBS->ENABLE_CHAOS_FEATURES)
+			f = map(f, [=](Reference<IAsyncFile> r) { return Reference<IAsyncFile>(new AsyncFileChaos(r)); });
 		return f;
 	} else
 		return AsyncFileCached::open(filename, flags, mode);

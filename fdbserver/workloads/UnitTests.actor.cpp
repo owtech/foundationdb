@@ -30,6 +30,7 @@ void forceLinkMemcpyTests();
 void forceLinkMemcpyPerfTests();
 void forceLinkParallelStreamTests();
 void forceLinkSimExternalConnectionTests();
+void forceLinkIThreadPoolTests();
 
 struct UnitTestWorkload : TestWorkload {
 	bool enabled;
@@ -63,6 +64,7 @@ struct UnitTestWorkload : TestWorkload {
 		forceLinkMemcpyPerfTests();
 		forceLinkParallelStreamTests();
 		forceLinkSimExternalConnectionTests();
+		forceLinkIThreadPoolTests();
 	}
 
 	std::string description() const override { return "UnitTests"; }
@@ -90,7 +92,15 @@ struct UnitTestWorkload : TestWorkload {
 				tests.push_back(test);
 			}
 		}
+
 		fprintf(stdout, "Found %zu tests\n", tests.size());
+
+		if (tests.size() == 0) {
+			TraceEvent(SevError, "NoMatchingUnitTests").detail("TestPattern", self->testPattern);
+			++self->testsFailed;
+			return Void();
+		}
+
 		deterministicRandom()->randomShuffle(tests);
 		if (self->testRunLimit > 0 && tests.size() > self->testRunLimit)
 			tests.resize(self->testRunLimit);

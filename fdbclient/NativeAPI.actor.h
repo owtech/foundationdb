@@ -65,9 +65,11 @@ struct NetworkOptions {
 	std::string traceFormat;
 	std::string traceClockSource;
 	std::string traceFileIdentifier;
+	std::string tracePartialFileSuffix;
 	Optional<bool> logClientInfo;
 	Reference<ReferencedObject<Standalone<VectorRef<ClientVersionRef>>>> supportedVersions;
 	bool runLoopProfilingEnabled;
+	bool primaryClient;
 
 	NetworkOptions();
 };
@@ -283,6 +285,23 @@ public:
 		                reverse);
 	}
 
+	[[nodiscard]] Future<RangeResult> getRangeAndFlatMap(const KeySelector& begin,
+	                                                     const KeySelector& end,
+	                                                     const Key& mapper,
+	                                                     GetRangeLimits limits,
+	                                                     bool snapshot = false,
+	                                                     bool reverse = false);
+
+private:
+	template <class GetKeyValuesFamilyRequest, class GetKeyValuesFamilyReply>
+	Future<RangeResult> getRangeInternal(const KeySelector& begin,
+	                                     const KeySelector& end,
+	                                     const Key& mapper,
+	                                     GetRangeLimits limits,
+	                                     bool snapshot,
+	                                     bool reverse);
+
+public:
 	// A method for streaming data from the storage server that is more efficient than getRange when reading large
 	// amounts of data
 	[[nodiscard]] Future<Void> getRangeStream(const PromiseStream<Standalone<RangeResultRef>>& results,

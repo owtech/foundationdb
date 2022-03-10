@@ -1,6 +1,6 @@
 # FindRocksDB
 
-find_package(RocksDB)
+find_package(RocksDB 6.22.1)
 
 include(ExternalProject)
 
@@ -33,8 +33,8 @@ if (RocksDB_FOUND)
       ${BINARY_DIR}/librocksdb.a)
 else()
   ExternalProject_Add(rocksdb
-    URL        https://github.com/facebook/rocksdb/archive/v6.10.1.tar.gz
-    URL_HASH   SHA256=d573d2f15cdda883714f7e0bc87b814a8d4a53a82edde558f08f940e905541ee
+    URL        https://github.com/facebook/rocksdb/archive/v6.22.1.tar.gz
+    URL_HASH   SHA256=2df8f34a44eda182e22cf84dee7a14f17f55d305ff79c06fb3cd1e5f8831e00d
     CMAKE_ARGS -DUSE_RTTI=1 -DPORTABLE=${PORTABLE_ROCKSDB}
                -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD}
                -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
@@ -59,6 +59,11 @@ else()
   ExternalProject_Get_Property(rocksdb BINARY_DIR)
   set(ROCKSDB_LIBRARIES
       ${BINARY_DIR}/librocksdb.a)
+
+  find_library(URING_LIBRARY NAMES uring)
+  if(NOT URING_LIBRARY STREQUAL "URING_LIBRARY-NOTFOUND")
+      list(APPEND ROCKSDB_LIBRARIES ${URING_LIBRARY})
+  endif()
 
   ExternalProject_Get_Property(rocksdb SOURCE_DIR)
   set (ROCKSDB_INCLUDE_DIR "${SOURCE_DIR}/include")

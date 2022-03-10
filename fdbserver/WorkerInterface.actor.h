@@ -371,6 +371,8 @@ struct RegisterWorkerRequest {
 	std::vector<NetworkAddress> incompatiblePeers;
 	ReplyPromise<RegisterWorkerReply> reply;
 	bool degraded;
+	std::vector<NetworkAddress> degradedPeers;
+	bool requestDbInfo;
 
 	RegisterWorkerRequest()
 	  : priorityInfo(ProcessClass::UnsetFit, false, ClusterControllerPriorityInfo::FitnessUnknown), degraded(false) {}
@@ -381,9 +383,11 @@ struct RegisterWorkerRequest {
 	                      Generation generation,
 	                      Optional<DataDistributorInterface> ddInterf,
 	                      Optional<RatekeeperInterface> rkInterf,
-	                      bool degraded)
+	                      bool degraded,
+	                      std::vector<NetworkAddress> degradedPeers)
 	  : wi(wi), initialClass(initialClass), processClass(processClass), priorityInfo(priorityInfo),
-	    generation(generation), distributorInterf(ddInterf), ratekeeperInterf(rkInterf), degraded(degraded) {}
+	    generation(generation), distributorInterf(ddInterf), ratekeeperInterf(rkInterf), degraded(degraded),
+	    degradedPeers(degradedPeers), requestDbInfo(false) {}
 
 	template <class Ar>
 	void serialize(Ar& ar) {
@@ -398,7 +402,9 @@ struct RegisterWorkerRequest {
 		           issues,
 		           incompatiblePeers,
 		           reply,
-		           degraded);
+		           degraded,
+		           degradedPeers,
+		           requestDbInfo);
 	}
 };
 
@@ -893,6 +899,10 @@ ACTOR Future<Void> storageCacheServer(StorageServerInterface interf, uint16_t id
 ACTOR Future<Void> backupWorker(BackupInterface bi, InitializeBackupRequest req, Reference<AsyncVar<ServerDBInfo>> db);
 
 void registerThreadForProfiling();
+
+// Returns true if `address` is used in the db (indicated by `dbInfo`) transaction system and in the db's remote DC.
+bool addressInDbAndRemoteDc(const NetworkAddress& address, Reference<AsyncVar<ServerDBInfo> const> dbInfo);
+
 void updateCpuProfiler(ProfilerRequest req);
 
 namespace oldTLog_4_6 {
@@ -935,6 +945,66 @@ ACTOR Future<Void> tLog(IKeyValueStore* persistentData,
 }
 
 typedef decltype(&tLog) TLogFn;
+
+ACTOR template <class T>
+Future<T> ioTimeoutError(Future<T> what, double time) {
+	// Before simulation is sped up, IO operations can take a very long time so limit timeouts
+	// to not end until at least time after simulation is sped up.
+	if (g_network->isSimulated() && !g_simulator.speedUpSimulation) {
+		time += std::max(0.0, FLOW_KNOBS->SIM_SPEEDUP_AFTER_SECONDS - now());
+	}
+	Future<Void> end = lowPriorityDelay(time);
+	choose {
+		when(T t = wait(what)) { return t; }
+		when(wait(end)) {
+			Error err = io_timeout();
+			if (g_network->isSimulated() && !g_simulator.getCurrentProcess()->isReliable()) {
+				err = err.asInjectedFault();
+			}
+			TraceEvent(SevError, "IoTimeoutError").error(err);
+			throw err;
+		}
+	}
+}
+
+ACTOR template <class T>
+Future<T> ioDegradedOrTimeoutError(Future<T> what,
+                                   double errTime,
+                                   Reference<AsyncVar<bool>> degraded,
+                                   double degradedTime) {
+	// Before simulation is sped up, IO operations can take a very long time so limit timeouts
+	// to not end until at least time after simulation is sped up.
+	if (g_network->isSimulated() && !g_simulator.speedUpSimulation) {
+		double timeShift = std::max(0.0, FLOW_KNOBS->SIM_SPEEDUP_AFTER_SECONDS - now());
+		errTime += timeShift;
+		degradedTime += timeShift;
+	}
+
+	if (degradedTime < errTime) {
+		Future<Void> degradedEnd = lowPriorityDelay(degradedTime);
+		choose {
+			when(T t = wait(what)) { return t; }
+			when(wait(degradedEnd)) {
+				TEST(true); // TLog degraded
+				TraceEvent(SevWarnAlways, "IoDegraded").log();
+				degraded->set(true);
+			}
+		}
+	}
+
+	Future<Void> end = lowPriorityDelay(errTime - degradedTime);
+	choose {
+		when(T t = wait(what)) { return t; }
+		when(wait(end)) {
+			Error err = io_timeout();
+			if (g_network->isSimulated() && !g_simulator.getCurrentProcess()->isReliable()) {
+				err = err.asInjectedFault();
+			}
+			TraceEvent(SevError, "IoTimeoutError").error(err);
+			throw err;
+		}
+	}
+}
 
 #include "fdbserver/ServerDBInfo.h"
 #include "flow/unactorcompiler.h"
