@@ -19,6 +19,9 @@ if(DISABLE_TLS)
   set(WITH_TLS OFF)
 else()
   set(OPENSSL_USE_STATIC_LIBS TRUE)
+  if(WIN32)
+    set(OPENSSL_MSVC_STATIC_RT ON)
+  endif()
   find_package(OpenSSL)
   if(OPENSSL_FOUND)
     set(CMAKE_REQUIRED_INCLUDES ${OPENSSL_INCLUDE_DIR})
@@ -33,10 +36,6 @@ else()
   else()
     message(STATUS "OpenSSL was not found - Will compile without TLS Support")
     message(STATUS "You can set OPENSSL_ROOT_DIR to help cmake find it")
-    set(WITH_TLS OFF)
-  endif()
-  if(WIN32)
-    message(STATUS "TLS is temporarilty disabled on macOS while libressl -> openssl transition happens")
     set(WITH_TLS OFF)
   endif()
 endif()
@@ -74,7 +73,7 @@ endif()
 ################################################################################
 
 find_package(Python3 COMPONENTS Interpreter)
-if (Python3_Interpreter_FOUND)
+if (Python3_Interpreter_FOUND AND NOT APPLE)
   set(WITH_DOCUMENTATION ON)
 else()
   set(WITH_DOCUMENTATION OFF)
@@ -108,6 +107,8 @@ endif()
 ################################################################################
 
 set(SSD_ROCKSDB_EXPERIMENTAL ON CACHE BOOL "Build with experimental RocksDB support")
+set(PORTABLE_ROCKSDB ON CACHE BOOL "Compile RocksDB in portable mode") # Set this to OFF to compile RocksDB with `-march=native`
+set(WITH_LIBURING OFF CACHE BOOL "Build with liburing enabled") # Set this to ON to include liburing
 # RocksDB is currently enabled by default for GCC but does not build with the latest
 # Clang.
 if (SSD_ROCKSDB_EXPERIMENTAL AND GCC)
