@@ -94,4 +94,4 @@ vexillographer_compile(TARGET fdboptions LANG cpp OUT ${CMAKE_CURRENT_BINARY_DIR
 
 add_flow_target(STATIC_LIBRARY NAME fdbclient SRCS ${FDBCLIENT_SRCS} ADDL_SRCS ${options_srcs})
 add_dependencies(fdbclient fdboptions)
-target_link_libraries(fdbclient PUBLIC fdbrpc)
+target_link_libraries(fdbclient PUBLIC fdbrpc PRIVATE crypto)

@@ -83,6 +83,8 @@ void ClientKnobs::initialize(bool randomize) {
 
 	init( LOCATION_CACHE_EVICTION_SIZE,         600000 );
 	init( LOCATION_CACHE_EVICTION_SIZE_SIM,         10 ); if( randomize && BUGGIFY ) LOCATION_CACHE_EVICTION_SIZE_SIM = 3;
+	init( LOCATION_CACHE_ENDPOINT_FAILURE_GRACE_PERIOD,     60 );
+	init( LOCATION_CACHE_FAILED_ENDPOINT_RETRY_INTERVAL,    60 );
 
 	init( GET_RANGE_SHARD_LIMIT,                     2 );
 	init( WARM_RANGE_SHARD_LIMIT,                  100 );
@@ -177,6 +179,8 @@ void ClientKnobs::initialize(bool randomize) {
 	init( HTTP_SEND_SIZE,                      32*1024 );
 	init( HTTP_VERBOSE_LEVEL,                        0 );
 	init( HTTP_REQUEST_ID_HEADER,                   "" );
+	init( HTTP_REQUEST_AWS_V4_HEADER,            false );
+	init( BLOBSTORE_ENCRYPTION_TYPE,                "" );
 	init( BLOBSTORE_CONNECT_TRIES,                  10 );
 	init( BLOBSTORE_CONNECT_TIMEOUT,                10 );
 	init( BLOBSTORE_MAX_CONNECTION_LIFE,           120 );
