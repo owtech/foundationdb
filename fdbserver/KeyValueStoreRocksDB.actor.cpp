@@ -194,7 +194,7 @@ rocksdb::ExportImportFilesMetaData getMetaData(const CheckpointMetaData& checkpo
 		liveFileMetaData.being_compacted = fileMetaData.being_compacted;
 		liveFileMetaData.num_entries = fileMetaData.num_entries;
 		liveFileMetaData.num_deletions = fileMetaData.num_deletions;
-		liveFileMetaData.temperature = static_cast<rocksdb::Temperature>(fileMetaData.temperature);
+		liveFileMetaData.temperature = fileMetaData.temperature;
 		liveFileMetaData.oldest_blob_file_number = fileMetaData.oldest_blob_file_number;
 		liveFileMetaData.oldest_ancester_time = fileMetaData.oldest_ancester_time;
 		liveFileMetaData.file_creation_time = fileMetaData.file_creation_time;
