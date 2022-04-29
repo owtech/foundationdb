@@ -39,6 +39,7 @@
 #include <rocksdb/utilities/checkpoint.h>
 #include <rocksdb/utilities/table_properties_collectors.h>
 #include <rocksdb/version.h>
+#include "rocksdb/types.h"
 
 #include <rocksdb/rate_limiter.h>
 #include <rocksdb/perf_context.h>
@@ -224,7 +225,7 @@ void populateMetaData(CheckpointMetaData* checkpoint, const rocksdb::ExportImpor
 		liveFileMetaData.being_compacted = fileMetaData.being_compacted;
 		liveFileMetaData.num_entries = fileMetaData.num_entries;
 		liveFileMetaData.num_deletions = fileMetaData.num_deletions;
-		liveFileMetaData.temperature = static_cast<uint8_t>(fileMetaData.temperature);
+		liveFileMetaData.temperature = static_cast<rocksdb::Temperature>(fileMetaData.temperature);
 		liveFileMetaData.oldest_blob_file_number = fileMetaData.oldest_blob_file_number;
 		liveFileMetaData.oldest_ancester_time = fileMetaData.oldest_ancester_time;
 		liveFileMetaData.file_creation_time = fileMetaData.file_creation_time;
@@ -2148,10 +2149,12 @@ TEST_CASE("noSim/fdbserver/KeyValueStoreRocksDB/CheckpointRestore") {
 }
 
 TEST_CASE("noSim/fdbserver/KeyValueStoreRocksDB/RocksDBTypes") {
-	// If the following assertion fails, update SstFileMetaData and LiveFileMetaData in RocksDBCheckpointUtils.actor.h
-	// to be the same as rocksdb::SstFileMetaData and rocksdb::LiveFileMetaData.
-	ASSERT_EQ(sizeof(rocksdb::LiveFileMetaData), 184);
-	ASSERT_EQ(sizeof(rocksdb::ExportImportFilesMetaData), 32);
+	// If the following assertion fails, update FileStorageInfo, SstFileMetaData and LiveFileMetaData in
+	// RocksDBCheckpointUtils.actor.h to be the same as rocksdb::FileStorageInfo, rocksdb::SstFileMetaData
+	// and rocksdb::LiveFileMetaData.
+	ASSERT_EQ(sizeof(rocksdb::FileStorageInfo), 160);
+	ASSERT_EQ(sizeof(rocksdb::LiveFileMetaData), 400);
+	ASSERT_EQ(sizeof(rocksdb::ExportImportFilesMetaData), 56);
 	return Void();
 }
 

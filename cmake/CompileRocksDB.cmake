@@ -59,6 +59,7 @@ else()
                -DWITH_UBSAN=${USE_UBSAN}
                -DROCKSDB_BUILD_SHARED=OFF
                -DCMAKE_POSITION_INDEPENDENT_CODE=True
+               -DFAIL_ON_WARNINGS=${USE_WERROR}
     BUILD_BYPRODUCTS <BINARY_DIR>/librocksdb.a
     INSTALL_COMMAND ""
   )
