@@ -98,7 +98,7 @@ jobs:
     - name: Build
       working-directory: ${{github.workspace}}/bld
       shell: bash
-      run: ninja -j 2
+      run: ninja -j 1
 
     - name: Tests
       working-directory: ${{github.workspace}}/bld
