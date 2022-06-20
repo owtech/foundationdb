@@ -25,7 +25,7 @@ jobs:
       id: vers
       shell: bash
       run: |
-        git fetch --prune --unshallow --tags
+        git fetch --prune --unshallow --tags --force
         GIT_VERSION=`git describe --tags`
         PROJECT_VERSION=`echo $GIT_VERSION | cut -d- -f1`
         BUILD_VERSION=`echo $GIT_VERSION | cut -d- -f2-3 --output-delimiter=.`
@@ -93,27 +93,31 @@ jobs:
       # Note the current convention is to use the -S and -B options here to specify source
       # and build directories, but this is only available with CMake 3.13 and higher.
       # The CMake binaries on the Github Actions machines are (as of this writing) 3.12
-      run: cmake -D FDB_RELEASE=${{needs.calc_ver.outputs.release_flag}} -DBUILD_VERSION=${{needs.calc_ver.outputs.build_ver}} -DGENERATE_DEBUG_PACKAGES=OFF -DENABLE_SIMULATION_TESTS=ON -G Ninja ${{github.workspace}}
+      run: cmake -D FDB_RELEASE=${{needs.calc_ver.outputs.release_flag}} -DBUILD_VERSION=${{needs.calc_ver.outputs.build_ver}} -DGENERATE_DEBUG_PACKAGES=OFF -G Ninja ${{github.workspace}}
 
     - name: Build
       working-directory: ${{github.workspace}}/bld
       shell: bash
       run: ninja -j 1
 
-    - name: Tests
-      working-directory: ${{github.workspace}}/bld
-      shell: bash
-      run: ctest -V
+    #- name: Minimal tests
+    #  working-directory: ${{github.workspace}}/bld
+    #  shell: bash
+    #  run: ctest -V
 
-    - name: Build rpms
+    - name: Build RPMs
       working-directory: ${{github.workspace}}/bld
       shell: bash
-      run: cpack -G RPM
+      run: |
+        cpack -G RPM
+        for fn in packages/*.rpm; do echo "$fn:"; rpm -qpRv $fn; echo; done
 
-    - name: Build deb
+    - name: Build DEBs
       working-directory: ${{github.workspace}}/bld
       shell: bash
-      run: cpack -G DEB
+      run: |
+        cpack -G DEB
+        for fn in packages/*.deb; do echo "$fn:"; dpkg -I $fn; done
 
     #- name: Remove versioned
     #  shell: bash
@@ -123,12 +127,56 @@ jobs:
       uses: nanoufo/action-upload-artifacts-and-release-assets@v1.4
       with:
         path: |
-          ${{github.workspace}}/bld/packages/*${{needs.calc_ver.outputs.full_ver}}.*
+          ${{github.workspace}}/bld/packages/*${{needs.calc_ver.outputs.full_ver}}*
         upload-release-files: ${{ needs.calc_ver.outputs.release_flag }}
         release-upload-url: ${{ needs.calc_ver.outputs.release_upload_url }}
         if-no-files-found: error
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test_deploy:
+    needs: [calc_ver, build_linux]
+    runs-on: ubuntu-latest
+    env:
+      RHEL_IMAGE_NAME: "registry.access.redhat.com/ubi8/ubi:latest"
+      UBUNTU_IMAGE_NAME: "ubuntu:21.10"
+
+    steps:
+      - name: Download RPMs and DEBs packages
+        uses: actions/download-artifact@v3
+        id: download_packages
+
+      - name: Echo download path
+        run: echo ${{steps.download_packages.outputs.download-path}}
+
+      - name: Display structure of downloaded files
+        run: ls -R
+        working-directory: ${{github.workspace}}
+
+      - name: Download RHEL and Ubuntu images
+        run: |
+          podman pull ${{ env.RHEL_IMAGE_NAME }}
+          podman pull ${{ env.UBUNTU_IMAGE_NAME }}
+
+      - name: Test RPMs deploy
+        shell: bash
+        run: |
+          MY_ARCH=`uname -m`
+          curr_path="${{ github.workspace }}"
+          server="foundationdb-server-${{ needs.calc_ver.outputs.full_ver }}.el8.${MY_ARCH}.rpm"
+          clients="foundationdb-clients-${{ needs.calc_ver.outputs.full_ver }}.el8.${MY_ARCH}.rpm"
+          podman run --rm -v ${curr_path}/${server}/${server}:/home/${server} ${{ env.RHEL_IMAGE_NAME }} /bin/bash -c "dnf install -y /home/${server}" && { echo "Installation $server have to fail"; exit 1; }
+          podman run --rm -v ${curr_path}/${server}/${server}:/home/${server} -v ${curr_path}/${clients}/${clients}:/home/${clients} ${{ env.RHEL_IMAGE_NAME }} /bin/bash -c "dnf install -y /home/${server} /home/${clients}" || { echo "Installation $server and $clients have to success"; exit 2; }
+
+      - name: Test DEBs deploy
+        shell: bash
+        run: |
+          MY_ARCH=`dpkg-architecture -q DEB_BUILD_ARCH`
+          curr_path="${{ github.workspace }}"
+          server="foundationdb-server_${{ needs.calc_ver.outputs.full_ver }}_${MY_ARCH}.deb"
+          clients="foundationdb-clients_${{ needs.calc_ver.outputs.full_ver }}_${MY_ARCH}.deb"
+          podman run --rm -v ${curr_path}/${server}/${server}:/home/${server} ${{ env.UBUNTU_IMAGE_NAME }} /bin/bash -c "apt-get update && apt-get install -y /home/${server}" && { echo "Installation $server have to fail"; exit 1; }
+          podman run --rm -v ${curr_path}/${server}/${server}:/home/${server} -v ${curr_path}/${clients}/${clients}:/home/${clients} ${{ env.UBUNTU_IMAGE_NAME }} /bin/bash -c "apt-get update && apt-get install -y /home/${server} /home/${clients}" || { echo "Installation $server and $clients have to success"; exit 2; }
 
   release:
     needs: [calc_ver, build_linux]
@@ -141,3 +189,69 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         release_id: ${{ needs.calc_ver.outputs.release_id }}
+
+  tests:
+    needs: [calc_ver, build_linux]
+    runs-on: ubuntu-latest
+    env:
+      JOSHUA_DB_VER: "6.3.15"
+      N_OF_TESTS: 600 # to fit in 360 minutes job run limit
+      JOSHUA_AGENT_URL: "docker.io/osamarin68"
+      JOSHUA_AGENT_TAG: "8.6.3"
+
+    steps:
+      - name: Install dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sudo wget crudini git python3 python3-pip
+          sudo pip3 install wheel setuptools python-dateutil lxml
+
+      - name: Install FoundationDb
+        shell: bash
+        run: |
+          mkdir deb
+          pushd deb
+          MY_ARCH=`dpkg-architecture -q DEB_BUILD_ARCH`
+          wget https://github.com/apple/foundationdb/releases/download/${{ env.JOSHUA_DB_VER }}/foundationdb-clients_${{ env.JOSHUA_DB_VER }}-1_${MY_ARCH}.deb https://github.com/apple/foundationdb/releases/download/${{ env.JOSHUA_DB_VER }}/foundationdb-server_${{ env.JOSHUA_DB_VER }}-1_${MY_ARCH}.deb
+          sudo apt-get install -y ./foundationdb-clients_${{ env.JOSHUA_DB_VER }}-1_${MY_ARCH}.deb ./foundationdb-server_${{ env.JOSHUA_DB_VER }}-1_${MY_ARCH}.deb
+          popd
+          sudo systemctl stop foundationdb
+          MY_IP=`hostname -I | awk '{print $1}'`
+          sudo sed -i s/127.0.0.1/$MY_IP/ /etc/foundationdb/fdb.cluster
+          sudo crudini --set /etc/foundationdb/foundationdb.conf fdbserver memory 4GiB
+          sudo systemctl start foundationdb
+          pip3 install 'foundationdb==${{ env.JOSHUA_DB_VER }}'
+
+      - name: Download the correctness package
+        uses: actions/download-artifact@v2
+        id: download_correctness
+        with:
+          name: correctness-${{needs.calc_ver.outputs.full_ver}}.tar.gz
+
+      - name: 'Echo download path'
+        run: echo ${{steps.download_correctness.outputs.download-path}}
+
+      - name: Display structure of downloaded files
+        run: ls -R
+        working-directory: ${{github.workspace}}
+
+      - name: Download joshua
+        shell: bash
+        run: |
+          git clone https://github.com/FoundationDB/fdb-joshua.git
+
+      - name: run joshua-agent
+        shell: bash
+        run: |
+          podman pull ${{ env.JOSHUA_AGENT_URL }}/joshua-agent:${{ env.JOSHUA_AGENT_TAG }}
+          podman create --name joshua-agent -v /etc/foundationdb:/etc/foundationdb -it joshua-agent:${{ env.JOSHUA_AGENT_TAG }}
+          podman start joshua-agent
+
+      - name: run tests
+        shell: bash
+        working-directory: ${{github.workspace}}/fdb-joshua
+        run: |
+          podman ps
+          python3 -m joshua.joshua start --tarball ${{github.workspace}}/correctness-${{needs.calc_ver.outputs.full_ver}}.tar.gz --max-runs ${{ env.N_OF_TESTS }} && \
+            python3 -m joshua.joshua tail

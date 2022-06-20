@@ -201,13 +201,11 @@ set(CPACK_COMPONENT_SERVER-EL8_DEPENDS clients-el8)
 set(CPACK_COMPONENT_SERVER-DEB_DEPENDS clients-deb)
 set(CPACK_COMPONENT_SERVER-TGZ_DEPENDS clients-tgz)
 set(CPACK_COMPONENT_SERVER-VERSIONED_DEPENDS clients-versioned)
-set(CPACK_RPM_SERVER-VERSIONED_PACKAGE_REQUIRES
-  "foundationdb${FDB_VERSION}-clients")
 
 set(CPACK_COMPONENT_SERVER-EL8_DISPLAY_NAME "foundationdb-server")
 set(CPACK_COMPONENT_SERVER-DEB_DISPLAY_NAME "foundationdb-server")
 set(CPACK_COMPONENT_SERVER-TGZ_DISPLAY_NAME "foundationdb-server")
-set(CPACK_COMPONENT_SERVER-VERSIONED_DISPLAY_NAME "foundationdb$-server-${FDB_VERSION}")
+set(CPACK_COMPONENT_SERVER-VERSIONED_DISPLAY_NAME "foundationdb-server-${FDB_VERSION}")
 
 set(CPACK_COMPONENT_CLIENTS-EL8_DISPLAY_NAME "foundationdb-clients")
 set(CPACK_COMPONENT_CLIENTS-DEB_DISPLAY_NAME "foundationdb-clients")
@@ -275,14 +273,14 @@ set(CPACK_RPM_SERVER-EL8_USER_FILELIST                     "%config(noreplace) /
                                                            "%attr(0700,foundationdb,foundationdb) /var/log/foundationdb"
                                                            "%attr(0700,foundationdb,foundationdb) /var/lib/foundationdb")
 
-set(CPACK_RPM_CLIENTS-VERSIONED_PACKAGE_NAME               "${clients_package_basename}${FDB_VERSION}")
+set(CPACK_RPM_CLIENTS-VERSIONED_PACKAGE_NAME               "${clients_package_basename}")
 set(CPACK_RPM_CLIENTS-VERSIONED_FILE_NAME                  "${rpm-clients-filename}.versioned.${CMAKE_SYSTEM_PROCESSOR}.rpm")
-set(CPACK_RPM_CLIENTS-VERSIONED_POST_INSTALL_SCRIPT_FILE   ${CMAKE_BINARY_DIR}/packaging/multiversion/clients/postinst-el8)
+set(CPACK_RPM_CLIENTS-VERSIONED_POST_INSTALL_SCRIPT_FILE   ${CMAKE_BINARY_DIR}/packaging/multiversion/clients/postinst)
 set(CPACK_RPM_CLIENTS-VERSIONED_PRE_UNINSTALL_SCRIPT_FILE  ${CMAKE_BINARY_DIR}/packaging/multiversion/clients/prerm)
 
-set(CPACK_RPM_SERVER-VERSIONED_PACKAGE_NAME                "${server_package_basename}${FDB_VERSION}")
+set(CPACK_RPM_SERVER-VERSIONED_PACKAGE_NAME                "${server_package_basename}")
 set(CPACK_RPM_SERVER-VERSIONED_FILE_NAME                   "${rpm-server-filename}.versioned.${CMAKE_SYSTEM_PROCESSOR}.rpm")
-set(CPACK_RPM_SERVER-VERSIONED_PACKAGE_REQUIRES            "${CPACK_COMPONENT_CLIENTS-VERSIONED_DISPLAY_NAME}")
+set(CPACK_RPM_SERVER-VERSIONED_PACKAGE_REQUIRES            "${CPACK_RPM_CLIENTS-VERSIONED_PACKAGE_NAME} = ${FDB_VERSION}")
 set(CPACK_RPM_SERVER-VERSIONED_POST_INSTALL_SCRIPT_FILE    ${CMAKE_BINARY_DIR}/packaging/multiversion/server/postinst-rpm)
 set(CPACK_RPM_SERVER-VERSIONED_PRE_UNINSTALL_SCRIPT_FILE   ${CMAKE_BINARY_DIR}/packaging/multiversion/server/prerm)
 
@@ -310,7 +308,7 @@ set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
   "/usr/lib/pkgconfig"
   "/usr/lib/foundationdb"
   "/usr/lib/cmake"
-  "/usr/lib/foundationdb-${FDB_VERSION}${FDB_BUILDTIME_STRING}/etc/foundationdb"
+  "/usr/lib/foundationdb-${FDB_VERSION}/etc/foundationdb"
   )
 set(CPACK_RPM_DEBUGINFO_PACKAGE ${GENERATE_DEBUG_PACKAGES})
 #set(CPACK_RPM_BUILD_SOURCE_FDB_INSTALL_DIRS_PREFIX /usr/src)
@@ -333,33 +331,39 @@ else()
 endif()
 
 set(CPACK_DEB_COMPONENT_INSTALL ON)
+set(CPACK_DEBIAN_ENABLE_COMPONENT_DEPENDS ON)
 set(CPACK_DEBIAN_DEBUGINFO_PACKAGE ${GENERATE_DEBUG_PACKAGES})
 set(CPACK_DEBIAN_PACKAGE_SECTION "database")
-set(CPACK_DEBIAN_ENABLE_COMPONENT_DEPENDS ON)
 
-set(CPACK_DEBIAN_SERVER-DEB_PACKAGE_NAME "${server_package_basename}")
-set(CPACK_DEBIAN_CLIENTS-DEB_PACKAGE_NAME "${clients_package_basename}")
-set(CPACK_DEBIAN_SERVER-VERSIONED_PACKAGE_NAME "foundationdb${FDB_VERSION}-server")
-set(CPACK_DEBIAN_CLIENTS-VERSIONED_PACKAGE_NAME "foundationdb${FDB_VERSION}-clients")
+set(CPACK_DEBIAN_SERVER-PACKAGE_NAME "${server_package_basename}")
+set(CPACK_DEBIAN_CLIENTS-PACKAGE_NAME "${clients_package_basename}")
 
-set(CPACK_DEBIAN_SERVER-DEB_PACKAGE_DEPENDS "adduser, libc6 (>= 2.12), foundationdb-clients (= ${FDB_VERSION})")
-set(CPACK_DEBIAN_SERVER-DEB_PACKAGE_RECOMMENDS "python (>= 2.6)")
-set(CPACK_DEBIAN_CLIENTS-DEB_PACKAGE_DEPENDS "adduser, libc6 (>= 2.12)")
+set(CPACK_DEBIAN_SERVER-VERSIONED_PACKAGE_NAME "${server_package_basename}")
+set(CPACK_DEBIAN_CLIENTS-VERSIONED_PACKAGE_NAME "${clients_package_basename}")
+
+set(CPACK_DEBIAN-SERVER-PACKAGE_DEPENDS "adduser, libc6 (>= 2.12), foundationdb-clients (= ${FDB_VERSION})")
+set(CPACK_DEBIAN-SERVER-PACKAGE_RECOMMENDS "python (>= 2.6)")
+set(CPACK_DEBIAN-CLIENTS-PACKAGE_DEPENDS "adduser, libc6 (>= 2.12)")
+
+set(CPACK_DEBIAN-SERVER_VERSIONED-PACKAGE_DEPENDS "adduser, libc6 (>= 2.12), foundationdb-clients (= ${FDB_VERSION})")
+set(CPACK_DEBIAN-SERVER_VERSIONED-PACKAGE_RECOMMENDS "python (>= 2.6)")
+set(CPACK_DEBIAN-CLIENTS_VERSIONED-PACKAGE_DEPENDS "adduser, libc6 (>= 2.12)")
+
 set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://www.foundationdb.org")
-set(CPACK_DEBIAN_CLIENTS-DEB_PACKAGE_CONTROL_EXTRA
+set(CPACK_DEBIAN-CLIENTS-PACKAGE_CONTROL_EXTRA
   ${CMAKE_SOURCE_DIR}/packaging/deb/DEBIAN-foundationdb-clients/postinst)
-set(CPACK_DEBIAN_SERVER-DEB_PACKAGE_CONTROL_EXTRA
+set(CPACK_DEBIAN-SERVER-PACKAGE_CONTROL_EXTRA
   ${CMAKE_SOURCE_DIR}/packaging/deb/DEBIAN-foundationdb-server/conffiles
   ${CMAKE_SOURCE_DIR}/packaging/deb/DEBIAN-foundationdb-server/preinst
   ${CMAKE_SOURCE_DIR}/packaging/deb/DEBIAN-foundationdb-server/postinst
   ${CMAKE_SOURCE_DIR}/packaging/deb/DEBIAN-foundationdb-server/prerm
   ${CMAKE_SOURCE_DIR}/packaging/deb/DEBIAN-foundationdb-server/postrm)
 
-set(CPACK_DEBIAN_CLIENTS-VERSIONED_PACKAGE_CONTROL_EXTRA
+set(CPACK_DEBIAN-CLIENTS_VERSIONED-PACKAGE_CONTROL_EXTRA
   ${CMAKE_BINARY_DIR}/packaging/multiversion/clients/postinst
   ${CMAKE_BINARY_DIR}/packaging/multiversion/clients/prerm)
-set(CPACK_DEBIAN_SERVER-VERSIONED_PACKAGE_CONTROL_EXTRA
-  ${CMAKE_BINARY_DIR}/packaging/multiversion/server/postinst
+set(CPACK_DEBIAN-SERVER_VERSIONED-PACKAGE_CONTROL_EXTRA
+  ${CMAKE_BINARY_DIR}/packaging/multiversion/server/postinst-deb
   ${CMAKE_BINARY_DIR}/packaging/multiversion/server/prerm)
 
 ################################################################################
