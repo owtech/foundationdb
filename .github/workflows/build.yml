@@ -196,8 +196,8 @@ jobs:
     env:
       JOSHUA_DB_VER: "6.3.15"
       N_OF_TESTS: 600 # to fit in 360 minutes job run limit
-      JOSHUA_AGENT_URL: "docker.io/osamarin68"
-      JOSHUA_AGENT_TAG: "8.6.3"
+      JOSHUA_AGENT_URL: "docker.io/1inker"
+      JOSHUA_AGENT_TAG: "rhel8-20220809"
 
     steps:
       - name: Install dependencies
