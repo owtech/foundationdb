@@ -139,7 +139,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RHEL_IMAGE_NAME: "registry.access.redhat.com/ubi8/ubi:latest"
-      UBUNTU_IMAGE_NAME: "ubuntu:21.10"
+      UBUNTU_IMAGE_NAME: "ubuntu:18.04"
 
     steps:
       - name: Download RPMs and DEBs packages
