@@ -197,7 +197,7 @@ jobs:
       JOSHUA_DB_VER: "6.3.15"
       N_OF_TESTS: 600 # to fit in 360 minutes job run limit
       JOSHUA_AGENT_URL: "docker.io/1inker"
-      JOSHUA_AGENT_TAG: "rhel8-20220809"
+      JOSHUA_AGENT_TAG: "rhel8-20220816"
 
     steps:
       - name: Install dependencies
@@ -205,7 +205,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y sudo wget crudini git python3 python3-pip
-          sudo pip3 install wheel setuptools python-dateutil lxml
+          sudo pip3 install wheel setuptools python-dateutil lxml boto3
 
       - name: Install FoundationDb
         shell: bash
@@ -221,7 +221,7 @@ jobs:
           sudo sed -i s/127.0.0.1/$MY_IP/ /etc/foundationdb/fdb.cluster
           sudo crudini --set /etc/foundationdb/foundationdb.conf fdbserver memory 4GiB
           sudo systemctl start foundationdb
-          pip3 install 'foundationdb==${{ env.JOSHUA_DB_VER }}' boto3
+          pip3 install 'foundationdb==${{ env.JOSHUA_DB_VER }}'
 
       - name: Download the correctness package
         uses: actions/download-artifact@v2
