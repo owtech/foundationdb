@@ -285,6 +285,8 @@ else()
         endif()
         add_link_options(-stdlib=libc++ -Wl,-build-id=sha1)
       endif()
+    else()
+      add_link_options(-latomic)
     endif()
     if (OPEN_FOR_IDE)
       add_compile_options(

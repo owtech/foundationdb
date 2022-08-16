@@ -9,7 +9,7 @@ function(compile_boost)
 
   # Configure bootstrap command
   set(BOOTSTRAP_COMMAND "./bootstrap.sh")
-  set(BOOTSTRAP_LIBRARIES "context")
+  set(BOOTSTRAP_LIBRARIES "context,filesystem,iostreams")
 
   set(BOOST_CXX_COMPILER "${CMAKE_CXX_COMPILER}")
   if(CLANG)
@@ -29,7 +29,7 @@ function(compile_boost)
   set(B2_COMMAND "./b2")
   set(BOOST_COMPILER_FLAGS -fvisibility=hidden -fPIC -std=c++17 -w)
   set(BOOST_LINK_FLAGS "")
-  if(APPLE OR CLANG OR USE_LIBCXX)
+  if(APPLE OR USE_LIBCXX)
     list(APPEND BOOST_COMPILER_FLAGS -stdlib=libc++ -nostdlib++)
     list(APPEND BOOST_LINK_FLAGS -static-libgcc -lc++ -lc++abi)
   endif()
@@ -52,7 +52,7 @@ function(compile_boost)
     URL "https://boostorg.jfrog.io/artifactory/main/release/1.78.0/source/boost_1_78_0.tar.bz2"
     URL_HASH SHA256=8681f175d4bdb26c52222665793eef08490d7758529330f98d3b29dd0735bccc
     CONFIGURE_COMMAND ${BOOTSTRAP_COMMAND} ${BOOTSTRAP_ARGS} --with-libraries=${BOOTSTRAP_LIBRARIES} --with-toolset=${BOOST_TOOLSET}
-    BUILD_COMMAND ${B2_COMMAND} link=static ${COMPILE_BOOST_BUILD_ARGS} --prefix=${BOOST_INSTALL_DIR} ${USER_CONFIG_FLAG} install
+    BUILD_COMMAND ${B2_COMMAND} toolset=${BOOST_TOOLSET} link=static ${COMPILE_BOOST_BUILD_ARGS} --prefix=${BOOST_INSTALL_DIR} ${USER_CONFIG_FLAG} install
     BUILD_IN_SOURCE ON
     INSTALL_COMMAND ""
     UPDATE_COMMAND ""

@@ -139,7 +139,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RHEL_IMAGE_NAME: "registry.access.redhat.com/ubi8/ubi:latest"
-      UBUNTU_IMAGE_NAME: "ubuntu:21.10"
+      UBUNTU_IMAGE_NAME: "ubuntu:18.04"
 
     steps:
       - name: Download RPMs and DEBs packages
@@ -196,8 +196,8 @@ jobs:
     env:
       JOSHUA_DB_VER: "6.3.15"
       N_OF_TESTS: 600 # to fit in 360 minutes job run limit
-      JOSHUA_AGENT_URL: "docker.io/osamarin68"
-      JOSHUA_AGENT_TAG: "8.6.3"
+      JOSHUA_AGENT_URL: "docker.io/1inker"
+      JOSHUA_AGENT_TAG: "rhel8-20220816"
 
     steps:
       - name: Install dependencies
@@ -205,7 +205,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y sudo wget crudini git python3 python3-pip
-          sudo pip3 install wheel setuptools python-dateutil lxml
+          sudo pip3 install wheel setuptools python-dateutil lxml boto3
 
       - name: Install FoundationDb
         shell: bash
