@@ -43,9 +43,11 @@
 struct SstFileMetaData {
 	constexpr static FileIdentifier file_identifier = 3804347;
 	SstFileMetaData()
-	  : size(0), file_number(0), smallest_seqno(0), largest_seqno(0), num_reads_sampled(0), being_compacted(false),
-	    num_entries(0), num_deletions(0), temperature(rocksdb::Temperature::kUnknown), oldest_blob_file_number(0),
-		 oldest_ancester_time(0), file_creation_time(0) {}
+	  : file_number(0), size(0), temperature(rocksdb::Temperature::kUnknown),
+       smallest_seqno(0), largest_seqno(0), num_reads_sampled(0),
+       being_compacted(false), num_entries(0), num_deletions(0),
+       oldest_blob_file_number(0), oldest_ancester_time(0),
+       file_creation_time(0) {}
 
 	SstFileMetaData(const std::string& _file_name,
 	                uint64_t _file_number,
