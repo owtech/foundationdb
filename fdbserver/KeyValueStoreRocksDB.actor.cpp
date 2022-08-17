@@ -349,7 +349,7 @@ struct ReadIterator {
 	std::shared_ptr<rocksdb::Iterator> iter;
 	double creationTime;
 	ReadIterator(CF& cf, uint64_t index, DB& db, rocksdb::ReadOptions& options)
-	  : cf(cf), index(index), inUse(true), creationTime(now()), iter(db->NewIterator(options, cf)) {}
+	  : cf(cf), index(index), inUse(true), iter(db->NewIterator(options, cf)), creationTime(now()) {}
 };
 
 /*
@@ -367,7 +367,7 @@ gets deleted as the ref count becomes 0.
 class ReadIteratorPool {
 public:
 	ReadIteratorPool(UID id, DB& db, CF& cf)
-	  : db(db), cf(cf), index(0), iteratorsReuseCount(0), readRangeOptions(getReadOptions()) {
+	  : db(db), cf(cf), readRangeOptions(getReadOptions()), index(0), iteratorsReuseCount(0) {
 		readRangeOptions.background_purge_on_iterator_cleanup = true;
 		readRangeOptions.auto_prefix_mode = (SERVER_KNOBS->ROCKSDB_PREFIX_LEN > 0);
 		TraceEvent("ReadIteratorPool", id)
@@ -912,8 +912,7 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 		                std::shared_ptr<ReadIteratorPool> readIterPool,
 		                std::shared_ptr<PerfContextMetrics> perfContextMetrics,
 		                int threadIndex)
-		  : db(db), cf(cf), id(id), readIterPool(readIterPool), perfContextMetrics(perfContextMetrics),
-		    threadIndex(threadIndex),
+		  : db(db), cf(cf), id(id),
 		    rateLimiter(SERVER_KNOBS->ROCKSDB_WRITE_RATE_LIMITER_BYTES_PER_SEC > 0
 		                    ? rocksdb::NewGenericRateLimiter(
 		                          SERVER_KNOBS->ROCKSDB_WRITE_RATE_LIMITER_BYTES_PER_SEC, // rate_bytes_per_sec
@@ -921,7 +920,8 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 		                          10, // fairness
 		                          rocksdb::RateLimiter::Mode::kWritesOnly,
 		                          SERVER_KNOBS->ROCKSDB_WRITE_RATE_LIMITER_AUTO_TUNE)
-		                    : nullptr) {
+		                    : nullptr),
+          readIterPool(readIterPool), perfContextMetrics(perfContextMetrics), threadIndex(threadIndex) {
 			if (SERVER_KNOBS->ROCKSDB_PERFCONTEXT_ENABLE) {
 				// Enable perf context on the same thread with the db thread
 				rocksdb::SetPerfLevel(rocksdb::PerfLevel::kEnableTimeExceptForMutex);
@@ -1662,13 +1662,14 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 	Counters counters;
 
 	explicit RocksDBKeyValueStore(const std::string& path, UID id)
-	  : path(path), id(id), perfContextMetrics(new PerfContextMetrics()),
-	    readIterPool(new ReadIteratorPool(id, db, defaultFdbCF)),
+	  : perfContextMetrics(new PerfContextMetrics()), path(path), id(id),
+       errorListener(std::make_shared<RocksDBErrorListener>(id)),
+	    errorFuture(errorListener->getFuture()),
 	    readSemaphore(SERVER_KNOBS->ROCKSDB_READ_QUEUE_SOFT_MAX),
-	    fetchSemaphore(SERVER_KNOBS->ROCKSDB_FETCH_QUEUE_SOFT_MAX),
 	    numReadWaiters(SERVER_KNOBS->ROCKSDB_READ_QUEUE_HARD_MAX - SERVER_KNOBS->ROCKSDB_READ_QUEUE_SOFT_MAX),
+	    fetchSemaphore(SERVER_KNOBS->ROCKSDB_FETCH_QUEUE_SOFT_MAX),
 	    numFetchWaiters(SERVER_KNOBS->ROCKSDB_FETCH_QUEUE_HARD_MAX - SERVER_KNOBS->ROCKSDB_FETCH_QUEUE_SOFT_MAX),
-	    errorListener(std::make_shared<RocksDBErrorListener>(id)), errorFuture(errorListener->getFuture()) {
+	    readIterPool(new ReadIteratorPool(id, db, defaultFdbCF)) {
 		// In simluation, run the reader/writer threads as Coro threads (i.e. in the network thread. The storage engine
 		// is still multi-threaded as background compaction threads are still present. Reads/writes to disk will also
 		// block the network thread in a way that would be unacceptable in production but is a necessary evil here. When
