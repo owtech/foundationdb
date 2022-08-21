@@ -335,34 +335,34 @@ set(CPACK_DEBIAN_ENABLE_COMPONENT_DEPENDS ON)
 set(CPACK_DEBIAN_DEBUGINFO_PACKAGE ${GENERATE_DEBUG_PACKAGES})
 set(CPACK_DEBIAN_PACKAGE_SECTION "database")
 
-set(CPACK_DEBIAN_SERVER-PACKAGE_NAME "${server_package_basename}")
-set(CPACK_DEBIAN_CLIENTS-PACKAGE_NAME "${clients_package_basename}")
+set(CPACK_DEBIAN_SERVER-DEB_PACKAGE_NAME "${server_package_basename}")
+set(CPACK_DEBIAN_CLIENTS-DEB_PACKAGE_NAME "${clients_package_basename}")
 
 set(CPACK_DEBIAN_SERVER-VERSIONED_PACKAGE_NAME "${server_package_basename}")
 set(CPACK_DEBIAN_CLIENTS-VERSIONED_PACKAGE_NAME "${clients_package_basename}")
 
-set(CPACK_DEBIAN-SERVER-PACKAGE_DEPENDS "adduser, libc6 (>= 2.12), foundationdb-clients (= ${FDB_VERSION})")
-set(CPACK_DEBIAN-SERVER-PACKAGE_RECOMMENDS "python (>= 2.6)")
-set(CPACK_DEBIAN-CLIENTS-PACKAGE_DEPENDS "adduser, libc6 (>= 2.12)")
+set(CPACK_DEBIAN_SERVER-DEB_PACKAGE_DEPENDS "adduser, libc6 (>= 2.12), foundationdb-clients (= ${FDB_VERSION})")
+set(CPACK_DEBIAN_SERVER-DEB_PACKAGE_RECOMMENDS "python (>= 2.6)")
+set(CPACK_DEBIAN_CLIENTS-DEB_PACKAGE_DEPENDS "adduser, libc6 (>= 2.12)")
 
-set(CPACK_DEBIAN-SERVER_VERSIONED-PACKAGE_DEPENDS "adduser, libc6 (>= 2.12), foundationdb-clients (= ${FDB_VERSION})")
-set(CPACK_DEBIAN-SERVER_VERSIONED-PACKAGE_RECOMMENDS "python (>= 2.6)")
-set(CPACK_DEBIAN-CLIENTS_VERSIONED-PACKAGE_DEPENDS "adduser, libc6 (>= 2.12)")
+set(CPACK_DEBIAN_SERVER-VERSIONED_PACKAGE_DEPENDS "adduser, libc6 (>= 2.12), foundationdb-clients (= ${FDB_VERSION})")
+set(CPACK_DEBIAN_SERVER-VERSIONED_PACKAGE_RECOMMENDS "python (>= 2.6)")
+set(CPACK_DEBIAN_CLIENTS-VERSIONED_PACKAGE_DEPENDS "adduser, libc6 (>= 2.12)")
 
 set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://www.foundationdb.org")
-set(CPACK_DEBIAN-CLIENTS-PACKAGE_CONTROL_EXTRA
+set(CPACK_DEBIAN_CLIENTS-DEB_PACKAGE_CONTROL_EXTRA
   ${CMAKE_SOURCE_DIR}/packaging/deb/DEBIAN-foundationdb-clients/postinst)
-set(CPACK_DEBIAN-SERVER-PACKAGE_CONTROL_EXTRA
+set(CPACK_DEBIAN_SERVER-DEB_PACKAGE_CONTROL_EXTRA
   ${CMAKE_SOURCE_DIR}/packaging/deb/DEBIAN-foundationdb-server/conffiles
   ${CMAKE_SOURCE_DIR}/packaging/deb/DEBIAN-foundationdb-server/preinst
   ${CMAKE_SOURCE_DIR}/packaging/deb/DEBIAN-foundationdb-server/postinst
   ${CMAKE_SOURCE_DIR}/packaging/deb/DEBIAN-foundationdb-server/prerm
   ${CMAKE_SOURCE_DIR}/packaging/deb/DEBIAN-foundationdb-server/postrm)
 
-set(CPACK_DEBIAN-CLIENTS_VERSIONED-PACKAGE_CONTROL_EXTRA
+set(CPACK_DEBIAN_CLIENTS-VERSIONED_PACKAGE_CONTROL_EXTRA
   ${CMAKE_BINARY_DIR}/packaging/multiversion/clients/postinst
   ${CMAKE_BINARY_DIR}/packaging/multiversion/clients/prerm)
-set(CPACK_DEBIAN-SERVER_VERSIONED-PACKAGE_CONTROL_EXTRA
+set(CPACK_DEBIAN_SERVER-VERSIONED_PACKAGE_CONTROL_EXTRA
   ${CMAKE_BINARY_DIR}/packaging/multiversion/server/postinst-deb
   ${CMAKE_BINARY_DIR}/packaging/multiversion/server/prerm)
 
