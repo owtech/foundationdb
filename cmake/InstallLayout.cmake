@@ -363,7 +363,7 @@ set(CPACK_DEBIAN_CLIENTS-VERSIONED_PACKAGE_CONTROL_EXTRA
   ${CMAKE_BINARY_DIR}/packaging/multiversion/clients/postinst
   ${CMAKE_BINARY_DIR}/packaging/multiversion/clients/prerm)
 set(CPACK_DEBIAN_SERVER-VERSIONED_PACKAGE_CONTROL_EXTRA
-  ${CMAKE_BINARY_DIR}/packaging/multiversion/server/postinst-deb
+  ${CMAKE_BINARY_DIR}/packaging/multiversion/server/postinst
   ${CMAKE_BINARY_DIR}/packaging/multiversion/server/prerm)
 
 ################################################################################
