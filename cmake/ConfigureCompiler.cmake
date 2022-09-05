@@ -286,7 +286,19 @@ else()
         add_link_options(-stdlib=libc++ -Wl,-build-id=sha1)
       endif()
     else()
-      add_link_options(-latomic)
+      execute_process(
+        COMMAND ${CMAKE_C_COMPILER} -print-search-dirs
+        OUTPUT_VARIABLE MY_CLANG_SEARCH_DIRS
+        RESULT_VARIABLE MY_CLANG_SEARCH_DIRS_FOUND
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+      string(REGEX MATCH "libraries: =([^\n].*)" _dummy "${MY_CLANG_SEARCH_DIRS}\n")
+      string(REPLACE ":" ";" MY_CLANG_LIB_DIRS "${CMAKE_MATCH_1}")
+      message(STATUS "_dummy:            ${_dummy}")
+      message(STATUS "MY_CLANG_LIB_DIRS: ${MY_CLANG_LIB_DIRS}")
+      find_library(Atomic_LIBRARY NAMES libatomic.a PATHS ${MY_CLANG_LIB_DIRS})
+      if(NOT Atomic_LIBRARY)
+        message(FATAL_ERROR "atomic static library not found")
+      endif()
     endif()
     if (OPEN_FOR_IDE)
       add_compile_options(
