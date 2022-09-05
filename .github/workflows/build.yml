@@ -100,10 +100,10 @@ jobs:
       shell: bash
       run: ninja -j 3
 
-    - name: Minimal tests
-      working-directory: ${{github.workspace}}/bld
-      shell: bash
-      run: ctest -V
+    #- name: Minimal tests
+    #  working-directory: ${{github.workspace}}/bld
+    #  shell: bash
+    #  run: ctest -V
 
     - name: Build RPMs
       working-directory: ${{github.workspace}}/bld
