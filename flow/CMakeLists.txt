@@ -133,7 +133,9 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/SourceVersion.h.cmake ${CMAKE_CURRENT
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config.h)
 
 add_flow_target(STATIC_LIBRARY NAME flow SRCS ${FLOW_SRCS})
-target_link_libraries(flow PRIVATE ${Atomic_LIBRARY})
+if(Atomic_LIBRARY)
+  target_link_libraries(flow PRIVATE ${Atomic_LIBRARY})
+endif()
 target_link_libraries(flow PRIVATE stacktrace)
 target_link_libraries(flow PUBLIC fmt::fmt)
 
