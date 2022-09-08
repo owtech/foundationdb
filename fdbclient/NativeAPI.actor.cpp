@@ -240,7 +240,7 @@ void DatabaseContext::getLatestCommitVersions(const Reference<LocationInfo>& loc
 		return;
 	}
 
-	if (ssVersionVectorCache.getMaxVersion() != invalidVersion && readVersion > ssVersionVectorCache.getMaxVersion()) {
+	if (readVersion > ssVersionVectorCache.getMaxVersion()) {
 		if (!CLIENT_KNOBS->FORCE_GRV_CACHE_OFF && !info->options.skipGrvCache && info->options.useGrvCache) {
 			return;
 		} else {
@@ -253,15 +253,31 @@ void DatabaseContext::getLatestCommitVersions(const Reference<LocationInfo>& loc
 
 	std::map<Version, std::set<Tag>> versionMap; // order the versions to be returned
 	for (int i = 0; i < locationInfo->locations()->size(); i++) {
-		UID uid = locationInfo->locations()->getId(i);
-		if (ssidTagMapping.find(uid) != ssidTagMapping.end()) {
-			Tag tag = ssidTagMapping[uid];
+		bool updatedVersionMap = false;
+		Version commitVersion = invalidVersion;
+		Tag tag = invalidTag;
+		auto iter = ssidTagMapping.find(locationInfo->locations()->getId(i));
+		if (iter != ssidTagMapping.end()) {
+			tag = iter->second;
 			if (ssVersionVectorCache.hasVersion(tag)) {
-				Version commitVersion = ssVersionVectorCache.getVersion(tag); // latest commit version
+				commitVersion = ssVersionVectorCache.getVersion(tag); // latest commit version
 				if (commitVersion < readVersion) {
+					updatedVersionMap = true;
 					versionMap[commitVersion].insert(tag);
 				}
 			}
+		}
+		// do not log if commitVersion == readVersion as it is common.
+		if (!updatedVersionMap && commitVersion != readVersion) {
+			TraceEvent(SevDebug, "CommitVersionNotFoundForSS")
+			    .detail("InSSIDMap", iter != ssidTagMapping.end() ? 1 : 0)
+			    .detail("Tag", tag)
+			    .detail("CommitVersion", commitVersion)
+			    .detail("ReadVersion", readVersion)
+			    .detail("VersionVector", ssVersionVectorCache.toString())
+			    .setMaxEventLength(11000)
+			    .setMaxFieldLength(10000);
+			++transactionCommitVersionNotFoundForSS;
 		}
 	}
 
@@ -1445,13 +1461,13 @@ DatabaseContext::DatabaseContext(Reference<AsyncVar<Reference<IClusterConnection
     transactionsProcessBehind("ProcessBehind", cc), transactionsThrottled("Throttled", cc),
     transactionsExpensiveClearCostEstCount("ExpensiveClearCostEstCount", cc),
     transactionGrvFullBatches("NumGrvFullBatches", cc), transactionGrvTimedOutBatches("NumGrvTimedOutBatches", cc),
-    latencies(1000), readLatencies(1000), commitLatencies(1000), GRVLatencies(1000), mutationsPerCommit(1000),
-    bytesPerCommit(1000), bgLatencies(1000), bgGranulesPerRequest(1000), outstandingWatches(0), sharedStatePtr(nullptr),
-    lastGrvTime(0.0), cachedReadVersion(0), lastRkBatchThrottleTime(0.0), lastRkDefaultThrottleTime(0.0),
-    lastProxyRequestTime(0.0), transactionTracingSample(false), taskID(taskID), clientInfo(clientInfo),
-    clientInfoMonitor(clientInfoMonitor), coordinator(coordinator), apiVersion(apiVersion), mvCacheInsertLocation(0),
-    healthMetricsLastUpdated(0), detailedHealthMetricsLastUpdated(0),
-    smoothMidShardSize(CLIENT_KNOBS->SHARD_STAT_SMOOTH_AMOUNT),
+    transactionCommitVersionNotFoundForSS("CommitVersionNotFoundForSS", cc), latencies(1000), readLatencies(1000),
+    commitLatencies(1000), GRVLatencies(1000), mutationsPerCommit(1000), bytesPerCommit(1000), bgLatencies(1000),
+    bgGranulesPerRequest(1000), outstandingWatches(0), sharedStatePtr(nullptr), lastGrvTime(0.0), cachedReadVersion(0),
+    lastRkBatchThrottleTime(0.0), lastRkDefaultThrottleTime(0.0), lastProxyRequestTime(0.0),
+    transactionTracingSample(false), taskID(taskID), clientInfo(clientInfo), clientInfoMonitor(clientInfoMonitor),
+    coordinator(coordinator), apiVersion(apiVersion), mvCacheInsertLocation(0), healthMetricsLastUpdated(0),
+    detailedHealthMetricsLastUpdated(0), smoothMidShardSize(CLIENT_KNOBS->SHARD_STAT_SMOOTH_AMOUNT),
     specialKeySpace(std::make_unique<SpecialKeySpace>(specialKeys.begin, specialKeys.end, /* test */ false)),
     connectToDatabaseEventCacheHolder(format("ConnectToDatabase/%s", dbId.toString().c_str())) {
 
@@ -1723,8 +1739,9 @@ DatabaseContext::DatabaseContext(const Error& err)
     transactionsProcessBehind("ProcessBehind", cc), transactionsThrottled("Throttled", cc),
     transactionsExpensiveClearCostEstCount("ExpensiveClearCostEstCount", cc),
     transactionGrvFullBatches("NumGrvFullBatches", cc), transactionGrvTimedOutBatches("NumGrvTimedOutBatches", cc),
-    latencies(1000), readLatencies(1000), commitLatencies(1000), GRVLatencies(1000), mutationsPerCommit(1000),
-    bytesPerCommit(1000), bgLatencies(1000), bgGranulesPerRequest(1000), transactionTracingSample(false),
+    transactionCommitVersionNotFoundForSS("CommitVersionNotFoundForSS", cc), latencies(1000), readLatencies(1000),
+    commitLatencies(1000), GRVLatencies(1000), mutationsPerCommit(1000), bytesPerCommit(1000), bgLatencies(1000),
+    bgGranulesPerRequest(1000), transactionTracingSample(false),
     smoothMidShardSize(CLIENT_KNOBS->SHARD_STAT_SMOOTH_AMOUNT),
     connectToDatabaseEventCacheHolder(format("ConnectToDatabase/%s", dbId.toString().c_str())) {}
 
@@ -3460,8 +3477,8 @@ ACTOR Future<Key> getKey(Reference<TransactionState> trState,
 
 ACTOR Future<Version> waitForCommittedVersion(Database cx, Version version, SpanID spanContext) {
 	state Span span("NAPI:waitForCommittedVersion"_loc, { spanContext });
-	try {
-		loop {
+	loop {
+		try {
 			choose {
 				when(wait(cx->onProxiesChanged())) {}
 				when(GetReadVersionReply v = wait(basicLoadBalance(
@@ -3487,10 +3504,16 @@ ACTOR Future<Version> waitForCommittedVersion(Database cx, Version version, Span
 					wait(delay(CLIENT_KNOBS->FUTURE_VERSION_RETRY_DELAY, cx->taskID));
 				}
 			}
+		} catch (Error& e) {
+			if (e.code() == error_code_batch_transaction_throttled ||
+			    e.code() == error_code_proxy_memory_limit_exceeded) {
+				// GRV Proxy returns an error
+				wait(delayJittered(CLIENT_KNOBS->GRV_ERROR_RETRY_DELAY));
+			} else {
+				TraceEvent(SevError, "WaitForCommittedVersionError").error(e);
+				throw;
+			}
 		}
-	} catch (Error& e) {
-		TraceEvent(SevError, "WaitForCommittedVersionError").error(e);
-		throw;
 	}
 }
 
@@ -6632,9 +6655,12 @@ ACTOR Future<GetReadVersionReply> getConsistentReadVersion(SpanID parentSpan,
 				}
 			}
 		} catch (Error& e) {
-			if (e.code() != error_code_broken_promise && e.code() != error_code_batch_transaction_throttled)
+			if (e.code() != error_code_broken_promise && e.code() != error_code_batch_transaction_throttled &&
+			    e.code() != error_code_proxy_memory_limit_exceeded)
 				TraceEvent(SevError, "GetConsistentReadVersionError").error(e);
-			if (e.code() == error_code_batch_transaction_throttled && !cx->apiVersionAtLeast(630)) {
+			if ((e.code() == error_code_batch_transaction_throttled ||
+			     e.code() == error_code_proxy_memory_limit_exceeded) &&
+			    !cx->apiVersionAtLeast(630)) {
 				wait(delayJittered(5.0));
 			} else {
 				throw;
