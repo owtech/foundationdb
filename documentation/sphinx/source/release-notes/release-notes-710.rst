@@ -2,7 +2,14 @@
 Release Notes
 #############
 
+7.1.23
 =======
+* Same as 7.1.21 release with AVX enabled.
+
+7.1.22
+======
+* Introduce STORAGE_SERVER_REBOOT_ON_IO_TIMEOUT knob to recreate SS at io_timeout errors. `(PR #8122) <https://github.com/apple/foundationdb/pull/8122>`_
+
 7.1.21
 ======
 * Same as 7.1.20 release with AVX enabled.
