@@ -98,7 +98,7 @@ jobs:
     - name: Build
       working-directory: ${{github.workspace}}/bld
       shell: bash
-      run: ninja -j 3
+      run: ninja -j 3 all documentation/package_html
 
     - name: Minimal tests
       working-directory: ${{github.workspace}}/bld
