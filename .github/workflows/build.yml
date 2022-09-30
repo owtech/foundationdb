@@ -120,9 +120,9 @@ jobs:
         cpack -G DEB
         for fn in packages/*.deb; do echo "$fn:"; dpkg -I $fn; done
 
-    - name: Remove versioned
-      shell: bash
-      run: rm -rf ${{github.workspace}}/bld/packages/*${{needs.calc_ver.outputs.full_ver}}.versioned*
+    # - name: Remove versioned
+    #  shell: bash
+    #  run: rm -rf ${{github.workspace}}/bld/packages/*${{needs.calc_ver.outputs.full_ver}}.versioned*
 
     - name: Upload result
       uses: nanoufo/action-upload-artifacts-and-release-assets@v1.4
