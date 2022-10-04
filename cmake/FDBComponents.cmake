@@ -72,7 +72,7 @@ endif()
 # Pip
 ################################################################################
 
-find_package(Python3 COMPONENTS Interpreter)
+find_package(Python3 3.0...<3.11 COMPONENTS Interpreter)
 if (Python3_Interpreter_FOUND AND NOT APPLE)
   set(WITH_DOCUMENTATION ON)
 else()
