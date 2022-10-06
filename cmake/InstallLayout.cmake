@@ -157,7 +157,7 @@ set(unversioned_postfix "${FDB_VERSION}${not_fdb_release_string}")
 set(rpm-clients-filename "foundationdb-clients-${unversioned_postfix}")
 set(rpm-server-filename "foundationdb-server-${unversioned_postfix}")
 set(rpm-clients-versioned-filename "foundationdb-clients-versioned-${unversioned_postfix}")
-set(rpm-server-versioned-filename "foundationdb$-server-versioned-${unversioned_postfix}")
+set(rpm-server-versioned-filename "foundationdb-server-versioned-${unversioned_postfix}")
 
 # Deb filenames
 set(deb-clients-filename "foundationdb-clients_${unversioned_postfix}")
