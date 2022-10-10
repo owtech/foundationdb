@@ -11,6 +11,10 @@ else()
   message(FATAL_ERROR "Unsupported package format ${CPACK_GENERATOR}")
 endif()
 
-set(CPACK_STRIP_FILES TRUE)
+if(${FDB_RELEASE} STREQUAL "ON")
+  message("Strip binaries for release")
+  set(CPACK_STRIP_FILES TRUE)
+endif()
+
 set(CPACK_RESOURCE_FILE_README ${CMAKE_SOURCE_DIR}/README.md)
 set(CPACK_RESOURCE_FILE_LICENSE ${CMAKE_SOURCE_DIR}/LICENSE)
