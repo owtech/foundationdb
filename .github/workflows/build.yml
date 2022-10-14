@@ -174,8 +174,8 @@ jobs:
         run: |
           MY_ARCH=`uname -m`
           curr_path="${{ github.workspace }}"
-          server="foundationdb-server-versioned-${{ needs.calc_ver.outputs.full_ver }}.el7.${MY_ARCH}.rpm"
-          clients="foundationdb-clients-versioned-${{ needs.calc_ver.outputs.full_ver }}.el7.${MY_ARCH}.rpm"
+          server="foundationdb-server-versioned-${{ needs.calc_ver.outputs.full_ver }}.el8.${MY_ARCH}.rpm"
+          clients="foundationdb-clients-versioned-${{ needs.calc_ver.outputs.full_ver }}.el8.${MY_ARCH}.rpm"
           podman run --rm -v ${curr_path}/${server}/${server}:/home/${server} ${{ env.RHEL_IMAGE_NAME }} /bin/bash -c "dnf install -y /home/${server}" && { echo "Installation $server have to fail"; exit 1; }
           podman run --rm -v ${curr_path}/${server}/${server}:/home/${server} -v ${curr_path}/${clients}/${clients}:/home/${clients} ${{ env.RHEL_IMAGE_NAME }} /bin/bash -c "dnf install -y /home/${server} /home/${clients}" || { echo "Installation $server and $clients have to success"; exit 2; }
           podman run --rm -v ${curr_path}/${clients}/${clients}:/home/${clients} ${{ env.RHEL_IMAGE_NAME }} /bin/bash -c "dnf install -y /home/${clients} && grep -q foundationdb /etc/passwd" && { echo "User foundationdb was created after $clients installation"; exit 3; }
