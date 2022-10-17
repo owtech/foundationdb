@@ -280,12 +280,12 @@ set(CPACK_RPM_SERVER-EL8_USER_FILELIST                     "%config(noreplace) /
                                                            "%attr(0700,foundationdb,foundationdb) /var/lib/foundationdb")
 
 set(CPACK_RPM_CLIENTS-VERSIONED_PACKAGE_NAME               "${clients_versioned_package_basename}")
-set(CPACK_RPM_CLIENTS-VERSIONED_FILE_NAME                  "${rpm-clients-versioned-filename}.${CMAKE_SYSTEM_PROCESSOR}.rpm")
+set(CPACK_RPM_CLIENTS-VERSIONED_FILE_NAME                  "${rpm-clients-versioned-filename}.el8.${CMAKE_SYSTEM_PROCESSOR}.rpm")
 set(CPACK_RPM_CLIENTS-VERSIONED_POST_INSTALL_SCRIPT_FILE   ${CMAKE_BINARY_DIR}/packaging/multiversion/clients/postinst)
 set(CPACK_RPM_CLIENTS-VERSIONED_PRE_UNINSTALL_SCRIPT_FILE  ${CMAKE_BINARY_DIR}/packaging/multiversion/clients/prerm)
 
 set(CPACK_RPM_SERVER-VERSIONED_PACKAGE_NAME                "${server_versioned_package_basename}")
-set(CPACK_RPM_SERVER-VERSIONED_FILE_NAME                   "${rpm-server-versioned-filename}.${CMAKE_SYSTEM_PROCESSOR}.rpm")
+set(CPACK_RPM_SERVER-VERSIONED_FILE_NAME                   "${rpm-server-versioned-filename}.el8.${CMAKE_SYSTEM_PROCESSOR}.rpm")
 set(CPACK_RPM_SERVER-VERSIONED_PACKAGE_REQUIRES            "${CPACK_RPM_CLIENTS-VERSIONED_PACKAGE_NAME} = ${FDB_VERSION}")
 set(CPACK_RPM_SERVER-VERSIONED_POST_INSTALL_SCRIPT_FILE    ${CMAKE_BINARY_DIR}/packaging/multiversion/server/postinst-rpm)
 set(CPACK_RPM_SERVER-VERSIONED_PRE_UNINSTALL_SCRIPT_FILE   ${CMAKE_BINARY_DIR}/packaging/multiversion/server/prerm)
