@@ -1,33 +1,44 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+function logg () {
+    printf "##### $(date +'%Y-%m-%dT%H:%M:%SZ') #  %-56.55s #####\n" "${1}"
+}
+
+function error_exit () {
+    echo "################################################################################"
+    logg "${0} FAILED"
+    logg "RUN_ID: ${RUN_ID}"
+    logg "WORKLOAD: ${WORKLOAD}"
+    logg "ENVIRONMENT IS:"
+    env
+    echo "################################################################################"
+}
+
+trap error_exit ERR
+
 namespace=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
-POD_NUM=$(echo $POD_NAME | cut -d - -f3)
-KEY="ycsb_load_${POD_NUM}_of_${NUM_PODS}_complete"
-CLI=$(ls /var/dynamic-conf/bin/*/fdbcli | head -n1)
-if [ ${MODE} != "load" ]; then
-    echo "WAITING FOR ALL PODS TO COME UP"
-    while [[ $(kubectl get pods -n ${namespace} -l name=ycsb,run=${RUN_ID} --field-selector=status.phase=Running | grep -cv NAME) -lt ${NUM_PODS} ]]; do
-        sleep 0.1
-    done
-    echo "ALL PODS ARE UP"
-else
-    if ${CLI} --exec "get ${KEY}" | grep is ;
-    then
-        # load already completed
-        exit 0
-    fi
-fi;
 
-echo "RUNNING YCSB"
-./bin/ycsb.sh ${MODE} foundationdb -s -P workloads/${WORKLOAD} ${YCSB_ARGS}
-echo "YCSB FINISHED"
+logg "WAITING FOR ${NUM_PODS} PODS TO COME UP IN ${namespace}"
+while [[ $(kubectl get pods -n "${namespace}" -l name=ycsb,run="${RUN_ID}" --field-selector=status.phase=Running | grep -cv NAME) -lt ${NUM_PODS} ]]; do
+    sleep 1
+done
+logg "${NUM_PODS} PODS ARE UP IN ${namespace}"
 
-echo "COPYING HISTOGRAMS TO S3"
-aws s3 sync --sse aws:kms --exclude "*" --include "histogram.*" /tmp s3://${BUCKET}/ycsb_histograms/${namespace}/${POD_NAME}
-echo "COPYING HISTOGRAMS TO S3 FINISHED"
+logg "RUNNING YCSB ${WORKLOAD}"
+set -x
+./bin/ycsb.sh "${MODE}" foundationdb -s -P "workloads/${WORKLOAD}" "${YCSB_ARGS}"
+set +x
+logg "YCSB ${WORKLOAD} FINISHED"
 
-if [ ${MODE} == "load" ]; then
-    ${CLI} --exec "writemode on; set ${KEY} 1"
-    echo "WROTE LOAD COMPLETION KEY"
-fi
+logg "COPYING HISTOGRAMS TO S3"
+set -x
+aws s3 sync --sse aws:kms --exclude "*" --include "histogram.*" /tmp "s3://${BUCKET}/ycsb_histograms/${namespace}/${POD_NAME}"
+set +x
+logg "COPYING HISTOGRAMS TO S3 FINISHED"
+
+echo "################################################################################"
+logg "COMPLETED ${0}"
+logg "RUN_ID: ${RUN_ID}"
+logg "WORKLOAD: ${WORKLOAD}"
+echo "################################################################################"

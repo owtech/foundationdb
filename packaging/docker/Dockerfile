@@ -16,36 +16,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-FROM centos:7.9.2009 as base
+ARG BASE_IMAGE="registry.access.redhat.com/ubi8/ubi:latest"
+FROM ${BASE_IMAGE} as base
 
-RUN yum install -y \
-    epel-release-7-11 \
-    centos-release-scl-2-3.el7.centos && \
-    yum install -y \
-    bind-utils-9.11.4-26.P2.el7_9.7 \
-    binutils-2.27-44.base.el7_9.1 \
-    curl-7.29.0-59.el7_9.1 \
-    gdb-7.6.1-120.el7 \
-    hostname-3.13-3.el7_7.1 \
-    jq-1.6-2.el7  \
-    less-458-9.el7 \
-    libubsan-7.3.1-5.16.el7 \
-    lsof-4.87-6.el7 \
-    net-tools-2.0-0.25.20131004git.el7 \
-    nmap-ncat-6.40-19.el7 \
-    perf-3.10.0-1160.45.1.el7 \
-    perl-5.16.3-299.el7_9 \
-    procps-ng-3.3.10-28.el7 \
-    strace-4.24-6.el7 \
-    sysstat-10.1.5-19.el7 \
-    tar-1.26-35.el7 \
-    tcpdump-4.9.2-4.el7_7.1 \
-    telnet-0.17-66.el7 \
-    traceroute-2.0.22-2.el7 \
-    unzip-6.0-22.el7_9 \
-    vim-enhanced-7.4.629-8.el7_9 && \
-    yum clean all && \
-    rm -rf /var/cache/yum
+RUN dnf --setopt=tsflags=nodocs install -y \
+    bind-utils \
+    binutils \
+    curl \
+    gdb-headless \
+    hostname \
+    jq \
+    less \
+    libubsan \
+    lsof \
+    net-tools \
+    nmap-ncat \
+    perl \
+    procps-ng \
+    tar \
+    unzip \
+    openssl \
+    vim-enhanced && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf
+#    epel-release-7-11 \
+#    centos-release-scl-2-3.el7.centos && \
+#    yum install -y \
+#    perf-3.10.0-1160.45.1.el7 \
+#    strace-4.24-6.el7 \
+#    sysstat-10.1.5-19.el7 \
+#    tcpdump-4.9.2-4.el7_7.1 \
+#    telnet-0.17-66.el7 \
+#    traceroute-2.0.22-2.el7 \
 
 WORKDIR /tmp
 
@@ -58,7 +60,7 @@ RUN curl -Ls https://github.com/krallin/tini/releases/download/v0.19.0/tini-amd6
 
 WORKDIR /
 
-FROM golang:1.16.7-bullseye AS go-build
+FROM golang:1.17.11-bullseye AS go-build
 
 COPY fdbkubernetesmonitor/ /fdbkubernetesmonitor
 WORKDIR /fdbkubernetesmonitor
@@ -67,9 +69,9 @@ RUN go build -o /fdb-kubernetes-monitor *.go
 FROM base as foundationdb-base
 
 WORKDIR /tmp
-ARG FDB_VERSION=6.3.22
+ARG FDB_VERSION=6.3.24
 ARG FDB_LIBRARY_VERSIONS="${FDB_VERSION}"
-ARG FDB_WEBSITE=https://www.foundationdb.org
+ARG FDB_WEBSITE=https://github.com/apple/foundationdb/releases/download
 
 RUN mkdir -p /var/fdb/{logs,tmp,lib} && \
     mkdir -p /usr/lib/fdb/multiversion && \
@@ -88,24 +90,29 @@ RUN groupadd --gid 4059 \
 COPY website /tmp/website/
 
 # Install FoundationDB Binaries
-RUN curl -Ls $FDB_WEBSITE/downloads/$FDB_VERSION/linux/fdb_$FDB_VERSION.tar.gz | tar zxf - --strip-components=1 && \
-    for file in fdbbackup fdbcli fdbdr fdbmonitor fdbrestore fdbserver backup_agent dr_agent fastrestore_tool; do \
-        chmod u+x $file; \
+RUN for file in fdbserver fdbbackup fdbcli fdbmonitor; do \
+        curl --fail -Ls ${FDB_WEBSITE}/${FDB_VERSION}/$file.x86_64 -o $file; \
+        chmod +x $file; \
         mv $file /usr/bin; \
+    done
+
+# Setup all symlinks for the other binaries that are a copy of fdbbackup
+RUN for file in fdbdr fdbrestore backup_agent dr_agent fastrestore_tool; do \
+        ln -s /usr/bin/fdbbackup /usr/bin/$file; \
     done
 
 # Install additional FoundationDB Client Libraries
 RUN for version in $FDB_LIBRARY_VERSIONS; do \
-    curl -Ls $FDB_WEBSITE/downloads/$version/linux/libfdb_c_$version.so -o /usr/lib/fdb/multiversion/libfdb_c_${version%.*}.so; \
+    curl --fail -Ls ${FDB_WEBSITE}/${version}/libfdb_c.x86_64.so -o /usr/lib/fdb/multiversion/libfdb_c_${version%.*}.so; \
     done
 
 # Install additional FoundationDB Client Libraries (for sidecar)
 RUN mkdir -p /var/fdb/lib && \
     for version in $FDB_LIBRARY_VERSIONS; do \
-    curl -Ls $FDB_WEBSITE/downloads/$version/linux/libfdb_c_$version.so -o /var/fdb/lib/libfdb_c_${version%.*}.so; \
+    curl --fail -Ls ${FDB_WEBSITE}/${version}/libfdb_c.x86_64.so -o /var/fdb/lib/libfdb_c_${version%.*}.so; \
     done
 
-RUN curl -Ls $FDB_WEBSITE/downloads/$FDB_VERSION/linux/libfdb_c_$FDB_VERSION.so -o /usr/lib/libfdb_c.so
+RUN curl -Ls $FDB_WEBSITE/$FDB_VERSION/libfdb_c.x86_64.so -o /usr/lib/libfdb_c.so
 
 RUN rm -rf /tmp/*
 WORKDIR /
@@ -123,11 +130,9 @@ ENTRYPOINT ["/usr/bin/fdb-kubernetes-monitor"]
 
 FROM foundationdb-base as foundationdb-kubernetes-sidecar
 
-RUN yum -y install \
-    rh-python38-2.0-4.el7 \
-    yum clean all && \
-    rm -rf /var/cache/yum && \
-    source /opt/rh/rh-python38/enable && \
+RUN dnf -y install python38 && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf && \
     pip3 install watchdog==0.9.0
 
 WORKDIR /
@@ -166,19 +171,19 @@ ENTRYPOINT ["/usr/bin/tini", "-g", "--", "/var/fdb/scripts/fdb.bash"]
 
 FROM base as ycsb
 
-RUN yum -y install \
-    java-11-openjdk-11.0.13.0.8-1.el7_9 && \
-    yum clean all && \
-    rm -rf /var/cache/yum
+RUN dnf -y install \
+    java-11-openjdk-headless && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf
 
 WORKDIR /tmp
-RUN curl -Ls https://amazon-eks.s3.amazonaws.com/1.19.6/2021-01-05/bin/linux/amd64/kubectl -o kubectl && \
-    echo "08ff68159bbcb844455167abb1d0de75bbfe5ae1b051f81ab060a1988027868a  kubectl" > kubectl.txt && \
+RUN curl -Ls https://s3.us-west-2.amazonaws.com/amazon-eks/1.22.6/2022-03-09/bin/linux/amd64/kubectl -o kubectl && \
+    echo "860c3d37a5979491895767e7332404d28dc0d7797c7673c33df30ca80e215a07  kubectl" > kubectl.txt && \
     sha256sum --quiet -c kubectl.txt && \
     mv kubectl /usr/local/bin/kubectl && \
     chmod 755 /usr/local/bin/kubectl && \
-    curl -Ls https://awscli.amazonaws.com/awscli-exe-linux-x86_64-2.2.43.zip -o "awscliv2.zip" && \
-    echo "9a8b3c4e7f72bbcc55e341dce3af42479f2730c225d6d265ee6f9162cfdebdfd  awscliv2.zip" > awscliv2.txt && \
+    curl -Ls https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m)-2.7.34.zip -o "awscliv2.zip" && \
+    echo "daf9253f0071b5cfee9532bc5220bedd7a5d29d4e0f92b42b9e3e4c496341e88  awscliv2.zip" > awscliv2.txt && \
     sha256sum --quiet -c awscliv2.txt && \
     unzip -qq awscliv2.zip && \
     ./aws/install && \
