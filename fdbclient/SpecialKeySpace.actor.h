@@ -60,26 +60,28 @@ public:
 	// calling with a cache object to have consistent results if we need to call rpc
 	Future<Standalone<RangeResultRef>> getRange(ReadYourWritesTransaction* ryw,
 	                                            KeyRangeRef kr,
-	                                            Optional<Standalone<RangeResultRef>>* cache) const {
+	                                            KeyRangeMap<Optional<Standalone<RangeResultRef>>>* cache) const {
 		return getRangeAsyncActor(this, ryw, kr, cache);
 	}
 
 	bool isAsync() const override { return true; }
 
-	ACTOR static Future<Standalone<RangeResultRef>> getRangeAsyncActor(const SpecialKeyRangeBaseImpl* skrAyncImpl,
-	                                                                   ReadYourWritesTransaction* ryw,
-	                                                                   KeyRangeRef kr,
-	                                                                   Optional<Standalone<RangeResultRef>>* cache) {
+	ACTOR static Future<Standalone<RangeResultRef>> getRangeAsyncActor(
+	    const SpecialKeyRangeBaseImpl* skrAyncImpl,
+	    ReadYourWritesTransaction* ryw,
+	    KeyRangeRef kr,
+	    KeyRangeMap<Optional<Standalone<RangeResultRef>>>* cache) {
 		ASSERT(skrAyncImpl->getKeyRange().contains(kr));
 		ASSERT(cache != nullptr);
-		if (!cache->present()) {
+		ASSERT(cache->rangeContaining(kr.begin) == cache->rangeContainingKeyBefore(kr.end));
+		if (!(*cache)[kr.begin].present()) {
 			// For simplicity, every time we need to cache, we read the whole range
 			// Although sometimes the range can be narrowed,
 			// there is not a general way to do it in complicated scenarios
 			Standalone<RangeResultRef> result_ = wait(skrAyncImpl->getRange(ryw, skrAyncImpl->getKeyRange()));
-			*cache = result_;
+			cache->insert(skrAyncImpl->getKeyRange(), result_);
 		}
-		const auto& allResults = cache->get();
+		const auto& allResults = (*cache)[kr.begin].get();
 		int start = 0, end = allResults.size();
 		while (start < allResults.size() && allResults[start].key < kr.begin)
 			++start;
@@ -207,6 +209,16 @@ public:
 	explicit DDStatsRangeImpl(KeyRangeRef kr);
 	Future<Standalone<RangeResultRef>> getRange(ReadYourWritesTransaction* ryw, KeyRangeRef kr) const override;
 };
+
+// If the underlying set of key-value pairs of a key space is not changing, then we expect repeating a read to give the
+// same result. Additionally, we can generate the expected result of any read if that read is reading a subrange. This
+// actor performs a read of an arbitrary subrange of [begin, end) and validates the results.
+ACTOR Future<Void> validateSpecialSubrangeRead(ReadYourWritesTransaction* ryw,
+                                               KeySelector begin,
+                                               KeySelector end,
+                                               GetRangeLimits limits,
+                                               bool reverse,
+                                               Standalone<RangeResultRef> result);
 
 #include "flow/unactorcompiler.h"
 #endif

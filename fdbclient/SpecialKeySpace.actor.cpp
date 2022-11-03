@@ -43,7 +43,7 @@ std::unordered_map<SpecialKeySpace::MODULE, KeyRange> SpecialKeySpace::moduleToB
 ACTOR Future<Void> moveKeySelectorOverRangeActor(const SpecialKeyRangeBaseImpl* skrImpl,
                                                  ReadYourWritesTransaction* ryw,
                                                  KeySelector* ks,
-                                                 Optional<Standalone<RangeResultRef>>* cache) {
+                                                 KeyRangeMap<Optional<Standalone<RangeResultRef>>>* cache) {
 	ASSERT(!ks->orEqual); // should be removed before calling
 	ASSERT(ks->offset != 1); // never being called if KeySelector is already normalized
 
@@ -121,7 +121,7 @@ ACTOR Future<Void> normalizeKeySelectorActor(SpecialKeySpace* sks,
                                              KeyRangeRef boundary,
                                              int* actualOffset,
                                              Standalone<RangeResultRef>* result,
-                                             Optional<Standalone<RangeResultRef>>* cache) {
+                                             KeyRangeMap<Optional<Standalone<RangeResultRef>>>* cache) {
 	// If offset < 1, where we need to move left, iter points to the range containing at least one smaller key
 	// (It's a wasting of time to walk through the range whose begin key is same as ks->key)
 	// (rangeContainingKeyBefore itself handles the case where ks->key == Key())
@@ -196,8 +196,10 @@ ACTOR Future<Standalone<RangeResultRef>> SpecialKeySpace::getRangeAggregationAct
 	state int actualBeginOffset;
 	state int actualEndOffset;
 	state KeyRangeRef moduleBoundary;
-	// used to cache result from potential first read
-	state Optional<Standalone<RangeResultRef>> cache;
+	// used to cache results from potential first async read
+	// the current implementation will read the whole range result to save in the cache
+	state KeyRangeMap<Optional<Standalone<RangeResultRef>>> cache(Optional<Standalone<RangeResultRef>>(),
+	                                                              specialKeys.end);
 
 	if (ryw->specialKeySpaceRelaxed()) {
 		moduleBoundary = sks->range;
@@ -244,7 +246,7 @@ ACTOR Future<Standalone<RangeResultRef>> SpecialKeySpace::getRangeAggregationAct
 			KeyRangeRef kr = iter->range();
 			KeyRef keyStart = kr.contains(begin.getKey()) ? begin.getKey() : kr.begin;
 			KeyRef keyEnd = kr.contains(end.getKey()) ? end.getKey() : kr.end;
-			if (iter->value()->isAsync() && cache.present()) {
+			if (iter->value()->isAsync() && cache.rangeContaining(keyStart).value().present()) {
 				const SpecialKeyRangeAsyncImpl* ptr = dynamic_cast<const SpecialKeyRangeAsyncImpl*>(iter->value());
 				Standalone<RangeResultRef> pairs_ = wait(ptr->getRange(ryw, KeyRangeRef(keyStart, keyEnd), &cache));
 				pairs = pairs_;
@@ -274,7 +276,7 @@ ACTOR Future<Standalone<RangeResultRef>> SpecialKeySpace::getRangeAggregationAct
 			KeyRangeRef kr = iter->range();
 			KeyRef keyStart = kr.contains(begin.getKey()) ? begin.getKey() : kr.begin;
 			KeyRef keyEnd = kr.contains(end.getKey()) ? end.getKey() : kr.end;
-			if (iter->value()->isAsync() && cache.present()) {
+			if (iter->value()->isAsync() && cache.rangeContaining(keyStart).value().present()) {
 				const SpecialKeyRangeAsyncImpl* ptr = dynamic_cast<const SpecialKeyRangeAsyncImpl*>(iter->value());
 				Standalone<RangeResultRef> pairs_ = wait(ptr->getRange(ryw, KeyRangeRef(keyStart, keyEnd), &cache));
 				pairs = pairs_;
@@ -372,13 +374,14 @@ Future<Standalone<RangeResultRef>> ConflictingKeysImpl::getRange(ReadYourWritesT
 	if (ryw->getTransactionInfo().conflictingKeys) {
 		auto krMapPtr = ryw->getTransactionInfo().conflictingKeys.get();
 		auto beginIter = krMapPtr->rangeContaining(kr.begin);
-		if (beginIter->begin() != kr.begin)
-			++beginIter;
 		auto endIter = krMapPtr->rangeContaining(kr.end);
+
+		if (!kr.contains(beginIter->begin()) && beginIter != endIter)
+			++beginIter;
 		for (auto it = beginIter; it != endIter; ++it) {
 			result.push_back_deep(result.arena(), KeyValueRef(it->begin(), it->value()));
 		}
-		if (endIter->begin() != kr.end)
+		if (kr.contains(endIter->begin()))
 			result.push_back_deep(result.arena(), KeyValueRef(endIter->begin(), endIter->value()));
 	}
 	return result;
@@ -420,4 +423,69 @@ DDStatsRangeImpl::DDStatsRangeImpl(KeyRangeRef kr) : SpecialKeyRangeAsyncImpl(kr
 
 Future<Standalone<RangeResultRef>> DDStatsRangeImpl::getRange(ReadYourWritesTransaction* ryw, KeyRangeRef kr) const {
 	return ddMetricsGetRangeActor(ryw, kr);
+}
+
+ACTOR Future<Void> validateSpecialSubrangeRead(ReadYourWritesTransaction* ryw,
+                                               KeySelector begin,
+                                               KeySelector end,
+                                               GetRangeLimits limits,
+                                               bool reverse,
+                                               Standalone<RangeResultRef> result) {
+	if (!result.size()) {
+		Standalone<RangeResultRef> testResult = wait(ryw->getRange(begin, end, limits, true, reverse));
+		ASSERT(testResult == result);
+		return Void();
+	}
+
+	if (reverse) {
+		ASSERT(std::is_sorted(result.begin(), result.end(), KeyValueRef::OrderByKeyBack{}));
+	} else {
+		ASSERT(std::is_sorted(result.begin(), result.end(), KeyValueRef::OrderByKey{}));
+	}
+
+	// Generate a keyrange where we can determine the expected result based solely on the previous readrange, and whose
+	// boundaries may or may not be keys in result.
+	std::vector<Key> candidateKeys;
+	if (reverse) {
+		for (int i = result.size() - 1; i >= 0; --i) {
+			candidateKeys.emplace_back(result[i].key);
+			if (i - 1 >= 0) {
+				candidateKeys.emplace_back(keyBetween(KeyRangeRef(result[i].key, result[i - 1].key)));
+			}
+		}
+	} else {
+		for (int i = 0; i < result.size(); ++i) {
+			candidateKeys.emplace_back(result[i].key);
+			if (i + 1 < result.size()) {
+				candidateKeys.emplace_back(keyBetween(KeyRangeRef(result[i].key, result[i + 1].key)));
+			}
+		}
+	}
+	std::sort(candidateKeys.begin(), candidateKeys.end());
+	int originalSize = candidateKeys.size();
+	// Add more candidate keys so that we might read a range between two adjacent result keys.
+	for (int i = 0; i < originalSize - 1; ++i) {
+		candidateKeys.emplace_back(keyBetween(KeyRangeRef(candidateKeys[i], candidateKeys[i + 1])));
+	}
+	std::vector<Key> keys;
+	keys = { deterministicRandom()->randomChoice(candidateKeys), deterministicRandom()->randomChoice(candidateKeys) };
+	std::sort(keys.begin(), keys.end());
+	state KeySelector testBegin = firstGreaterOrEqual(keys[0]);
+	state KeySelector testEnd = firstGreaterOrEqual(keys[1]);
+
+	// Generate expected result. Linear time is ok here since we're in simulation, and there's a benefit to keeping this
+	// simple (as we're using it as an test oracle)
+	state Standalone<RangeResultRef> expectedResult;
+	// The reverse parameter should be the same as for the original read, so if
+	// reverse is true then the results are _already_ in reverse order.
+	for (const auto& kr : result) {
+		if (kr.key >= keys[0] && kr.key < keys[1]) {
+			expectedResult.push_back(expectedResult.arena(), kr);
+		}
+	}
+
+	// Test
+	Standalone<RangeResultRef> testResult = wait(ryw->getRange(testBegin, testEnd, limits, true, reverse));
+	ASSERT(testResult == expectedResult);
+	return Void();
 }
