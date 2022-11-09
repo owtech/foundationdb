@@ -60,7 +60,6 @@
 #include "fdbserver/MoveKeys.actor.h"
 #include "fdbserver/MutationTracking.h"
 #include "fdbserver/RecoveryState.h"
-#include "fdbserver/StorageMetrics.h"
 #include "fdbserver/ServerCheckpoint.actor.h"
 #include "fdbserver/ServerDBInfo.h"
 #include "fdbserver/TLogInterface.h"
@@ -338,6 +337,9 @@ struct UpdateEagerReadInfo {
 	std::vector<Optional<Value>> value;
 
 	Arena arena;
+	bool enableClearRangeEagerReads;
+
+	UpdateEagerReadInfo(bool enableClearRangeEagerReads) : enableClearRangeEagerReads(enableClearRangeEagerReads) {}
 
 	void addMutations(VectorRef<MutationRef> const& mutations) {
 		for (auto& m : mutations)
@@ -346,11 +348,10 @@ struct UpdateEagerReadInfo {
 
 	void addMutation(MutationRef const& m) {
 		// SOMEDAY: Theoretically we can avoid a read if there is an earlier overlapping ClearRange
-		if (m.type == MutationRef::ClearRange && !m.param2.startsWith(systemKeys.end) &&
-		    SERVER_KNOBS->ENABLE_CLEAR_RANGE_EAGER_READS)
+		if (m.type == MutationRef::ClearRange && !m.param2.startsWith(systemKeys.end) && enableClearRangeEagerReads)
 			keyBegin.push_back(m.param2);
 		else if (m.type == MutationRef::CompareAndClear) {
-			if (SERVER_KNOBS->ENABLE_CLEAR_RANGE_EAGER_READS)
+			if (enableClearRangeEagerReads)
 				keyBegin.push_back(keyAfter(m.param1, arena));
 			if (keys.size() > 0 && keys.back().first == m.param1) {
 				// Don't issue a second read, if the last read was equal to the current key.
@@ -367,7 +368,7 @@ struct UpdateEagerReadInfo {
 	}
 
 	void finishKeyBegin() {
-		if (SERVER_KNOBS->ENABLE_CLEAR_RANGE_EAGER_READS) {
+		if (enableClearRangeEagerReads) {
 			std::sort(keyBegin.begin(), keyBegin.end());
 			keyBegin.resize(std::unique(keyBegin.begin(), keyBegin.end()) - keyBegin.begin());
 		}
@@ -944,6 +945,8 @@ public:
 		LatencySample readRangeLatencySample;
 		LatencySample readVersionWaitSample;
 		LatencySample readQueueWaitSample;
+		LatencySample kvReadRangeLatencySample;
+		LatencySample updateLatencySample;
 
 		LatencyBands readLatencyBands;
 		LatencySample mappedRangeSample; // Samples getMappedRange latency
@@ -997,6 +1000,14 @@ public:
 		                          SERVER_KNOBS->LATENCY_METRICS_LOGGING_INTERVAL,
 		                          SERVER_KNOBS->LATENCY_SAMPLE_SIZE),
 		    readQueueWaitSample("ReadQueueWaitMetrics",
+		                        self->thisServerID,
+		                        SERVER_KNOBS->LATENCY_METRICS_LOGGING_INTERVAL,
+		                        SERVER_KNOBS->LATENCY_SAMPLE_SIZE),
+		    kvReadRangeLatencySample("KVGetRangeMetrics",
+		                             self->thisServerID,
+		                             SERVER_KNOBS->LATENCY_METRICS_LOGGING_INTERVAL,
+		                             SERVER_KNOBS->LATENCY_SAMPLE_SIZE),
+		    updateLatencySample("UpdateLatencyMetrics",
 		                        self->thisServerID,
 		                        SERVER_KNOBS->LATENCY_METRICS_LOGGING_INTERVAL,
 		                        SERVER_KNOBS->LATENCY_SAMPLE_SIZE),
@@ -3384,6 +3395,7 @@ ACTOR Future<Void> getKeyValuesQ(StorageServer* data, GetKeyValuesRequest req)
 		} else {
 			state int remainingLimitBytes = req.limitBytes;
 
+			state double kvReadRange = g_network->timer();
 			GetKeyValuesReply _r = wait(readRange(data,
 			                                      version,
 			                                      KeyRangeRef(begin, end),
@@ -3392,6 +3404,8 @@ ACTOR Future<Void> getKeyValuesQ(StorageServer* data, GetKeyValuesRequest req)
 			                                      span.context,
 			                                      type,
 			                                      tenantPrefix));
+			double duration = g_network->timer() - kvReadRange;
+			data->counters.kvReadRangeLatencySample.addMeasurement(duration);
 			GetKeyValuesReply r = _r;
 
 			if (req.debugID.present())
@@ -4440,7 +4454,7 @@ void getQueuingMetrics(StorageServer* self, StorageQueuingMetricsRequest const& 
 ACTOR Future<Void> doEagerReads(StorageServer* data, UpdateEagerReadInfo* eager) {
 	eager->finishKeyBegin();
 
-	if (SERVER_KNOBS->ENABLE_CLEAR_RANGE_EAGER_READS) {
+	if (eager->enableClearRangeEagerReads) {
 		std::vector<Future<Key>> keyEnd(eager->keyBegin.size());
 		for (int i = 0; i < keyEnd.size(); i++)
 			keyEnd[i] = data->storage.readNextKeyInclusive(eager->keyBegin[i], IKeyValueStore::ReadType::EAGER);
@@ -4634,7 +4648,7 @@ void expandClear(MutationRef& m,
 	i = d.lastLessOrEqual(m.param2);
 	if (i && i->isClearTo() && i->getEndKey() >= m.param2) {
 		m.param2 = i->getEndKey();
-	} else if (SERVER_KNOBS->ENABLE_CLEAR_RANGE_EAGER_READS) {
+	} else if (eager->enableClearRangeEagerReads) {
 		// Expand to the next set or clear (from storage or latestVersion), and if it
 		// is a clear, engulf it as well
 		i = d.lower_bound(m.param2);
@@ -6932,7 +6946,12 @@ ACTOR Future<Void> tssDelayForever() {
 }
 
 ACTOR Future<Void> update(StorageServer* data, bool* pReceivedUpdate) {
+	state double updateStart = g_network->timer();
 	state double start;
+	state bool enableClearRangeEagerReads = data->storage.getKeyValueStoreType() == KeyValueStoreType::SSD_ROCKSDB_V1
+	                                            ? SERVER_KNOBS->ROCKSDB_ENABLE_CLEAR_RANGE_EAGER_READS
+	                                            : SERVER_KNOBS->ENABLE_CLEAR_RANGE_EAGER_READS;
+	state UpdateEagerReadInfo eager(enableClearRangeEagerReads);
 	try {
 
 		// If we are disk bound and durableVersion is very old, we need to block updates or we could run out of
@@ -7027,7 +7046,6 @@ ACTOR Future<Void> update(StorageServer* data, bool* pReceivedUpdate) {
 		data->ssVersionLockLatencyHistogram->sampleSeconds(now() - start);
 
 		start = now();
-		state UpdateEagerReadInfo eager;
 		state FetchInjectionInfo fii;
 		state Reference<ILogSystem::IPeekCursor> cloneCursor2;
 
@@ -7096,7 +7114,7 @@ ACTOR Future<Void> update(StorageServer* data, bool* pReceivedUpdate) {
 			            // again.
 			// SOMEDAY: Theoretically we could check the change counters of individual shards and retry the reads
 			// only selectively
-			eager = UpdateEagerReadInfo();
+			eager = UpdateEagerReadInfo(enableClearRangeEagerReads);
 		}
 		data->eagerReadsLatencyHistogram->sampleSeconds(now() - start);
 
@@ -7355,6 +7373,9 @@ ACTOR Future<Void> update(StorageServer* data, bool* pReceivedUpdate) {
 			}
 			data->behind = false;
 		}
+
+		double duration = g_network->timer() - updateStart;
+		data->counters.updateLatencySample.addMeasurement(duration);
 
 		return Void(); // update will get called again ASAP
 	} catch (Error& err) {
@@ -7762,7 +7783,7 @@ void setAssignedStatus(StorageServer* self, KeyRangeRef keys, bool nowAssigned) 
 }
 
 void StorageServerDisk::clearRange(KeyRangeRef keys) {
-	storage->clear(keys);
+	storage->clear(keys, &data->metrics);
 	++(*kvClearRanges);
 }
 
@@ -7776,7 +7797,7 @@ void StorageServerDisk::writeMutation(MutationRef mutation) {
 		storage->set(KeyValueRef(mutation.param1, mutation.param2));
 		*kvCommitLogicalBytes += mutation.expectedSize();
 	} else if (mutation.type == MutationRef::ClearRange) {
-		storage->clear(KeyRangeRef(mutation.param1, mutation.param2));
+		storage->clear(KeyRangeRef(mutation.param1, mutation.param2), &data->metrics);
 		++(*kvClearRanges);
 	} else
 		ASSERT(false);
@@ -7791,7 +7812,7 @@ void StorageServerDisk::writeMutations(const VectorRef<MutationRef>& mutations,
 			storage->set(KeyValueRef(m.param1, m.param2));
 			*kvCommitLogicalBytes += m.expectedSize();
 		} else if (m.type == MutationRef::ClearRange) {
-			storage->clear(KeyRangeRef(m.param1, m.param2));
+			storage->clear(KeyRangeRef(m.param1, m.param2), &data->metrics);
 			++(*kvClearRanges);
 		}
 	}
@@ -8201,7 +8222,7 @@ ACTOR Future<bool> restoreDurableState(StorageServer* data, IKeyValueStore* stor
 				++data->counters.kvSystemClearRanges;
 				// TODO(alexmiller): Figure out how to selectively enable spammy data distribution events.
 				// DEBUG_KEY_RANGE("clearInvalidVersion", invalidVersion, clearRange);
-				storage->clear(clearRange);
+				storage->clear(clearRange, &data->metrics);
 				++data->counters.kvSystemClearRanges;
 				data->byteSampleApplyClear(clearRange, invalidVersion);
 			}

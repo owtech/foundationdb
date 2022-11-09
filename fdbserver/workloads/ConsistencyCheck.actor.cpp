@@ -370,6 +370,7 @@ struct ConsistencyCheckWorkload : TestWorkload {
 		state Standalone<VectorRef<KeyValueRef>>
 		    serverList; // "\xff/serverList/[[serverID]]" := "[[StorageServerInterface]]"
 		state Standalone<VectorRef<KeyValueRef>> serverTag; // "\xff/serverTag/[[serverID]]" = "[[Tag]]"
+		state bool testResult = true;
 
 		std::vector<Future<bool>> cacheResultsPromise;
 		cacheResultsPromise.push_back(self->fetchKeyValuesFromSS(cx, self, storageCacheKeys, cacheKeyPromise, true));
@@ -539,6 +540,9 @@ struct ConsistencyCheckWorkload : TestWorkload {
 					state int j = 0;
 					for (j = 0; j < iter_ss.size(); j++) {
 						resetReply(req);
+						if (SERVER_KNOBS->ENABLE_VERSION_VECTOR) {
+							cx->getLatestCommitVersion(iter_ss[j], req.version, req.ssLatestCommitVersions);
+						}
 						keyValueFutures.push_back(iter_ss[j].getKeyValues.getReplyUnlessFailedFor(req, 2, 0));
 					}
 
@@ -554,7 +558,7 @@ struct ConsistencyCheckWorkload : TestWorkload {
 					for (j = 0; j < keyValueFutures.size(); j++) {
 						ErrorOr<GetKeyValuesReply> rangeResult = keyValueFutures[j].get();
 						// if (rangeResult.isError()) {
-						// 	throw rangeResult.getError();
+						//	throw rangeResult.getError();
 						// }
 
 						// Compare the results with other storage servers
@@ -682,7 +686,7 @@ struct ConsistencyCheckWorkload : TestWorkload {
 									    .detail("MatchingKVPairs", matchingKVPairs);
 
 									self->testFailure("Data inconsistent", true);
-									return false;
+									testResult = false;
 								}
 							}
 						}
@@ -728,7 +732,7 @@ struct ConsistencyCheckWorkload : TestWorkload {
 				    .detail("BytesRead", bytesReadInRange);
 			}
 		}
-		return true;
+		return testResult;
 	}
 
 	// Directly fetch key/values from storage servers through GetKeyValuesRequest
@@ -776,6 +780,9 @@ struct ConsistencyCheckWorkload : TestWorkload {
 					state std::vector<Future<ErrorOr<GetKeyValuesReply>>> keyValueFutures;
 					for (const auto& kv : shards[i].second) {
 						resetReply(req);
+						if (SERVER_KNOBS->ENABLE_VERSION_VECTOR) {
+							cx->getLatestCommitVersion(kv, req.version, req.ssLatestCommitVersions);
+						}
 						keyValueFutures.push_back(kv.getKeyValues.getReplyUnlessFailedFor(req, 2, 0));
 					}
 
@@ -965,6 +972,9 @@ struct ConsistencyCheckWorkload : TestWorkload {
 					state std::vector<Future<ErrorOr<GetKeyValuesReply>>> keyValueFutures;
 					for (const auto& kv : shards[i].second) {
 						resetReply(req);
+						if (SERVER_KNOBS->ENABLE_VERSION_VECTOR) {
+							cx->getLatestCommitVersion(kv, req.version, req.ssLatestCommitVersions);
+						}
 						keyValueFutures.push_back(kv.getKeyValues.getReplyUnlessFailedFor(req, 2, 0));
 					}
 
@@ -1169,6 +1179,7 @@ struct ConsistencyCheckWorkload : TestWorkload {
 		state Reference<IRateControl> rateLimiter = Reference<IRateControl>(new SpeedLimit(rateLimitForThisRound, 1));
 		state double rateLimiterStartTime = now();
 		state int64_t bytesReadInthisRound = 0;
+		state bool testResult = true;
 
 		state double dbSize = 100e12;
 		if (g_network->isSimulated()) {
@@ -1338,6 +1349,10 @@ struct ConsistencyCheckWorkload : TestWorkload {
 						state int j = 0;
 						for (j = 0; j < storageServerInterfaces.size(); j++) {
 							resetReply(req);
+							if (SERVER_KNOBS->ENABLE_VERSION_VECTOR) {
+								cx->getLatestCommitVersion(
+								    storageServerInterfaces[j], req.version, req.ssLatestCommitVersions);
+							}
 							keyValueFutures.push_back(
 							    storageServerInterfaces[j].getKeyValues.getReplyUnlessFailedFor(req, 2, 0));
 						}
@@ -1488,7 +1503,7 @@ struct ConsistencyCheckWorkload : TestWorkload {
 										    (!storageServerInterfaces[j].isTss() &&
 										     !storageServerInterfaces[firstValidServer].isTss())) {
 											self->testFailure("Data inconsistent", true);
-											return false;
+											testResult = false;
 										}
 									}
 								}
@@ -1718,7 +1733,7 @@ struct ConsistencyCheckWorkload : TestWorkload {
 		}*/
 
 		self->bytesReadInPreviousRound = bytesReadInthisRound;
-		return true;
+		return testResult;
 	}
 
 	// Returns true if any storage servers have the exact same network address or are not using the correct key value
@@ -1955,6 +1970,7 @@ struct ConsistencyCheckWorkload : TestWorkload {
 		}
 
 		if (foundExtraDataStore) {
+			wait(delay(10)); // let the cluster get to fully_recovered after the reboot before retrying
 			self->testFailure("Extra data stores present on workers");
 			return false;
 		}

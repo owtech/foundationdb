@@ -32,10 +32,11 @@
 #include <list>
 #include <utility>
 
-#include "flow/flow.h"
+#include "flow/IndexedSet.h"
 #include "flow/Knobs.h"
 #include "flow/Util.h"
-#include "flow/IndexedSet.h"
+#include "flow/flow.h"
+
 #include "flow/actorcompiler.h" // This must be the last #include.
 
 #ifdef _MSC_VER
@@ -174,7 +175,8 @@ Future<Void> waitForAllReady(std::vector<Future<T>> results) {
 		if (i == results.size())
 			return Void();
 		try {
-			wait(success(results[i]));
+			T t = wait(results[i]);
+			(void)t;
 		} catch (...) {
 		}
 		i++;
@@ -395,6 +397,20 @@ Future<Void> map(FutureStream<T> input, F func, PromiseStream<std::invoke_result
 	output.sendError(end_of_stream());
 
 	return Void();
+}
+
+// X + Y will wait for X, then wait for and return the result of Y
+ACTOR template <class A, class B>
+Future<B> operatorPlus(Future<A> a, Future<B> b) {
+	A resultA = wait(a);
+	(void)resultA;
+	B resultB = wait(b);
+	return resultB;
+}
+
+template <class A, class B>
+Future<B> operator+(Future<A> a, Future<B> b) {
+	return operatorPlus(a, b);
 }
 
 // Returns if the future returns true, otherwise waits forever.
@@ -931,21 +947,22 @@ public:
 
 private:
 	template <class U>
-	friend Future<Void> quorum(std::vector<Future<U>> const& results, int n);
+	friend Future<Void> quorum(const Future<U>* pItems, int itemCount, int n);
 	Quorum<T>* head;
 	QuorumCallback() = default;
 	QuorumCallback(Future<T> future, Quorum<T>* head) : head(head) { future.addCallbackAndClear(this); }
 };
 
 template <class T>
-Future<Void> quorum(std::vector<Future<T>> const& results, int n) {
-	ASSERT(n >= 0 && n <= results.size());
+Future<Void> quorum(const Future<T>* pItems, int itemCount, int n) {
+	ASSERT(n >= 0 && n <= itemCount);
 
-	int size = Quorum<T>::sizeFor(results.size());
-	Quorum<T>* q = new (allocateFast(size)) Quorum<T>(n, results.size());
+	int size = Quorum<T>::sizeFor(itemCount);
+	Quorum<T>* q = new (allocateFast(size)) Quorum<T>(n, itemCount);
 
 	QuorumCallback<T>* nextCallback = q->callbacks();
-	for (auto& r : results) {
+	for (int i = 0; i < itemCount; ++i) {
+		auto& r = pItems[i];
 		if (r.isReady()) {
 			new (nextCallback) QuorumCallback<T>();
 			nextCallback->next = 0;
@@ -958,6 +975,11 @@ Future<Void> quorum(std::vector<Future<T>> const& results, int n) {
 		++nextCallback;
 	}
 	return Future<Void>(q);
+}
+
+template <class T>
+Future<Void> quorum(std::vector<Future<T>> const& results, int n) {
+	return quorum(&results.front(), results.size(), n);
 }
 
 ACTOR template <class T>
@@ -979,6 +1001,15 @@ Future<Void> waitForAll(std::vector<Future<T>> const& results) {
 	if (results.empty())
 		return Void();
 	return quorum(results, (int)results.size());
+}
+
+// Wait for all futures in results to be ready and then throw the first (in execution order) error
+// if any of them resulted in an error.
+template <class T>
+Future<Void> waitForAllReadyThenThrow(std::vector<Future<T>> const& results) {
+	Future<Void> f = waitForAll(results);
+	Future<Void> fReady = waitForAllReady(results);
+	return fReady + f;
 }
 
 template <class T>
@@ -1040,7 +1071,8 @@ Future<Void> success(Future<T> of) {
 ACTOR template <class T>
 Future<Void> ready(Future<T> f) {
 	try {
-		wait(success(f));
+		T t = wait(f);
+		(void)t;
 	} catch (...) {
 	}
 	return Void();
@@ -1165,7 +1197,8 @@ inline Future<Void> operator&&(Future<Void> const& lhs, Future<Void> const& rhs)
 			return lhs;
 	}
 
-	return waitForAll(std::vector<Future<Void>>{ lhs, rhs });
+	Future<Void> x[] = { lhs, rhs };
+	return quorum(x, 2, 2);
 }
 
 // error || unset -> error
