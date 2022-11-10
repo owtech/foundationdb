@@ -36,10 +36,10 @@ jobs:
             RELEASE_FLAG=ON
           fi
 
-          echo "::set-output name=project_ver::$PROJECT_VERSION"
-          echo "::set-output name=build_ver::$BUILD_VERSION"
-          echo "::set-output name=full_ver::$PROJECT_VERSION-$BUILD_VERSION"
-          echo "::set-output name=release_flag::$RELEASE_FLAG"
+          echo "project_ver=$PROJECT_VERSION" >>$GITHUB_OUTPUT
+          echo "build_ver=$BUILD_VERSION" >>$GITHUB_OUTPUT
+          echo "full_ver=$PROJECT_VERSION-$BUILD_VERSION" >>$GITHUB_OUTPUT
+          echo "release_flag=$RELEASE_FLAG" >>$GITHUB_OUTPUT
 
       - name: Display versions
         run: |
