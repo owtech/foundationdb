@@ -125,7 +125,7 @@ jobs:
       #  run: rm -rf ${{github.workspace}}bld/packages/*${{needs.calc_ver.outputs.full_ver}}.versioned*
 
       - name: Upload result
-        uses: nanoufo/action-upload-artifacts-and-release-assets@v1.4
+        uses: nanoufo/action-upload-artifacts-and-release-assets@v1.5
         with:
           path: |
             ${{github.workspace}}/bld/packages/*${{needs.calc_ver.outputs.full_ver}}*
