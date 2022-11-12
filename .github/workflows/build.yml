@@ -251,7 +251,7 @@ jobs:
           pip3 install 'foundationdb==${{ env.JOSHUA_DB_VER }}'
 
       - name: Download the correctness package
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         id: download_correctness
         with:
           name: correctness-${{needs.calc_ver.outputs.full_ver}}.tar.gz
