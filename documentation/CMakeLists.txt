@@ -97,7 +97,7 @@ add_custom_target(docpreview
   USES_TERMINAL)
 add_dependencies(docpreview html)
 
-set(tar_file ${CMAKE_BINARY_DIR}/packages/${CMAKE_PROJECT_NAME}-docs-${FDB_VERSION}.tar.gz)
+set(tar_file ${CMAKE_BINARY_DIR}/packages/${CMAKE_PROJECT_NAME}-docs-${FDB_VERSION}.tgz)
 add_custom_command(
   OUTPUT ${tar_file}
   COMMAND ${CMAKE_COMMAND} -E tar czf ${tar_file} .
