@@ -156,14 +156,14 @@ set(unversioned_postfix "${FDB_VERSION}${not_fdb_release_string}")
 # RPM filenames
 set(rpm-clients-filename "foundationdb-clients-${unversioned_postfix}")
 set(rpm-server-filename "foundationdb-server-${unversioned_postfix}")
-set(rpm-clients-versioned-filename "foundationdb-clients-versioned-${unversioned_postfix}")
-set(rpm-server-versioned-filename "foundationdb-server-versioned-${unversioned_postfix}")
+set(rpm-clients-versioned-filename "foundationdb-${FDB_VERSION}-clients-versioned-${unversioned_postfix}")
+set(rpm-server-versioned-filename "foundationdb-${FDB_VERSION}-server-versioned-${unversioned_postfix}")
 
 # Deb filenames
 set(deb-clients-filename "foundationdb-clients_${unversioned_postfix}")
 set(deb-server-filename "foundationdb-server_${unversioned_postfix}")
-set(deb-clients-versioned-filename "foundationdb-clients-versioned_${unversioned_postfix}")
-set(deb-server-versioned-filename "foundationdb-server-versioned_${unversioned_postfix}")
+set(deb-clients-versioned-filename "foundationdb-${FDB_VERSION}-clients-versioned_${unversioned_postfix}")
+set(deb-server-versioned-filename "foundationdb-${FDB_VERSION}-server-versioned_${unversioned_postfix}")
 
 ################################################################################
 # Configuration for RPM
@@ -174,8 +174,8 @@ set(CPACK_RPM_PACKAGE_LICENSE "Apache 2.0")
 set(CPACK_RPM_PACKAGE_NAME "foundationdb")
 set(CPACK_RPM_CLIENTS-EL7_PACKAGE_NAME "foundationdb-clients")
 set(CPACK_RPM_SERVER-EL7_PACKAGE_NAME "foundationdb-server")
-set(CPACK_RPM_SERVER-VERSIONED_PACKAGE_NAME "foundationdb${FDB_VERSION}-server")
-set(CPACK_RPM_CLIENTS-VERSIONED_PACKAGE_NAME "foundationdb${FDB_VERSION}-clients")
+set(CPACK_RPM_SERVER-VERSIONED_PACKAGE_NAME "foundationdb-${FDB_VERSION}-server")
+set(CPACK_RPM_CLIENTS-VERSIONED_PACKAGE_NAME "foundationdb-${FDB_VERSION}-clients")
 
 set(CPACK_RPM_CLIENTS-EL7_FILE_NAME "${rpm-clients-filename}.el7.${CMAKE_SYSTEM_PROCESSOR}.rpm")
 set(CPACK_RPM_CLIENTS-VERSIONED_FILE_NAME "${rpm-clients-versioned-filename}.el7.${CMAKE_SYSTEM_PROCESSOR}.rpm")
