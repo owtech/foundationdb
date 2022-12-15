@@ -49,8 +49,8 @@ if [ "$1" = configure ]; then
         DORESTART=1
 
         if test -f /etc/foundationdb/owtech.conf; then
-            value=`grep -E "^DoNotRestartWhenUpdate" /etc/foundationdb/owtech.conf | awk -F "=" '{ print $2 }' | tr -d " " | tr "a-z" "A-Z"`
-            test "$value" = "YES" -o "$value" = "TRUE" -o "$value" = "1" && DORESTART=0
+            value=`grep -E "^RestartWhenUpdate" /etc/foundationdb/owtech.conf | awk -F "=" '{ print $2 }' | tr -d " " | tr "a-z" "A-Z"`
+            test "$value" = "NO" -o "$value" = "FALSE" -o "$value" = "0" && DORESTART=0
         fi
 
         if test $DORESTART -eq 1; then
