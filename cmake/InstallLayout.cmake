@@ -115,17 +115,17 @@ set(CPACK_COMPONENT_SERVER-DEB_DEPENDS clients-deb)
 set(CPACK_COMPONENT_SERVER-TGZ_DEPENDS clients-tgz)
 set(CPACK_COMPONENT_SERVER-VERSIONED_DEPENDS clients-versioned)
 set(CPACK_RPM_SERVER-VERSIONED_PACKAGE_REQUIRES
-  "foundationdb${FDB_VERSION}-clients")
+  "foundationdb-${FDB_VERSION}-clients")
 
 set(CPACK_COMPONENT_SERVER-EL7_DISPLAY_NAME "foundationdb-server")
 set(CPACK_COMPONENT_SERVER-DEB_DISPLAY_NAME "foundationdb-server")
 set(CPACK_COMPONENT_SERVER-TGZ_DISPLAY_NAME "foundationdb-server")
-set(CPACK_COMPONENT_SERVER-VERSIONED_DISPLAY_NAME "foundationdb${FDB_VERSION}-server")
+set(CPACK_COMPONENT_SERVER-VERSIONED_DISPLAY_NAME "foundationdb-${FDB_VERSION}-server")
 
 set(CPACK_COMPONENT_CLIENTS-EL7_DISPLAY_NAME "foundationdb-clients")
 set(CPACK_COMPONENT_CLIENTS-DEB_DISPLAY_NAME "foundationdb-clients")
 set(CPACK_COMPONENT_CLIENTS-TGZ_DISPLAY_NAME "foundationdb-clients")
-set(CPACK_COMPONENT_CLIENTS-VERSIONED_DISPLAY_NAME "foundationdb${FDB_VERSION}-clients")
+set(CPACK_COMPONENT_CLIENTS-VERSIONED_DISPLAY_NAME "foundationdb-${FDB_VERSION}-clients")
 
 
 # MacOS needs a file extension for the LICENSE file
@@ -156,14 +156,14 @@ set(unversioned_postfix "${FDB_VERSION}${not_fdb_release_string}")
 # RPM filenames
 set(rpm-clients-filename "foundationdb-clients-${unversioned_postfix}")
 set(rpm-server-filename "foundationdb-server-${unversioned_postfix}")
-set(rpm-clients-versioned-filename "foundationdb-clients-versioned-${unversioned_postfix}")
-set(rpm-server-versioned-filename "foundationdb-server-versioned-${unversioned_postfix}")
+set(rpm-clients-versioned-filename "foundationdb-${FDB_VERSION}-clients-versioned-${unversioned_postfix}")
+set(rpm-server-versioned-filename "foundationdb-${FDB_VERSION}-server-versioned-${unversioned_postfix}")
 
 # Deb filenames
 set(deb-clients-filename "foundationdb-clients_${unversioned_postfix}")
 set(deb-server-filename "foundationdb-server_${unversioned_postfix}")
-set(deb-clients-versioned-filename "foundationdb-clients-versioned_${unversioned_postfix}")
-set(deb-server-versioned-filename "foundationdb-server-versioned_${unversioned_postfix}")
+set(deb-clients-versioned-filename "foundationdb-${FDB_VERSION}-clients-versioned_${unversioned_postfix}")
+set(deb-server-versioned-filename "foundationdb-${FDB_VERSION}-server-versioned_${unversioned_postfix}")
 
 ################################################################################
 # Configuration for RPM
@@ -174,8 +174,8 @@ set(CPACK_RPM_PACKAGE_LICENSE "Apache 2.0")
 set(CPACK_RPM_PACKAGE_NAME "foundationdb")
 set(CPACK_RPM_CLIENTS-EL7_PACKAGE_NAME "foundationdb-clients")
 set(CPACK_RPM_SERVER-EL7_PACKAGE_NAME "foundationdb-server")
-set(CPACK_RPM_SERVER-VERSIONED_PACKAGE_NAME "foundationdb${FDB_VERSION}-server")
-set(CPACK_RPM_CLIENTS-VERSIONED_PACKAGE_NAME "foundationdb${FDB_VERSION}-clients")
+set(CPACK_RPM_SERVER-VERSIONED_PACKAGE_NAME "foundationdb-${FDB_VERSION}-server")
+set(CPACK_RPM_CLIENTS-VERSIONED_PACKAGE_NAME "foundationdb-${FDB_VERSION}-clients")
 
 set(CPACK_RPM_CLIENTS-EL7_FILE_NAME "${rpm-clients-filename}.el7.${CMAKE_SYSTEM_PROCESSOR}.rpm")
 set(CPACK_RPM_CLIENTS-VERSIONED_FILE_NAME "${rpm-clients-versioned-filename}.el7.${CMAKE_SYSTEM_PROCESSOR}.rpm")
