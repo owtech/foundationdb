@@ -205,12 +205,12 @@ set(CPACK_COMPONENT_SERVER-VERSIONED_DEPENDS clients-versioned)
 set(CPACK_COMPONENT_SERVER-EL8_DISPLAY_NAME "foundationdb-server")
 set(CPACK_COMPONENT_SERVER-DEB_DISPLAY_NAME "foundationdb-server")
 set(CPACK_COMPONENT_SERVER-TGZ_DISPLAY_NAME "foundationdb-server")
-set(CPACK_COMPONENT_SERVER-VERSIONED_DISPLAY_NAME "foundationdb${FDB_VERSION}-server")
+set(CPACK_COMPONENT_SERVER-VERSIONED_DISPLAY_NAME "foundationdb-${FDB_VERSION}-server")
 
 set(CPACK_COMPONENT_CLIENTS-EL8_DISPLAY_NAME "foundationdb-clients")
 set(CPACK_COMPONENT_CLIENTS-DEB_DISPLAY_NAME "foundationdb-clients")
 set(CPACK_COMPONENT_CLIENTS-TGZ_DISPLAY_NAME "foundationdb-clients")
-set(CPACK_COMPONENT_CLIENTS-VERSIONED_DISPLAY_NAME "foundationdb${FDB_VERSION}-clients")
+set(CPACK_COMPONENT_CLIENTS-VERSIONED_DISPLAY_NAME "foundationdb-${FDB_VERSION}-clients")
 
 
 # MacOS needs a file extension for the LICENSE file
@@ -240,8 +240,8 @@ endif()
 set(package_basename                   "foundationdb")
 set(clients_package_basename           "${package_basename}-clients")
 set(server_package_basename            "${package_basename}-server")
-set(clients_versioned_package_basename "${package_basename}${FDB_VERSION}-clients")
-set(server_versioned_package_basename  "${package_basename}${FDB_VERSION}-server")
+set(clients_versioned_package_basename "${package_basename}-${FDB_VERSION}-clients-versioned")
+set(server_versioned_package_basename  "${package_basename}-${FDB_VERSION}-server-versioned")
 
 string(REPLACE "-" "_" FDB_PACKAGE_VERSION ${FDB_VERSION})
 set(unversioned_postfix "${FDB_VERSION}${not_fdb_release_string}")
@@ -249,14 +249,14 @@ set(unversioned_postfix "${FDB_VERSION}${not_fdb_release_string}")
 # RPM filenames
 set(rpm-clients-filename "${clients_package_basename}-${unversioned_postfix}")
 set(rpm-server-filename "${server_package_basename}-${unversioned_postfix}")
-set(rpm-clients-versioned-filename "${clients_package_basename}-versioned-${unversioned_postfix}")
-set(rpm-server-versioned-filename "${server_package_basename}-versioned-${unversioned_postfix}")
+set(rpm-clients-versioned-filename "${clients_package_basename}-${unversioned_postfix}")
+set(rpm-server-versioned-filename "${server_package_basename}-${unversioned_postfix}")
 
 # Deb filenames
 set(deb-clients-filename "${clients_package_basename}_${unversioned_postfix}")
 set(deb-server-filename "${server_package_basename}_${unversioned_postfix}")
-set(deb-clients-versioned-filename "${clients_package_basename}-versioned_${unversioned_postfix}")
-set(deb-server-versioned-filename "${server_package_basename}-versioned_${unversioned_postfix}")
+set(deb-clients-versioned-filename "${clients_package_basename}_${unversioned_postfix}")
+set(deb-server-versioned-filename "${server_package_basename}_${unversioned_postfix}")
 
 ################################################################################
 # Configuration for RPM
@@ -264,13 +264,13 @@ set(deb-server-versioned-filename "${server_package_basename}-versioned_${unvers
 set(CPACK_RPM_PACKAGE_LICENSE                              "Apache 2.0")
 
 set(CPACK_RPM_CLIENTS-EL8_PACKAGE_NAME                     "${clients_package_basename}")
-set(CPACK_RPM_CLIENTS-EL8_FILE_NAME                        "${rpm-clients-filename}.el8.${CMAKE_SYSTEM_PROCESSOR}.rpm")
+set(CPACK_RPM_CLIENTS-EL8_FILE_NAME                        "${rpm-clients-filename}.${CMAKE_SYSTEM_PROCESSOR}.rpm")
 set(CPACK_RPM_CLIENTS-EL8_PRE_INSTALL_SCRIPT_FILE          ${CMAKE_SOURCE_DIR}/packaging/rpm/scripts/preclients.sh)
 set(CPACK_RPM_CLIENTS-EL8_POST_INSTALL_SCRIPT_FILE         ${CMAKE_SOURCE_DIR}/packaging/rpm/scripts/postclients.sh)
 set(CPACK_RPM_CLIENTS-EL8_USER_FILELIST                    "%dir /etc/foundationdb")
 
 set(CPACK_RPM_SERVER-EL8_PACKAGE_NAME                      "${server_package_basename}")
-set(CPACK_RPM_SERVER-EL8_FILE_NAME                         "${rpm-server-filename}.el8.${CMAKE_SYSTEM_PROCESSOR}.rpm")
+set(CPACK_RPM_SERVER-EL8_FILE_NAME                         "${rpm-server-filename}.${CMAKE_SYSTEM_PROCESSOR}.rpm")
 set(CPACK_RPM_SERVER-EL8_PACKAGE_REQUIRES                  "${CPACK_RPM_CLIENTS-EL8_PACKAGE_NAME} = ${FDB_VERSION}")
 set(CPACK_RPM_SERVER-EL8_PRE_INSTALL_SCRIPT_FILE           ${CMAKE_SOURCE_DIR}/packaging/rpm/scripts/preserver.sh)
 set(CPACK_RPM_SERVER-EL8_POST_INSTALL_SCRIPT_FILE          ${CMAKE_SOURCE_DIR}/packaging/rpm/scripts/postserver.sh)
@@ -280,12 +280,12 @@ set(CPACK_RPM_SERVER-EL8_USER_FILELIST                     "%config(noreplace) /
                                                            "%attr(0700,foundationdb,foundationdb) /var/lib/foundationdb")
 
 set(CPACK_RPM_CLIENTS-VERSIONED_PACKAGE_NAME               "${clients_versioned_package_basename}")
-set(CPACK_RPM_CLIENTS-VERSIONED_FILE_NAME                  "${rpm-clients-versioned-filename}.el8.${CMAKE_SYSTEM_PROCESSOR}.rpm")
+set(CPACK_RPM_CLIENTS-VERSIONED_FILE_NAME                  "${rpm-clients-versioned-filename}.${CMAKE_SYSTEM_PROCESSOR}.rpm")
 set(CPACK_RPM_CLIENTS-VERSIONED_POST_INSTALL_SCRIPT_FILE   ${CMAKE_BINARY_DIR}/packaging/multiversion/clients/postinst)
 set(CPACK_RPM_CLIENTS-VERSIONED_PRE_UNINSTALL_SCRIPT_FILE  ${CMAKE_BINARY_DIR}/packaging/multiversion/clients/prerm)
 
 set(CPACK_RPM_SERVER-VERSIONED_PACKAGE_NAME                "${server_versioned_package_basename}")
-set(CPACK_RPM_SERVER-VERSIONED_FILE_NAME                   "${rpm-server-versioned-filename}.el8.${CMAKE_SYSTEM_PROCESSOR}.rpm")
+set(CPACK_RPM_SERVER-VERSIONED_FILE_NAME                   "${rpm-server-versioned-filename}.${CMAKE_SYSTEM_PROCESSOR}.rpm")
 set(CPACK_RPM_SERVER-VERSIONED_PACKAGE_REQUIRES            "${CPACK_RPM_CLIENTS-VERSIONED_PACKAGE_NAME} = ${FDB_VERSION}")
 set(CPACK_RPM_SERVER-VERSIONED_POST_INSTALL_SCRIPT_FILE    ${CMAKE_BINARY_DIR}/packaging/multiversion/server/postinst-rpm)
 set(CPACK_RPM_SERVER-VERSIONED_PRE_UNINSTALL_SCRIPT_FILE   ${CMAKE_BINARY_DIR}/packaging/multiversion/server/prerm)
