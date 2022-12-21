@@ -107,7 +107,7 @@ endif()
 ################################################################################
 
 option(BUILD_DOCUMENTATION "build documentation" ON)
-find_package(Python3 3.0...<3.11 COMPONENTS Interpreter)
+find_package(Python3 COMPONENTS Interpreter)
 if (WITH_PYTHON AND Python3_Interpreter_FOUND AND BUILD_DOCUMENTATION)
   set(WITH_DOCUMENTATION ON)
 else()
