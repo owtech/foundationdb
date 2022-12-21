@@ -347,11 +347,11 @@ set(CPACK_DEBIAN_CLIENTS-DEB_PACKAGE_NAME "${clients_package_basename}")
 set(CPACK_DEBIAN_SERVER-VERSIONED_PACKAGE_NAME  "${server_versioned_package_basename}")
 set(CPACK_DEBIAN_CLIENTS-VERSIONED_PACKAGE_NAME "${clients_versioned_package_basename}")
 
-set(CPACK_DEBIAN_SERVER-DEB_PACKAGE_DEPENDS "adduser, libc6 (>= 2.12), foundationdb-clients (= ${FDB_VERSION})")
+set(CPACK_DEBIAN_SERVER-DEB_PACKAGE_DEPENDS "adduser, libc6 (>= 2.12)")
 set(CPACK_DEBIAN_SERVER-DEB_PACKAGE_RECOMMENDS "python (>= 2.6)")
 set(CPACK_DEBIAN_CLIENTS-DEB_PACKAGE_DEPENDS "adduser, libc6 (>= 2.12)")
 
-set(CPACK_DEBIAN_SERVER-VERSIONED_PACKAGE_DEPENDS "adduser, libc6 (>= 2.12), ${clients_versioned_package_basename}")
+set(CPACK_DEBIAN_SERVER-VERSIONED_PACKAGE_DEPENDS "adduser, libc6 (>= 2.12)")
 set(CPACK_DEBIAN_SERVER-VERSIONED_PACKAGE_RECOMMENDS "python (>= 2.6)")
 set(CPACK_DEBIAN_CLIENTS-VERSIONED_PACKAGE_DEPENDS "adduser, libc6 (>= 2.12)")
 
