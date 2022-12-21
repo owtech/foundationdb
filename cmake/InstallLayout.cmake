@@ -249,14 +249,14 @@ set(unversioned_postfix "${FDB_VERSION}${not_fdb_release_string}")
 # RPM filenames
 set(rpm-clients-filename "${clients_package_basename}-${unversioned_postfix}")
 set(rpm-server-filename "${server_package_basename}-${unversioned_postfix}")
-set(rpm-clients-versioned-filename "${clients_package_basename}-${unversioned_postfix}")
-set(rpm-server-versioned-filename "${server_package_basename}-${unversioned_postfix}")
+set(rpm-clients-versioned-filename "${clients_versioned_package_basename}-${unversioned_postfix}")
+set(rpm-server-versioned-filename "${server_versioned_package_basename}-${unversioned_postfix}")
 
 # Deb filenames
 set(deb-clients-filename "${clients_package_basename}_${unversioned_postfix}")
 set(deb-server-filename "${server_package_basename}_${unversioned_postfix}")
-set(deb-clients-versioned-filename "${clients_package_basename}_${unversioned_postfix}")
-set(deb-server-versioned-filename "${server_package_basename}_${unversioned_postfix}")
+set(deb-clients-versioned-filename "${clients_versioned_package_basename}_${unversioned_postfix}")
+set(deb-server-versioned-filename "${server_versioned_package_basename}_${unversioned_postfix}")
 
 ################################################################################
 # Configuration for RPM
