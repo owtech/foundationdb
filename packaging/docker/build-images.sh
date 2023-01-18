@@ -223,8 +223,6 @@ function build_and_push_images () {
             --build-arg FDB_VERSION="${fdb_version}" \
             --build-arg FDB_LIBRARY_VERSIONS="${fdb_library_versions[*]}" \
             --build-arg FDB_WEBSITE="${fdb_website}" \
-            --build-arg HTTPS_PROXY="${HTTPS_PROXY}" \
-            --build-arg HTTP_PROXY="${HTTP_PROXY}" \
             --tag "${image_tag}" \
             --file "${dockerfile_name}" \
             --target "${image}" .

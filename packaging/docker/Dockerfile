@@ -16,7 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-ARG BASE_IMAGE="registry.access.redhat.com/ubi8/ubi:latest"
+ARG BASE_IMAGE="docker.artifactory.openintegration.inc/ubi8/ubi:latest"
 FROM ${BASE_IMAGE} as base
 
 RUN dnf --setopt=tsflags=nodocs install -y \
@@ -60,7 +60,7 @@ RUN curl -Ls https://github.com/krallin/tini/releases/download/v0.19.0/tini-amd6
 
 WORKDIR /
 
-FROM golang:1.17.11-bullseye AS go-build
+FROM docker.artifactory.openintegration.inc/golang:1.17.11-bullseye AS go-build
 
 COPY fdbkubernetesmonitor/ /fdbkubernetesmonitor
 WORKDIR /fdbkubernetesmonitor
