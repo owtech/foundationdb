@@ -84,9 +84,9 @@ function error_exit () {
             ;;
         "owtech")
             logg "DOWNLOADING CLIENTS RPM FILE"
-            rpm2cpio "${fdb_website}/${fdb_version}/foundationdb-clients-${fdb_version}.el7.x86_64.rpm" | cpio -idm --quiet
+            rpm2cpio "${fdb_website}/${fdb_version}/foundationdb-clients-${fdb_version}.x86_64.rpm" | cpio -idm --quiet
             logg "DOWNLOADING SERVER RPM FILE"
-            rpm2cpio "${fdb_website}/${fdb_version}/foundationdb-server-${fdb_version}.el7.x86_64.rpm" | cpio -idm --quiet
+            rpm2cpio "${fdb_website}/${fdb_version}/foundationdb-server-${fdb_version}.x86_64.rpm" | cpio -idm --quiet
             for file in "${fdb_binaries[@]}"; do
                 logg "COPYING ${file}"
                 if   test ${file} = "fdbserver";  then mv "usr/sbin/${file}" "${file}.x86_64";
