@@ -215,6 +215,12 @@ function build_and_push_images () {
             compile_ycsb
         fi
         logg "TAG ${image_tag#${registry}/foundationdb/}"
+        ##############################################
+        #EXTRA OPTIONS
+        #You can add extra options HTTP_PROXY and HTTPS_PROXY as parameters in command "docker build"
+        # --build-arg HTTPS_PROXY="${HTTPS_PROXY}" \
+        # --build-arg HTTP_PROXY="${HTTP_PROXY}" \
+        ##############################################
         docker build \
             --label "org.foundationdb.version=${fdb_version}" \
             --label "org.foundationdb.build_date=${build_date}" \
