@@ -41,7 +41,7 @@ function error_exit () {
     mkdir -p "${website_directory}/${fdb_version}"
     pushd "${website_directory}/${fdb_version}" || exit 127
     ############################################################################
-    # there are four intended paths here:
+    # there are five intended paths here:
     # 1) fetch the unstripped binaries and client library from artifactory_base_url
     # 2) fetch the stripped binaries and multiple client library versions
     #    from artifactory_base_url
@@ -49,6 +49,7 @@ function error_exit () {
     #    build_output of foundationdb
     # 4) copy the stripped binaries and client library from the current local
     #    build_output of foundationdb
+    # 5) copy release artifacts from owtech's github
     ############################################################################
     logg "FETCHING BINARIES"
     case "${stripped_binaries_and_from_where}" in
@@ -78,6 +79,20 @@ function error_exit () {
             for file in "${fdb_binaries[@]}"; do
                 logg "COPYING ${file}"
                 cp -pr "${build_output_directory}/packages/bin/${file}" "${file}.x86_64"
+                chmod 755 "${file}.x86_64"
+            done
+            ;;
+        "owtech")
+            logg "DOWNLOADING CLIENTS RPM FILE"
+            rpm2cpio "${fdb_website}/${fdb_version}/foundationdb-clients-${fdb_version}.el7.x86_64.rpm" | cpio -idm --quiet
+            logg "DOWNLOADING SERVER RPM FILE"
+            rpm2cpio "${fdb_website}/${fdb_version}/foundationdb-server-${fdb_version}.el7.x86_64.rpm" | cpio -idm --quiet
+            for file in "${fdb_binaries[@]}"; do
+                logg "COPYING ${file}"
+                if   test ${file} = "fdbserver";  then mv "usr/sbin/${file}" "${file}.x86_64";
+                elif test ${file} = "fdbmonitor"; then mv "usr/lib/foundationdb/${file}" "${file}.x86_64";
+                else                                   mv "usr/bin/${file}" "${file}.x86_64"
+                fi
                 chmod 755 "${file}.x86_64"
             done
             ;;
@@ -123,6 +138,15 @@ function error_exit () {
         "stripped_local")
             logg "COPYING STRIPPED CLIENT LIBRARY"
             cp -pr "${build_output_directory}/packages/lib/libfdb_c.so" "${website_directory}/${fdb_version}/libfdb_c.x86_64.so"
+            ;;
+        "owtech")
+            logg "COPYING CLIENT LIBRARY"
+            pushd "${website_directory}/${fdb_version}" || exit 127
+            mv "usr/lib64/libfdb_c.so" "libfdb_c.x86_64.so"
+            for dirname in etc lib usr var; do
+              rm -rf "${dirname}"
+            done
+            popd || exit 128
             ;;
     esac
     # override fdb_website variable that is passed to Docker build
@@ -191,6 +215,12 @@ function build_and_push_images () {
             compile_ycsb
         fi
         logg "TAG ${image_tag#${registry}/foundationdb/}"
+        ##############################################
+        #EXTRA OPTIONS
+        #You can add extra options HTTP_PROXY and HTTPS_PROXY as parameters in command "docker build"
+        # --build-arg HTTPS_PROXY="${HTTPS_PROXY}" \
+        # --build-arg HTTP_PROXY="${HTTP_PROXY}" \
+        ##############################################
         docker build \
             --label "org.foundationdb.version=${fdb_version}" \
             --label "org.foundationdb.build_date=${build_date}" \
@@ -199,8 +229,6 @@ function build_and_push_images () {
             --build-arg FDB_VERSION="${fdb_version}" \
             --build-arg FDB_LIBRARY_VERSIONS="${fdb_library_versions[*]}" \
             --build-arg FDB_WEBSITE="${fdb_website}" \
-            --build-arg HTTPS_PROXY="${HTTPS_PROXY}" \
-            --build-arg HTTP_PROXY="${HTTP_PROXY}" \
             --tag "${image_tag}" \
             --file "${dockerfile_name}" \
             --target "${image}" .
@@ -240,15 +268,18 @@ echo "${blue}###################################################################
 # Use this script with care.
 ################################################################################
 artifactory_base_url="${ARTIFACTORY_URL:-https://artifactory.foundationdb.org}"
-aws_region="us-west-2"
-aws_account_id=$(aws --output text sts get-caller-identity --query 'Account')
 build_date=$(date +"%Y-%m-%dT%H:%M:%S%z")
-build_output_directory="${script_dir}/../../"
-source_code_diretory=$(awk -F= '/foundationdb_SOURCE_DIR:STATIC/{print $2}' "${build_output_directory}/CMakeCache.txt")
-commit_sha=$(cd "${source_code_diretory}" && git rev-parse --verify HEAD --short=10)
-fdb_version=$(cat "${build_output_directory}/version.txt")
-fdb_library_versions=( '5.1.7' '6.1.13' '6.2.30' "${fdb_version}" )
-fdb_website="https://github.com/apple/foundationdb/releases/download"
+build_output_directory=`(cd "${script_dir}/../../"; pwd)`
+if test -f "${build_output_directory}/CMakeCache.txt"; then
+  source_code_diretory=$(awk -F= '/foundationdb_SOURCE_DIR:STATIC/{print $2}' "${build_output_directory}/CMakeCache.txt")
+  commit_sha=$(cd "${source_code_diretory}" && git rev-parse --verify HEAD --short=10)
+  fdb_version=$(cat "${build_output_directory}/version.txt")
+else
+  commit_sha=$(git rev-parse --verify HEAD --short=10)
+  fdb_version=$(git describe --tags | cut -d- -f1-2)
+fi
+fdb_library_versions=( '6.3.24-4.ow' "${fdb_version}" )
+fdb_website="https://github.com/owtech/foundationdb/releases/download"
 image_list=(
     'base'
     # 'go-build'
@@ -256,13 +287,15 @@ image_list=(
     'foundationdb'
     # 'foundationdb-kubernetes-monitor'
     'foundationdb-kubernetes-sidecar'
-    'ycsb'
+    # 'ycsb'
 )
 registry=""
 tag_base="foundationdb/"
 
 if [ -n "${OKTETO_NAMESPACE+x}" ]; then
     logg "RUNNING IN OKTETO/AWS"
+    aws_region="us-west-2"
+    aws_account_id=$(aws --output text sts get-caller-identity --query 'Account')
     # these are defaults for the Apple development environment
     imdsv2_token=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
     aws_region=$(curl -H "X-aws-ec2-metadata-token: ${imdsv2_token}" "http://169.254.169.254/latest/meta-data/placement/region")
@@ -278,20 +311,21 @@ if [ -n "${OKTETO_NAMESPACE+x}" ]; then
     fi
 
     # build regular images
-     create_fake_website_directory stripped_local
-     build_and_push_images Dockerfile true true
+    create_fake_website_directory stripped_local
+    build_and_push_images "${script_dir}/Dockerfile" true true
 
-     # build debug images
-     create_fake_website_directory unstripped_local
-     build_and_push_images Dockerfile.eks true true
+    # build debug images
+    create_fake_website_directory unstripped_local
+    build_and_push_images "${script_dir}/Dockerfile.eks" true true
 else
-    echo "Dear ${USER}, you probably need to edit this file before running it. "
-    echo "${0} has a very narrow set of situations where it will be successful,"
-    echo "or even useful, when executed unedited"
-    exit 1
+    #echo "Dear ${USER}, you probably need to edit this file before running it. "
+    #echo "${0} has a very narrow set of situations where it will be successful,"
+    #echo "or even useful, when executed unedited"
+    #exit 1
     # this set of options will creat standard images from a local build
-    # create_fake_website_directory stripped_local
-    # build_and_push_images Dockerfile false false
+    #create_fake_website_directory stripped_local
+    create_fake_website_directory owtech
+    build_and_push_images "${script_dir}/Dockerfile" false false
 fi
 
 echo "${blue}################################################################################${reset}"
