@@ -11,13 +11,13 @@ CMAKE_URL=https://github.com/Kitware/CMake/releases/download/v3.26.0/cmake-3.26.
 
 EXISTING_VERSION=`cmake --version | awk '/version/ { print $3; }'` || true
 
-if [[ "$EXISTING_VERSION" < "$REQUIRED_VERSION" ]]; then
+if dpkg --compare-versions "$EXISTING_VERSION" lt "$REQUIRED_VERSION"; then
   echo "Existing cmake $EXISTING_VERSION is absent or too old."
 
   sudo apt update
   AVAILABLE_APT_VERSION=`apt-cache policy cmake | awk '/Candidate:/{print $2;}'`
 
-  if [[ "$AVAILABLE_APT_VERSION" < "$REQUIRED_VERSION" ]]; then
+  if dpkg --compare-versions "$AVAILABLE_APT_VERSION" lt "$REQUIRED_VERSION"; then
     echo "Available cmake $AVAILABLE_APT_VERSION is too old. Installing one from $CMAKE_URL."
     sudo DEBIAN_FRONTEND=noninteractive apt-get install -y wget
     TMP_DIR=`mktemp -d`
