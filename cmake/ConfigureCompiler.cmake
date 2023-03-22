@@ -236,6 +236,27 @@ else()
         endif()
         add_link_options(-stdlib=libc++ -Wl,-build-id=sha1)
       endif()
+    else()
+      # clang compiler does not fully support builtin atomic operations
+      # See https://reviews.llvm.org/D85044?id=287068
+      # So it needs linking to an atomic library (static or dynamic)
+      if(ATOMIC_LIBRARY_FILE)
+        set(Atomic_LIBRARY "${ATOMIC_LIBRARY_FILE}")
+      else()
+	# Try to find an atomic static library
+        execute_process(
+          COMMAND ${CMAKE_C_COMPILER} -print-search-dirs
+          OUTPUT_VARIABLE MY_CLANG_SEARCH_DIRS
+          RESULT_VARIABLE MY_CLANG_SEARCH_DIRS_FOUND
+          OUTPUT_STRIP_TRAILING_WHITESPACE)
+        string(REGEX MATCH "libraries: =([^\n].*)" _dummy "${MY_CLANG_SEARCH_DIRS}\n")
+        string(REPLACE ":" ";" MY_CLANG_LIB_DIRS "${CMAKE_MATCH_1}")
+        find_library(Atomic_LIBRARY NAMES libatomic.a PATHS ${MY_CLANG_LIB_DIRS})
+        if(NOT Atomic_LIBRARY)
+          message(FATAL_ERROR "atomic static library not found")
+        endif()
+      endif()
+      message(STATUS "Atomic_LIBRARY=${Atomic_LIBRARY}")
     endif()
     if (OPEN_FOR_IDE)
       add_compile_options(
