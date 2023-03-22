@@ -695,10 +695,6 @@ In each of the methods below, ``param`` should be a string appropriately packed 
 Committing
 ----------
 
-.. decorator:: transactional()
-
-    The ``transactional`` decorator makes it easy to write transactional functions which accept either a :class:`Database` or a :class:`Transaction` as a parameter and automatically commit. See :func:`@fdb.transactional <transactional>` for explanation and examples.
-
 .. method :: Transaction.commit()
 
     Attempt to commit the changes made in the transaction to the database.  Returns a :class:`FutureVoid` representing the asynchronous result of the commit. You **must** call the :meth:`Future.wait()` method on the returned :class:`FutureVoid`, which will raise an exception if the commit failed.

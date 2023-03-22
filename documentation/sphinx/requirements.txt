@@ -1,5 +1,6 @@
 --index-url https://pypi.python.org/simple
-sphinx==1.6.7
-sphinx-bootstrap-theme==0.4.8
-docutils==0.16
-Jinja2==3.0.3
+setuptools
+sphinx
+sphinx-bootstrap-theme
+docutils
+Jinja2
