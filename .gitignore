@@ -97,7 +97,7 @@ flow/coveragetool/obj
 
 # Openway fork build
 /bld/
-/nbproject/private/
+/ide-projects/*/nbproject/private/
 /Testing/Temporary/
 
 # Temporary and user configuration files

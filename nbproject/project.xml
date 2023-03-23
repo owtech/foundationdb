@@ -4,13 +4,13 @@
     <configuration>
         <data xmlns="http://www.netbeans.org/ns/make-project/1">
             <name>FoundationDb</name>
-            <c-extensions>c</c-extensions>
-            <cpp-extensions>cc,cpp</cpp-extensions>
+            <c-extensions>c,m</c-extensions>
+            <cpp-extensions>cc,cpp,cxx,mm</cpp-extensions>
             <header-extensions>h,hpp,inc,linux</header-extensions>
             <sourceEncoding>UTF-8</sourceEncoding>
             <make-dep-projects/>
             <sourceRootList>
-                <sourceRootElem>.</sourceRootElem>
+                <sourceRootElem>../..</sourceRootElem>
             </sourceRootList>
             <confList>
                 <confElem>
