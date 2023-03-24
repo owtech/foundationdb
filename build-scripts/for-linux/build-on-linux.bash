@@ -53,7 +53,7 @@ ninja $PARALLEL_PRMS -k 0 documentation/package_html
 # make all-binaries archive
 # calculate filename
 BINS_FILENAME=`ls -1 packages/foundationdb-docs-* | sed s/-docs/-bins/`
-tar -I pigz -cvf $BINS_FILENAME bin
+tar -I pigz -cvf $BINS_FILENAME -C packages/bin .
 
 popd
 
