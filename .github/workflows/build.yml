@@ -25,29 +25,7 @@ jobs:
       - name: Calculate versions
         id: vers
         shell: bash
-        run: |
-          git fetch --prune --unshallow --tags --force
-          GIT_VERSION=`git describe --tags`
-          PROJECT_VERSION=`echo $GIT_VERSION | cut -d- -f1`
-          BUILD_VERSION=`echo $GIT_VERSION | cut -d- -f2-3 --output-delimiter=.`
-          GIT_CHANGE_NUM=`echo $GIT_VERSION | cut -d- -f3`
-          if [[ -n "$GIT_CHANGE_NUM" ]] || [[ "$BUILD_VERSION" < "1" ]]; then
-            RELEASE_FLAG=OFF
-          else
-            RELEASE_FLAG=ON
-          fi
-
-          echo "project_ver=$PROJECT_VERSION" >>$GITHUB_OUTPUT
-          echo "build_ver=$BUILD_VERSION" >>$GITHUB_OUTPUT
-          echo "full_ver=$PROJECT_VERSION-$BUILD_VERSION" >>$GITHUB_OUTPUT
-          echo "release_flag=$RELEASE_FLAG" >>$GITHUB_OUTPUT
-
-      - name: Display versions
-        run: |
-          echo "project_ver=${{steps.vers.outputs.project_ver}}"
-          echo "build_ver=${{steps.vers.outputs.build_ver}}"
-          echo "full_ver=${{steps.vers.outputs.full_ver}}"
-          echo "release_flag=${{steps.vers.outputs.release_flag}}"
+        run: ${{github.workspace}}/build-scripts/for-github/calc-version-from-git.bash
 
       - name: Create Draft Release
         if: ${{ steps.vers.outputs.release_flag == 'ON' }}
@@ -67,22 +45,35 @@ jobs:
     strategy:
       matrix:
         include:
-          - run_on: ubuntu-18.04
+          - run_on: ubuntu-latest
             for: linux
             prepare: "debian-based"
             build_on: linux
+            use_image: ghcr.io/owtech/foundationdb-build:6.3.25-5.ow.1
+            parallel: 3
 
     runs-on: ${{ matrix.run_on }}
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Install Dependencies
-        run: ${{github.workspace}}/build-scripts/for-${{ matrix.for }}/prepare-${{ matrix.prepare }}.bash
-
       - name: Build
-        working-directory: ${{github.workspace}}
-        run: ${{github.workspace}}/build-scripts/for-${{ matrix.for }}/build-on-${{ matrix.build_on }}.bash ${{needs.calc_ver.outputs.project_ver}} ${{needs.calc_ver.outputs.build_ver}} ${{needs.calc_ver.outputs.release_flag}} 3
+        run: |
+          mkdir -p ${{github.workspace}}/bld \
+          && chmod 777 ${{github.workspace}}/bld \
+          && podman run --rm \
+            --name build \
+            --mount=type=tmpfs,dst=/tmp \
+            --mount=type=tmpfs,dst=/var/tmp \
+            --security-opt label=disable \
+            --mount=type=bind,src=${{github.workspace}},dst=/home/runner/src,readonly \
+            --mount=type=bind,src=${{github.workspace}}/bld,dst=/home/runner/bld \
+            ${{ matrix.use_image }} \
+            /home/runner/src/build-scripts/for-${{ matrix.for }}/build-on-${{ matrix.build_on }}.bash \
+            ${{needs.calc_ver.outputs.project_ver}} \
+            ${{needs.calc_ver.outputs.build_ver}} \
+            ${{needs.calc_ver.outputs.release_flag}} \
+            ${{ matrix.parallel }}
 
       # - name: Minimal tests
       #  working-directory: ${{github.workspace}}/bld
@@ -90,15 +81,13 @@ jobs:
       #  run: ctest --output-on-failure -V
 
       - name: Upload result
-        uses: nanoufo/action-upload-artifacts-and-release-assets@v1.5
+        uses: nanoufo/action-upload-artifacts-and-release-assets@v1.8
         with:
           path: |
             ${{github.workspace}}/bld/linux/packages/*${{needs.calc_ver.outputs.full_ver}}*
           upload-release-files: ${{ needs.calc_ver.outputs.release_flag }}
           release-upload-url: ${{ needs.calc_ver.outputs.release_upload_url }}
           if-no-files-found: error
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   test_deploy:
     needs: [calc_ver, build]
