@@ -59,9 +59,9 @@ jobs:
 
       - name: Build
         run: |
-          mkdir -p ${{github.workspace}}/bld \
-          && chmod 777 ${{github.workspace}}/bld \
-          && podman run --rm \
+          mkdir -p ${{github.workspace}}/bld
+          chmod 777 ${{github.workspace}}/bld
+          podman run --rm \
             --name build \
             --mount=type=tmpfs,dst=/tmp \
             --mount=type=tmpfs,dst=/var/tmp \
