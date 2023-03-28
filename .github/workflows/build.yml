@@ -171,6 +171,44 @@ jobs:
         with:
           release_id: ${{ needs.calc_ver.outputs.release_id }}
 
+  publish_images:
+    needs: [calc_ver, build]
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_REGISTRY: ghcr.io
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Download foundationdb binaries
+        uses: actions/download-artifact@v3
+        with:
+          name: foundationdb-bins-${{needs.calc_ver.outputs.full_ver}}.x86_64.tgz
+          path: ${{github.workspace}}/bld/linux/packages/foundationdb-bins-${{needs.calc_ver.outputs.full_ver}}.x86_64.tgz
+
+      - name: Download foundationdb libs
+        uses: actions/download-artifact@v3
+        with:
+          name: foundationdb-libs-${{needs.calc_ver.outputs.full_ver}}.x86_64.tgz
+          path: ${{github.workspace}}/bld/linux/packages/foundationdb-libs-${{needs.calc_ver.outputs.full_ver}}.x86_64.tgz
+
+      - name: Listing the downloaded artifacts
+        # This is where you will update the personal access token to GITHUB_TOKEN
+        run: ls -Rl ${{github.workspace}}/bld/linux/packages
+
+      - name: Log in to registry
+        # This is where you will update the personal access token to GITHUB_TOKEN
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | podman login $DOCKER_REGISTRY -u $ --password-stdin
+
+      - name: Build and push images
+        shell: bash
+        run: |
+          ${{github.workspace}}/packaging/docker/build-images-for-owtech.bash \
+            ${{needs.calc_ver.outputs.full_ver}} \
+            ${{github.workspace}}/bld/linux/packages \
+            ghcr.io/${{ github.repository_owner }}
+
   tests:
     needs: [calc_ver, build]
     runs-on: ubuntu-latest
