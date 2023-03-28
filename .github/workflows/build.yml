@@ -181,21 +181,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Download foundationdb binaries
+      - name: Download the foundationdb distro
         uses: actions/download-artifact@v3
         with:
-          name: foundationdb-bins-${{needs.calc_ver.outputs.full_ver}}.x86_64.tgz
-          path: ${{github.workspace}}/bld/linux/packages/foundationdb-bins-${{needs.calc_ver.outputs.full_ver}}.x86_64.tgz
-
-      - name: Download foundationdb libs
-        uses: actions/download-artifact@v3
-        with:
-          name: foundationdb-libs-${{needs.calc_ver.outputs.full_ver}}.x86_64.tgz
-          path: ${{github.workspace}}/bld/linux/packages/foundationdb-libs-${{needs.calc_ver.outputs.full_ver}}.x86_64.tgz
+          path: ${{github.workspace}}/bld/download
 
       - name: Listing the downloaded artifacts
         # This is where you will update the personal access token to GITHUB_TOKEN
-        run: ls -Rl ${{github.workspace}}/bld/linux/packages
+        run: ls -Rl ${{github.workspace}}/bld/download
+
+      - name: Make a normal distro directory from downloaded artifacts
+        shell: bash
+        run: |
+          mkdir -p ${{github.workspace}}/bld/linux/packages
+          mv -v ${{github.workspace}}/bld/download/*/* ${{github.workspace}}/bld/linux/packages/
 
       - name: Log in to registry
         # This is where you will update the personal access token to GITHUB_TOKEN
