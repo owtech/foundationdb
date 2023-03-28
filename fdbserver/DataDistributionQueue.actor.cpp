@@ -926,7 +926,7 @@ struct DDQueueData {
 	// canceled inflight relocateData. Launch the relocation for the rd.
 	void launchQueuedWork(std::set<RelocateData, std::greater<RelocateData>> combined,
 	                      const DDEnabledState* ddEnabledState) {
-		int startedHere = 0;
+		[[maybe_unused]] int startedHere = 0;
 		double startTime = now();
 		// kick off relocators from items in the queue as need be
 		std::set<RelocateData, std::greater<RelocateData>>::iterator it = combined.begin();
@@ -1795,7 +1795,9 @@ ACTOR Future<Void> dataDistributionQueue(Database cx,
 						debug_setCheckRelocationDuration(false);
 					}
 				}
-				when(KeyRange done = waitNext(rangesComplete.getFuture())) { keysToLaunchFrom = done; }
+				when(KeyRange done = waitNext(rangesComplete.getFuture())) {
+					keysToLaunchFrom = done;
+				}
 				when(wait(recordMetrics)) {
 					Promise<int64_t> req;
 					getAverageShardBytes.send(req);
@@ -1838,7 +1840,9 @@ ACTOR Future<Void> dataDistributionQueue(Database cx,
 				}
 				when(wait(self.error.getFuture())) {} // Propagate errors from dataDistributionRelocator
 				when(wait(waitForAll(balancingFutures))) {}
-				when(Promise<int> r = waitNext(getUnhealthyRelocationCount)) { r.send(self.unhealthyRelocations); }
+				when(Promise<int> r = waitNext(getUnhealthyRelocationCount)) {
+					r.send(self.unhealthyRelocations);
+				}
 			}
 		}
 	} catch (Error& e) {

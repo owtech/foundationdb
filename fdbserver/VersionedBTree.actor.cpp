@@ -2425,7 +2425,9 @@ public:
 							self->remappedPages[r.originalPageID][r.version] = r.newPageID;
 						}
 					}
-					when(wait(remapRecoverActor)) { remapRecoverActor = Never(); }
+					when(wait(remapRecoverActor)) {
+						remapRecoverActor = Never();
+					}
 				}
 			} catch (Error& e) {
 				if (e.code() != error_code_end_of_stream) {
@@ -6531,7 +6533,7 @@ private:
 		debug_print(addPrefix(context, update->toString()));
 
 		if (REDWOOD_DEBUG) {
-			int c = 0;
+			[[maybe_unused]] int c = 0;
 			auto i = mBegin;
 			while (1) {
 				debug_printf("%s Mutation %4d '%s':  %s\n",
@@ -10387,7 +10389,9 @@ TEST_CASE(":/redwood/performance/extentQueue") {
 				if (entriesRead == m_extentQueue.numEntries)
 					break;
 			}
-			when(wait(queueRecoverActor)) { queueRecoverActor = Never(); }
+			when(wait(queueRecoverActor)) {
+				queueRecoverActor = Never();
+			}
 		}
 	} catch (Error& e) {
 		if (e.code() != error_code_end_of_stream) {

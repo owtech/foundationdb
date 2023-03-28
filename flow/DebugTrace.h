@@ -1,5 +1,5 @@
 /*
- * genericactors.actor.cpp
+ * DebugTrace.h
  *
  * This source file is part of the FoundationDB open source project
  *
@@ -18,18 +18,15 @@
  * limitations under the License.
  */
 
-#include "flow/flow.h"
-#include "fdbrpc/genericactors.actor.h" // Gets genericactors.actor.g.h indirectly
-#include "flow/network.h"
-#include "fdbrpc/simulator.h"
-#include "flow/actorcompiler.h"
+#ifndef FOUNDATIONDB_DEBUGTRACE_H
+#define FOUNDATIONDB_DEBUGTRACE_H
 
-ACTOR Future<Void> disableConnectionFailuresAfter(double time, std::string context) {
-	if (g_network->isSimulated()) {
-		wait(delayUntil(time));
-		g_simulator.connectionFailuresDisableDuration = 1e6;
-		g_simulator.speedUpSimulation = true;
-		TraceEvent(SevWarnAlways, ("DisableConnectionFailures_" + context).c_str());
-	}
-	return Void();
-}
+#define DebugTraceEvent(enable, ...) enable&& TraceEvent(__VA_ARGS__)
+
+constexpr bool debugLogTraces = false;
+#define DebugLogTraceEvent(...) DebugTraceEvent(debugLogTraces, __VA_ARGS__)
+
+constexpr bool debugRelocationTraces = false;
+#define DebugRelocationTraceEvent(...) DebugTraceEvent(debugRelocationTraces, __VA_ARGS__)
+
+#endif // FOUNDATIONDB_DEBUGTRACE_H

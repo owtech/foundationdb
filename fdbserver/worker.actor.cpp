@@ -26,6 +26,7 @@
 #include "fdbclient/GlobalConfig.actor.h"
 #include "fdbclient/ProcessInterface.h"
 #include "fdbclient/StorageServerInterface.h"
+#include "fdbclient/versions.h"
 #include "fdbserver/Knobs.h"
 #include "flow/ActorCollection.h"
 #include "flow/ProtocolVersion.h"
@@ -640,14 +641,30 @@ ACTOR Future<Void> registrationClient(
 					TraceEvent(SevWarn, "WorkerRegisterTimeout").detail("WaitTime", now() - startTime);
 				}
 			}
-			when(wait(ccInterface->onChange())) { break; }
-			when(wait(ddInterf->onChange())) { break; }
-			when(wait(rkInterf->onChange())) { break; }
-			when(wait(bmInterf->onChange())) { break; }
-			when(wait(ekpInterf->onChange())) { break; }
-			when(wait(degraded->onChange())) { break; }
-			when(wait(FlowTransport::transport().onIncompatibleChanged())) { break; }
-			when(wait(issues->onChange())) { break; }
+			when(wait(ccInterface->onChange())) {
+				break;
+			}
+			when(wait(ddInterf->onChange())) {
+				break;
+			}
+			when(wait(rkInterf->onChange())) {
+				break;
+			}
+			when(wait(bmInterf->onChange())) {
+				break;
+			}
+			when(wait(ekpInterf->onChange())) {
+				break;
+			}
+			when(wait(degraded->onChange())) {
+				break;
+			}
+			when(wait(FlowTransport::transport().onIncompatibleChanged())) {
+				break;
+			}
+			when(wait(issues->onChange())) {
+				break;
+			}
 		}
 	}
 }
@@ -973,6 +990,9 @@ ACTOR Future<Void> healthMonitor(Reference<AsyncVar<Optional<ClusterControllerFu
 					}
 					bool degradedPeer = false;
 					bool disconnectedPeer = false;
+
+					// If peer->lastLoggedTime == 0, we just started monitor this peer and haven't logged it once yet.
+					double lastLoggedTime = peer->lastLoggedTime <= 0.0 ? peer->lastConnectTime : peer->lastLoggedTime;
 					if ((workerLocation == Primary && addressInDbAndPrimaryDc(address, dbInfo)) ||
 					    (workerLocation == Remote && addressInDbAndRemoteDc(address, dbInfo))) {
 						// Monitors intra DC latencies between servers that in the primary or remote DC's transaction
@@ -990,7 +1010,7 @@ ACTOR Future<Void> healthMonitor(Reference<AsyncVar<Optional<ClusterControllerFu
 						if (disconnectedPeer || degradedPeer) {
 							TraceEvent("HealthMonitorDetectDegradedPeer")
 							    .detail("Peer", address)
-							    .detail("Elapsed", now() - peer->lastLoggedTime)
+							    .detail("Elapsed", now() - lastLoggedTime)
 							    .detail("Disconnected", disconnectedPeer)
 							    .detail("MinLatency", peer->pingLatencies.min())
 							    .detail("MaxLatency", peer->pingLatencies.max())
@@ -1021,7 +1041,7 @@ ACTOR Future<Void> healthMonitor(Reference<AsyncVar<Optional<ClusterControllerFu
 							TraceEvent("HealthMonitorDetectDegradedPeer")
 							    .detail("Peer", address)
 							    .detail("Satellite", true)
-							    .detail("Elapsed", now() - peer->lastLoggedTime)
+							    .detail("Elapsed", now() - lastLoggedTime)
 							    .detail("Disconnected", disconnectedPeer)
 							    .detail("MinLatency", peer->pingLatencies.min())
 							    .detail("MaxLatency", peer->pingLatencies.max())
@@ -1643,8 +1663,12 @@ ACTOR Future<Void> workerServer(Reference<IClusterConnectionRecord> connRecord,
 
 	filesClosed.add(stopping.getFuture());
 
-	initializeSystemMonitorMachineState(SystemMonitorMachineState(
-	    folder, locality.dcId(), locality.zoneId(), locality.machineId(), g_network->getLocalAddress().ip));
+	initializeSystemMonitorMachineState(SystemMonitorMachineState(folder,
+	                                                              locality.dcId(),
+	                                                              locality.zoneId(),
+	                                                              locality.machineId(),
+	                                                              g_network->getLocalAddress().ip,
+	                                                              FDB_VT_VERSION));
 
 	{
 		auto recruited = interf;

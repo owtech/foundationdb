@@ -82,6 +82,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( DESIRED_GET_MORE_DELAY,                              0.005 );
 	init( CONCURRENT_LOG_ROUTER_READS,                             5 ); if( randomize && BUGGIFY ) CONCURRENT_LOG_ROUTER_READS = 1;
 	init( LOG_ROUTER_PEEK_FROM_SATELLITES_PREFERRED,               1 ); if( randomize && BUGGIFY ) LOG_ROUTER_PEEK_FROM_SATELLITES_PREFERRED = 0;
+	init( LOG_ROUTER_PEEK_SWITCH_DC_TIME,                       60.0 );
 	init( DISK_QUEUE_ADAPTER_MIN_SWITCH_TIME,                    1.0 );
 	init( DISK_QUEUE_ADAPTER_MAX_SWITCH_TIME,                    5.0 );
 	init( TLOG_SPILL_REFERENCE_MAX_PEEK_MEMORY_BYTES,            2e9 ); if ( randomize && BUGGIFY ) TLOG_SPILL_REFERENCE_MAX_PEEK_MEMORY_BYTES = 2e6;
@@ -117,6 +118,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( PEEK_BATCHING_EMPTY_MSG,                             false ); if ( randomize && BUGGIFY ) PEEK_BATCHING_EMPTY_MSG = true;
 	init( PEEK_BATCHING_EMPTY_MSG_INTERVAL,                    0.001 ); if ( randomize && BUGGIFY ) PEEK_BATCHING_EMPTY_MSG_INTERVAL = 0.01;
 	init( POP_FROM_LOG_DELAY,                                      1 ); if ( randomize && BUGGIFY ) POP_FROM_LOG_DELAY = 0;
+	init( TLOG_PULL_ASYNC_DATA_WARNING_TIMEOUT_SECS,             120 );
 
 	// disk snapshot max timeout, to be put in TLog, storage and coordinator nodes
 	init( MAX_FORKED_PROCESS_OUTPUT,                            1024 );
@@ -282,6 +284,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( DD_TEAM_ZERO_SERVER_LEFT_LOG_DELAY,                    120 ); if( randomize && BUGGIFY ) DD_TEAM_ZERO_SERVER_LEFT_LOG_DELAY = 5;
 	init( DD_STORAGE_WIGGLE_PAUSE_THRESHOLD,                      10 ); if( randomize && BUGGIFY ) DD_STORAGE_WIGGLE_PAUSE_THRESHOLD = 1000;
 	init( DD_STORAGE_WIGGLE_STUCK_THRESHOLD,                      20 );
+	init( DD_BUILD_EXTRA_TEAMS_OVERRIDE,                          10 ); if( randomize && BUGGIFY ) DD_BUILD_EXTRA_TEAMS_OVERRIDE = 2;
 
 	// TeamRemover
 	init( TR_FLAG_DISABLE_MACHINE_TEAM_REMOVER,                false ); if( randomize && BUGGIFY ) TR_FLAG_DISABLE_MACHINE_TEAM_REMOVER = deterministicRandom()->random01() < 0.1 ? true : false; // false by default. disable the consistency check when it's true
@@ -361,11 +364,11 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 
 	// KeyValueStoreRocksDB
 	init( ROCKSDB_LEVEL_COMPACTION_DYNAMIC_LEVEL_BYTES,         true ); if( randomize && BUGGIFY )  ROCKSDB_LEVEL_COMPACTION_DYNAMIC_LEVEL_BYTES = false;
- 	init( ROCKSDB_SUGGEST_COMPACT_CLEAR_RANGE,                  true ); if( randomize && BUGGIFY )  ROCKSDB_SUGGEST_COMPACT_CLEAR_RANGE = false;
+	init( ROCKSDB_SUGGEST_COMPACT_CLEAR_RANGE,                 false );
 	init( ROCKSDB_THREAD_PROMISE_PRIORITY,                      7500 );
 	init( ROCKSDB_READER_THREAD_PRIORITY,                          0 );
  	init( ROCKSDB_WRITER_THREAD_PRIORITY,                          0 );
-	init( ROCKSDB_BACKGROUND_PARALLELISM,                          4 );
+	init( ROCKSDB_BACKGROUND_PARALLELISM,                          2 );
 	init( ROCKSDB_READ_PARALLELISM,                                4 );
 	// Use a smaller memtable in simulation to avoid OOMs.
 	int64_t memtableBytes = isSimulated ? 32 * 1024 : 512 * 1024 * 1024;
@@ -375,12 +378,15 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( ROCKSDB_PERIODIC_COMPACTION_SECONDS,                     0 );
 	init( ROCKSDB_PREFIX_LEN,                                      0 );
 	// If rocksdb block cache size is 0, the default 8MB is used.
-	int64_t blockCacheSize = isSimulated ? 0 : 1024 * 1024 * 1024 /* 1GB */;
+	int64_t blockCacheSize = isSimulated ? 16 * 1024 * 1024 : 2147483648 /* 2GB */;
 	init( ROCKSDB_BLOCK_CACHE_SIZE,                   blockCacheSize );
 	init( ROCKSDB_METRICS_DELAY,                                60.0 );
-	init( ROCKSDB_READ_VALUE_TIMEOUT,                            5.0 );
-	init( ROCKSDB_READ_VALUE_PREFIX_TIMEOUT,                     5.0 );
-	init( ROCKSDB_READ_RANGE_TIMEOUT,                            5.0 );
+	// ROCKSDB_READ_VALUE_TIMEOUT, ROCKSDB_READ_VALUE_PREFIX_TIMEOUT, ROCKSDB_READ_RANGE_TIMEOUT knobs:
+	// In simulation, increasing the read operation timeouts to 5 minutes, as some of the tests have
+	// very high load and single read thread cannot process all the load within the timeouts.
+	init( ROCKSDB_READ_VALUE_TIMEOUT,      isSimulated ? 300.0 : 5.0 );
+	init( ROCKSDB_READ_VALUE_PREFIX_TIMEOUT, isSimulated ? 300.0 : 5.0 );
+	init( ROCKSDB_READ_RANGE_TIMEOUT,      isSimulated ? 300.0 : 5.0 );
 	init( ROCKSDB_READ_QUEUE_WAIT,                               1.0 );
 	init( ROCKSDB_READ_QUEUE_HARD_MAX,                          1000 );
 	init( ROCKSDB_READ_QUEUE_SOFT_MAX,                           500 );
@@ -388,8 +394,8 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( ROCKSDB_FETCH_QUEUE_SOFT_MAX,                           50 );
 	init( ROCKSDB_HISTOGRAMS_SAMPLE_RATE,                      0.001 ); if( randomize && BUGGIFY ) ROCKSDB_HISTOGRAMS_SAMPLE_RATE = 0;
 	init( ROCKSDB_READ_RANGE_ITERATOR_REFRESH_TIME,             30.0 ); if( randomize && BUGGIFY ) ROCKSDB_READ_RANGE_ITERATOR_REFRESH_TIME = 0.1;
-	init( ROCKSDB_READ_RANGE_REUSE_ITERATORS,                   true ); if( randomize && BUGGIFY ) ROCKSDB_READ_RANGE_REUSE_ITERATORS = deterministicRandom()->coinflip() ? true : false;
-	init( ROCKSDB_READ_RANGE_REUSE_BOUNDED_ITERATORS,          false ); if( randomize && BUGGIFY ) ROCKSDB_READ_RANGE_REUSE_BOUNDED_ITERATORS = deterministicRandom()->coinflip() ? true : false;
+	init( ROCKSDB_READ_RANGE_REUSE_ITERATORS,                   true ); if( randomize && BUGGIFY ) ROCKSDB_READ_RANGE_REUSE_ITERATORS = deterministicRandom()->coinflip();
+	init( ROCKSDB_READ_RANGE_REUSE_BOUNDED_ITERATORS,          false ); if( randomize && BUGGIFY ) ROCKSDB_READ_RANGE_REUSE_BOUNDED_ITERATORS = deterministicRandom()->coinflip();
 	init( ROCKSDB_READ_RANGE_BOUNDED_ITERATORS_MAX_LIMIT,        200 );
 	// Set to 0 to disable rocksdb write rate limiting. Rate limiter unit: bytes per second.
 	init( ROCKSDB_WRITE_RATE_LIMITER_BYTES_PER_SEC,                0 );
@@ -398,9 +404,9 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( DEFAULT_FDB_ROCKSDB_COLUMN_FAMILY,                    "fdb");
 	init( ROCKSDB_DISABLE_AUTO_COMPACTIONS,                    false ); // RocksDB default
 
-	init( ROCKSDB_PERFCONTEXT_ENABLE,                          false ); if( randomize && BUGGIFY ) ROCKSDB_PERFCONTEXT_ENABLE = deterministicRandom()->coinflip() ? false : true;
-	init( ROCKSDB_PERFCONTEXT_SAMPLE_RATE, 					  0.0001 );
-	init( ROCKSDB_MAX_SUBCOMPACTIONS,                              2 );
+	init( ROCKSDB_PERFCONTEXT_ENABLE,                          false ); if( randomize && BUGGIFY ) ROCKSDB_PERFCONTEXT_ENABLE = deterministicRandom()->coinflip();
+	init( ROCKSDB_PERFCONTEXT_SAMPLE_RATE,                    0.0001 );
+	init( ROCKSDB_MAX_SUBCOMPACTIONS,                              0 );
 	init( ROCKSDB_SOFT_PENDING_COMPACT_BYTES_LIMIT,      64000000000 ); // 64GB, Rocksdb option, Writes will slow down.
 	init( ROCKSDB_HARD_PENDING_COMPACT_BYTES_LIMIT,     100000000000 ); // 100GB, Rocksdb option, Writes will stall.
 	init( ROCKSDB_CAN_COMMIT_COMPACT_BYTES_LIMIT,        50000000000 ); // 50GB, Commit waits.
@@ -409,9 +415,18 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( ROCKSDB_DISABLE_WAL_EXPERIMENTAL,                    false );
 	// If ROCKSDB_SINGLEKEY_DELETES_ON_CLEARRANGE is enabled, disable ROCKSDB_ENABLE_CLEAR_RANGE_EAGER_READS knob.
 	// These knobs have contrary functionality.
-	init( ROCKSDB_SINGLEKEY_DELETES_ON_CLEARRANGE,             false ); if( randomize && BUGGIFY ) ROCKSDB_SINGLEKEY_DELETES_ON_CLEARRANGE = deterministicRandom()->coinflip() ? false : true;
-	init( ROCKSDB_SINGLEKEY_DELETES_BYTES_LIMIT,              200000 ); // 200KB
-	init( ROCKSDB_ENABLE_CLEAR_RANGE_EAGER_READS,               true ); if( randomize && BUGGIFY ) ROCKSDB_ENABLE_CLEAR_RANGE_EAGER_READS = deterministicRandom()->coinflip() ? false : true;
+	init( ROCKSDB_SINGLEKEY_DELETES_ON_CLEARRANGE,              true );
+	init( ROCKSDB_SINGLEKEY_DELETES_BYTES_LIMIT,               10000 ); // 10KB
+	init( ROCKSDB_ENABLE_CLEAR_RANGE_EAGER_READS,              false );
+	// ROCKSDB_STATS_LEVEL=1 indicates rocksdb::StatsLevel::kExceptHistogramOrTimers
+	// Refer StatsLevel: https://github.com/facebook/rocksdb/blob/main/include/rocksdb/statistics.h#L594
+	init( ROCKSDB_STATS_LEVEL,                                     1 ); if( randomize && BUGGIFY ) ROCKSDB_STATS_LEVEL = deterministicRandom()->randomInt(0, 6);
+	init( ROCKSDB_ENABLE_COMPACT_ON_DELETION,                  false );
+	// CDCF: CompactOnDeletionCollectorFactory. The below 3 are parameters of the CompactOnDeletionCollectorFactory
+	// which controls the compaction on deleted data.
+	init( ROCKSDB_CDCF_SLIDING_WINDOW_SIZE,                      128 );
+	init( ROCKSDB_CDCF_DELETION_TRIGGER,                           1 );
+	init( ROCKSDB_CDCF_DELETION_RATIO,                             0 );
 	// Can commit will delay ROCKSDB_CAN_COMMIT_DELAY_ON_OVERLOAD seconds for
 	// ROCKSDB_CAN_COMMIT_DELAY_TIMES_ON_OVERLOAD times, if rocksdb overloaded.
 	// Set ROCKSDB_CAN_COMMIT_DELAY_TIMES_ON_OVERLOAD to 0, to disable
@@ -521,7 +536,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( BACKUP_TIMEOUT,                                        0.4 );
 	init( BACKUP_NOOP_POP_DELAY,                                 5.0 );
 	init( BACKUP_FILE_BLOCK_BYTES,                       1024 * 1024 );
-	init( BACKUP_LOCK_BYTES,                                     3e9 ); if(randomize && BUGGIFY) BACKUP_LOCK_BYTES = deterministicRandom()->randomInt(1024, 4096) * 15 * 1024;
+	init( BACKUP_LOCK_BYTES,                                     3e9 ); if(randomize && BUGGIFY) BACKUP_LOCK_BYTES = deterministicRandom()->randomInt(1024, 4096) * 256 * 1024;
 	init( BACKUP_UPLOAD_DELAY,                                  10.0 ); if(randomize && BUGGIFY) BACKUP_UPLOAD_DELAY = deterministicRandom()->random01() * 60;
 
 	//Cluster Controller
@@ -736,11 +751,13 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( RANGESTREAM_LIMIT_BYTES,                               2e6 ); if( randomize && BUGGIFY ) RANGESTREAM_LIMIT_BYTES = 1;
 	init( CHANGEFEEDSTREAM_LIMIT_BYTES,                          1e6 ); if( randomize && BUGGIFY ) CHANGEFEEDSTREAM_LIMIT_BYTES = 1;
 	init( BLOBWORKERSTATUSSTREAM_LIMIT_BYTES,                    1e4 ); if( randomize && BUGGIFY ) BLOBWORKERSTATUSSTREAM_LIMIT_BYTES = 1;
-	init( ENABLE_CLEAR_RANGE_EAGER_READS,                       true ); if( randomize && BUGGIFY ) ENABLE_CLEAR_RANGE_EAGER_READS = deterministicRandom()->coinflip() ? false : true;
+	init( ENABLE_CLEAR_RANGE_EAGER_READS,                       true ); if( randomize && BUGGIFY ) ENABLE_CLEAR_RANGE_EAGER_READS = deterministicRandom()->coinflip();
 	init( CHECKPOINT_TRANSFER_BLOCK_BYTES,                      40e6 );
 	init( QUICK_GET_VALUE_FALLBACK,                             true );
 	init( QUICK_GET_KEY_VALUES_FALLBACK,                        true );
-	init( MAX_PARALLEL_QUICK_GET_VALUE,                           50 ); if ( randomize && BUGGIFY ) MAX_PARALLEL_QUICK_GET_VALUE = deterministicRandom()->randomInt(1, 100);
+	init( STRICTLY_ENFORCE_BYTE_LIMIT,                          false); if( randomize && BUGGIFY ) STRICTLY_ENFORCE_BYTE_LIMIT = deterministicRandom()->coinflip();
+	init( FRACTION_INDEX_BYTELIMIT_PREFETCH,                      0.2); if( randomize && BUGGIFY ) FRACTION_INDEX_BYTELIMIT_PREFETCH = 0.01 + deterministicRandom()->random01();
+	init( MAX_PARALLEL_QUICK_GET_VALUE,                           10 ); if ( randomize && BUGGIFY ) MAX_PARALLEL_QUICK_GET_VALUE = deterministicRandom()->randomInt(1, 100);
 	init( QUICK_GET_KEY_VALUES_LIMIT,                           2000 );
 	init( QUICK_GET_KEY_VALUES_LIMIT_BYTES,                      1e7 );
 
