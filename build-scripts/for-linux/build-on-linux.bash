@@ -50,10 +50,13 @@ for fn in packages/*.deb; do echo "$fn:"; dpkg -I $fn; done
 
 ninja $PARALLEL_PRMS -k 0 documentation/package_html
 
-# make all-binaries archive
-# calculate filename
-BINS_FILENAME=`ls -1 packages/foundationdb-docs-* | sed s/-docs/-bins/`
+# make all-binaries and libraries archives
+# calculate filenames
+# TO DO: calculate the processor architecture instead of hardcoding x86_64
+BINS_FILENAME=`ls -1 packages/foundationdb-docs-* | sed s/-docs/-bins/ | sed s/.tgz/.x86_64.tgz/`
+LIBS_FILENAME=`ls -1 packages/foundationdb-docs-* | sed s/-docs/-libs/ | sed s/.tgz/.x86_64.tgz/`
 tar -I pigz -cvf $BINS_FILENAME -C packages/bin .
+tar -I pigz -cvf $LIBS_FILENAME -C packages/lib .
 
 popd
 
