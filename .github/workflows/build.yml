@@ -171,6 +171,43 @@ jobs:
         with:
           release_id: ${{ needs.calc_ver.outputs.release_id }}
 
+  publish_images:
+    needs: [calc_ver, build]
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_REGISTRY: ghcr.io
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Download the foundationdb distro
+        uses: actions/download-artifact@v3
+        with:
+          path: ${{github.workspace}}/bld/download
+
+      - name: Listing the downloaded artifacts
+        # This is where you will update the personal access token to GITHUB_TOKEN
+        run: ls -Rl ${{github.workspace}}/bld/download
+
+      - name: Make a normal distro directory from downloaded artifacts
+        shell: bash
+        run: |
+          mkdir -p ${{github.workspace}}/bld/linux/packages
+          mv -v ${{github.workspace}}/bld/download/*/* ${{github.workspace}}/bld/linux/packages/
+
+      - name: Log in to registry
+        # This is where you will update the personal access token to GITHUB_TOKEN
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | podman login $DOCKER_REGISTRY -u $ --password-stdin
+
+      - name: Build and push images
+        shell: bash
+        run: |
+          ${{github.workspace}}/packaging/docker/build-images-for-owtech.bash \
+            ${{needs.calc_ver.outputs.full_ver}} \
+            ${{github.workspace}}/bld/linux/packages \
+            ghcr.io/${{ github.repository_owner }}
+
   tests:
     needs: [calc_ver, build]
     runs-on: ubuntu-latest
