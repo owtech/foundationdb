@@ -34,9 +34,6 @@ APP_PRMS="\
 [ ! -e /usr/lib64/libcrypto.a -a -e /opt/openssl/lib/libcrypto.a ] && \
   APP_PRMS="$APP_PRMS -DOPENSSL_ROOT_DIR=/opt/openssl"
 
-# find libatomic
-source $BASE_DIR/build-find-libatomic.bash
-
 echo "env CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS . $SRC_DIR"
 env CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS . $SRC_DIR
 
