@@ -173,6 +173,7 @@ jobs:
 
   publish_images:
     needs: [calc_ver, build]
+    if: ${{ needs.calc_ver.outputs.release_flag == 'ON' }}
     runs-on: ubuntu-latest
     env:
       DOCKER_REGISTRY: ghcr.io
