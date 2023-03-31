@@ -92,7 +92,6 @@ jobs:
   test_deploy:
     needs: [calc_ver, build]
     runs-on: ubuntu-latest
-    env:
 
     steps:
       - name: Checkout
@@ -103,17 +102,15 @@ jobs:
         with:
           path: ${{github.workspace}}/bld/download
 
-      - name: Listing the downloaded artifacts
-        run: ls -Rl ${{github.workspace}}/bld/download
-
       - name: Make a normal distro directory from the downloaded artifacts
         shell: bash
         run: |
+          ls -Rl ${{github.workspace}}/bld/download
           mkdir -p ${{github.workspace}}/bld/linux/packages
           mv -v ${{github.workspace}}/bld/download/*/* ${{github.workspace}}/bld/linux/packages/
 
       - name: Run tests
-        shel: bash
+        shell: bash
         run: ${{github.workspace}}/build-scripts/for-linux/test-deploy.bash ${{ needs.calc_ver.outputs.full_ver }} ${{github.workspace}}/bld/linux/packages
 
   release:
