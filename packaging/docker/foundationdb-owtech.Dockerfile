@@ -42,6 +42,7 @@ RUN OS_SPECIFIC_PACKAGES="" \
     hostname \
     jq \
     less \
+    libatomic \
     libubsan \
     lsof \
     net-tools \
