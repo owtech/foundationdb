@@ -389,11 +389,11 @@ function(prepare_binding_test_files build_directory target_name target_dependenc
 
   set(generated_binding_files python/fdb/fdboptions.py)
   if(WITH_JAVA_BINDING)
-    if(NOT FDB_RELEASE)
-      set(not_fdb_release_string "-SNAPSHOT")
-    else()
+    #if(NOT FDB_RELEASE)
+    #  set(not_fdb_release_string "-SNAPSHOT")
+    #else()
       set(not_fdb_release_string "")
-    endif()
+    #endif()
     add_custom_command(
       TARGET ${target_name}
       COMMAND ${CMAKE_COMMAND} -E copy
