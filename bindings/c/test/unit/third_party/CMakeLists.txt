@@ -6,7 +6,7 @@ ExternalProject_Add(
     doctest_proj
     PREFIX ${CMAKE_BINARY_DIR}/doctest
     GIT_REPOSITORY https://github.com/onqtam/doctest.git
-    GIT_TAG 7b9885133108ae301ddd16e2651320f54cafeba7 # v2.4.8
+    GIT_TAG b7c21ec5ceeadb4951b00396fc1e4642dd347e5f # v2.4.9
     TIMEOUT 10
     CONFIGURE_COMMAND ""
     BUILD_COMMAND ""
