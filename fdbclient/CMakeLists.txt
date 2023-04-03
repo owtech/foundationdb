@@ -73,6 +73,9 @@ target_include_directories(fdbclient PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/versions.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/include/fdbclient/versions.h)
 add_dependencies(fdbclient fdboptions)
 target_link_libraries(fdbclient PUBLIC fdbrpc msgpack PRIVATE rapidxml)
+if(WITH_TLS)
+  target_link_libraries(fdbclient PRIVATE OpenSSL::Crypto)
+endif()
 
 # Create a separate fdbclient library with sampling enabled. This lets
 # fdbserver retain sampling functionality in client code while disabling
