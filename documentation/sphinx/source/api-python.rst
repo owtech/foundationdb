@@ -206,7 +206,6 @@ After importing the ``fdb`` module and selecting an API version, you probably wa
 
        |option-tls-password|
 
-
     .. method :: fdb.options.set_disable_local_client()
 
       |option-set-disable-local-client|

@@ -21,6 +21,7 @@
 #include <cinttypes>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "contrib/fmt-8.1.1/include/fmt/format.h"
 #include "fdbrpc/simulator.h"
@@ -41,7 +42,6 @@
 #include "fdbrpc/AsyncFileChaos.actor.h"
 #include "flow/crc32c.h"
 #include "fdbrpc/TraceFileIO.h"
-#include "flow/FaultInjection.h"
 #include "flow/flow.h"
 #include "flow/genericactors.actor.h"
 #include "flow/network.h"
@@ -50,6 +50,7 @@
 #include "fdbrpc/Replication.h"
 #include "fdbrpc/ReplicationUtils.h"
 #include "fdbrpc/AsyncFileWriteChecker.h"
+#include "fdbrpc/genericactors.actor.h"
 #include "flow/FaultInjection.h"
 #include "flow/actorcompiler.h" // This must be the last #include.
 
@@ -139,6 +140,10 @@ struct SimClogging {
 		if (!g_simulator.speedUpSimulation && !stableConnection && clogPairUntil.count(pair))
 			t = std::max(t, clogPairUntil[pair]);
 
+		auto p = std::make_pair(from, to);
+		if (!g_simulator.speedUpSimulation && !stableConnection && clogProcessPairUntil.count(p))
+			t = std::max(t, clogProcessPairUntil[p]);
+
 		if (!g_simulator.speedUpSimulation && !stableConnection && clogRecvUntil.count(to.ip))
 			t = std::max(t, clogRecvUntil[to.ip]);
 
@@ -149,6 +154,20 @@ struct SimClogging {
 		auto& u = clogPairUntil[std::make_pair(from, to)];
 		u = std::max(u, now() + t);
 	}
+
+	void unclogPair(const IPAddress& from, const IPAddress& to) {
+		auto pair = std::make_pair(from, to);
+		clogPairUntil.erase(pair);
+		clogPairLatency.erase(pair);
+	}
+
+	// Clog a pair of processes until a time. This is more fine-grained than
+	// the IPAddress based one.
+	void clogPairFor(const NetworkAddress& from, const NetworkAddress& to, double t) {
+		auto& u = clogProcessPairUntil[std::make_pair(from, to)];
+		u = std::max(u, now() + t);
+	}
+
 	void clogSendFor(const IPAddress& from, double t) {
 		auto& u = clogSendUntil[from];
 		u = std::max(u, now() + t);
@@ -168,6 +187,7 @@ private:
 	std::map<IPAddress, double> clogSendUntil, clogRecvUntil;
 	std::map<std::pair<IPAddress, IPAddress>, double> clogPairUntil;
 	std::map<std::pair<IPAddress, IPAddress>, double> clogPairLatency;
+	std::map<std::pair<NetworkAddress, NetworkAddress>, double> clogProcessPairUntil;
 	double halfLatency() const {
 		double a = deterministicRandom()->random01();
 		const double pFast = 0.999;
@@ -502,9 +522,7 @@ public:
 		}
 
 		if (openCount == 2000) {
-			TraceEvent(SevWarnAlways, "DisableConnectionFailures_TooManyFiles").log();
-			g_simulator.speedUpSimulation = true;
-			g_simulator.connectionFailuresDisableDuration = 1e6;
+			disableConnectionFailures("TooManyFiles");
 		}
 
 		// Filesystems on average these days seem to start to have limits of around 255 characters for a
@@ -2050,6 +2068,12 @@ public:
 		TraceEvent("CloggingPair").detail("From", from).detail("To", to).detail("Seconds", seconds);
 		g_clogging.clogPairFor(from, to, seconds);
 	}
+
+	void unclogPair(const IPAddress& from, const IPAddress& to) override {
+		TraceEvent("UncloggingPair").detail("From", from).detail("To", to);
+		g_clogging.unclogPair(from, to);
+	}
+
 	std::vector<ProcessInfo*> getAllProcesses() const override {
 		std::vector<ProcessInfo*> processes;
 		for (auto& c : machines) {
@@ -2437,7 +2461,8 @@ Future<Reference<IUDPSocket>> Sim2::createUDPSocket(bool isV6) {
 void startNewSimulator(bool printSimTime) {
 	ASSERT(!g_network);
 	g_network = g_pSimulator = new Sim2(printSimTime);
-	g_simulator.connectionFailuresDisableDuration = deterministicRandom()->random01() < 0.5 ? 0 : 1e6;
+	g_simulator.connectionFailuresDisableDuration =
+	    deterministicRandom()->coinflip() ? 0 : DISABLE_CONNECTION_FAILURE_FOREVER;
 }
 
 ACTOR void doReboot(ISimulator::ProcessInfo* p, ISimulator::KillType kt) {
@@ -2511,7 +2536,7 @@ Future<Void> waitUntilDiskReady(Reference<DiskParameters> diskParameters, int64_
 
 	if (diskParameters->nextOperation < now())
 		diskParameters->nextOperation = now();
-	diskParameters->nextOperation += (1.0 / diskParameters->iops) + (size / diskParameters->bandwidth);
+	diskParameters->nextOperation += (1.0 / diskParameters->iops) + (1.0 * size / diskParameters->bandwidth);
 
 	double randomLatency;
 	if (sync) {
@@ -2520,6 +2545,22 @@ Future<Void> waitUntilDiskReady(Reference<DiskParameters> diskParameters, int64_
 		randomLatency = 10 * deterministicRandom()->random01() / diskParameters->iops;
 
 	return delayUntil(diskParameters->nextOperation + randomLatency);
+}
+
+void enableConnectionFailures(std::string const& context) {
+	if (g_network->isSimulated()) {
+		g_simulator.connectionFailuresDisableDuration = 0;
+		g_simulator.speedUpSimulation = false;
+		TraceEvent(SevWarnAlways, ("EnableConnectionFailures_" + context).c_str());
+	}
+}
+
+void disableConnectionFailures(std::string const& context) {
+	if (g_network->isSimulated()) {
+		g_simulator.connectionFailuresDisableDuration = DISABLE_CONNECTION_FAILURE_FOREVER;
+		g_simulator.speedUpSimulation = true;
+		TraceEvent(SevWarnAlways, ("DisableConnectionFailures_" + context).c_str());
+	}
 }
 
 #if defined(_WIN32)

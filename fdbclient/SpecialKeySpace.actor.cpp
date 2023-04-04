@@ -320,7 +320,9 @@ ACTOR Future<RangeResult> SpecialKeySpace::checkRYWValid(SpecialKeySpace* sks,
 		         wait(SpecialKeySpace::getRangeAggregationActor(sks, ryw, begin, end, limits, reverse))) {
 			return result;
 		}
-		when(wait(ryw->resetFuture())) { throw internal_error(); }
+		when(wait(ryw->resetFuture())) {
+			throw internal_error();
+		}
 	}
 }
 
@@ -973,7 +975,7 @@ ACTOR Future<bool> checkExclusion(Database db,
 	state int ssTotalCount = 0;
 	state int ssExcludedCount = 0;
 
-	state std::unordered_set<std::string> diskLocalities();
+	state std::unordered_set<std::string> diskLocalities;
 	state int64_t totalKvStoreFreeBytes = 0;
 	state int64_t totalKvStoreUsedBytes = 0;
 	state int64_t totalKvStoreUsedBytesNonExcluded = 0;

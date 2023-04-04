@@ -3021,18 +3021,23 @@ public:
 			}
 		}
 
+		auto deterministicDecendingOrder = [](const std::pair<int, NetworkAddress>& a,
+		                                      const std::pair<int, NetworkAddress>& b) -> bool {
+			return a.first > b.first || (a.first == b.first && a.second < b.second);
+		};
+
 		// Sort degraded peers based on the number of workers complaining about it.
 		std::vector<std::pair<int, NetworkAddress>> count2DegradedPeer;
 		for (const auto& [degradedPeer, complainers] : degradedLinkDst2Src) {
 			count2DegradedPeer.push_back({ complainers.size(), degradedPeer });
 		}
-		std::sort(count2DegradedPeer.begin(), count2DegradedPeer.end(), std::greater<>());
+		std::sort(count2DegradedPeer.begin(), count2DegradedPeer.end(), deterministicDecendingOrder);
 
 		std::vector<std::pair<int, NetworkAddress>> count2DisconnectedPeer;
 		for (const auto& [disconnectedPeer, complainers] : disconnectedLinkDst2Src) {
 			count2DisconnectedPeer.push_back({ complainers.size(), disconnectedPeer });
 		}
-		std::sort(count2DisconnectedPeer.begin(), count2DisconnectedPeer.end(), std::greater<>());
+		std::sort(count2DisconnectedPeer.begin(), count2DisconnectedPeer.end(), deterministicDecendingOrder);
 
 		// Go through all reported degraded peers by decreasing order of the number of complainers. For a particular
 		// degraded peer, if a complainer has already be considered as degraded, we skip the current examine degraded
@@ -3099,14 +3104,20 @@ public:
 	// Whether the transaction system (in primary DC if in HA setting) contains degraded servers.
 	bool transactionSystemContainsDegradedServers() {
 		const ServerDBInfo& dbi = db.serverInfo->get();
-		auto transactionWorkerInList = [&dbi](const std::unordered_set<NetworkAddress>& serverList) -> bool {
+		auto transactionWorkerInList = [&dbi](const std::unordered_set<NetworkAddress>& serverList,
+		                                      bool skipSatellite) -> bool {
 			for (const auto& server : serverList) {
 				if (dbi.master.addresses().contains(server)) {
 					return true;
 				}
 
 				for (const auto& logSet : dbi.logSystemConfig.tLogs) {
-					if (!logSet.isLocal || logSet.locality == tagLocalitySatellite) {
+					if (!logSet.isLocal) {
+						// We don't check server degradation for remote TLogs since it is not on the transaction system
+						// critical path.
+						continue;
+					}
+					if (skipSatellite && logSet.locality == tagLocalitySatellite) {
 						continue;
 					}
 					for (const auto& tlog : logSet.tLogs) {
@@ -3138,8 +3149,10 @@ public:
 			return false;
 		};
 
-		return transactionWorkerInList(degradationInfo.degradedServers) ||
-		       transactionWorkerInList(degradationInfo.disconnectedServers);
+		// Check if transaction system contains degraded/disconnected servers. For satellite, we only check for
+		// disconnection since the latency between prmary and satellite is across WAN and may not be very stable.
+		return transactionWorkerInList(degradationInfo.degradedServers, /*skipSatellite=*/true) ||
+		       transactionWorkerInList(degradationInfo.disconnectedServers, /*skipSatellite=*/false);
 	}
 
 	// Whether transaction system in the remote DC, e.g. log router and tlogs in the remote DC, contains degraded
