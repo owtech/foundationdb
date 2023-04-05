@@ -12,7 +12,7 @@ install_destinations(TGZ
   ETC etc/foundationdb
   LOG log/foundationdb
   DATA lib/foundationdb)
-copy_install_destinations(TGZ VERSIONED PREFIX "usr/lib/foundationdb-${FDB_VERSION}${FDB_BUILDTIME_STRING}/")
+copy_install_destinations(TGZ VERSIONED PREFIX "usr/lib/foundationdb-${FDB_VERSION}/")
 install_destinations(DEB
   BIN usr/bin
   SBIN usr/sbin
@@ -103,6 +103,7 @@ set(CPACK_PACKAGE_CONTACT "fdb-dist@apple.com")
 set(CPACK_PACKAGE_VERSION_MAJOR ${FDB_MAJOR})
 set(CPACK_PACKAGE_VERSION_MINOR ${FDB_MINOR})
 set(CPACK_PACKAGE_VERSION_PATCH ${FDB_PATCH})
+set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${FDB_VERSION}-${CPACK_SYSTEM_NAME}")
 set(CPACK_OUTPUT_FILE_PREFIX "${CMAKE_BINARY_DIR}/packages")
 set(CPACK_PACKAGE_DESCRIPTION_FILE ${CMAKE_SOURCE_DIR}/packaging/description)
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "FoundationDB is a scalable, fault-tolerant, ordered key-value store with full ACID transactions.")
@@ -265,8 +266,8 @@ set(CPACK_DEBIAN_SERVER-VERSIONED_PACKAGE_CONTROL_EXTRA
 ################################################################################
 
 set(CPACK_ARCHIVE_COMPONENT_INSTALL ON)
-set(CPACK_ARCHIVE_CLIENTS-TGZ_FILE_NAME "foundationdb-clients_${FDB_VERSION}${package_version_postfix}.${CMAKE_SYSTEM_PROCESSOR}")
-set(CPACK_ARCHIVE_SERVER-TGZ_FILE_NAME "foundationdb-server_${FDB_VERSION}${package_version_postfix}.${CMAKE_SYSTEM_PROCESSOR}")
+set(CPACK_ARCHIVE_CLIENTS-TGZ_FILE_NAME "${deb-clients-filename}.${CMAKE_SYSTEM_PROCESSOR}")
+set(CPACK_ARCHIVE_SERVER-TGZ_FILE_NAME "${deb-server-filename}.${CMAKE_SYSTEM_PROCESSOR}")
 
 ################################################################################
 # Server configuration
@@ -292,10 +293,10 @@ if(NOT WIN32)
     RENAME "foundationdb"
     COMPONENT server-deb)
   install(FILES ${CMAKE_SOURCE_DIR}/packaging/rpm/foundationdb.service
-    DESTINATION "usr/lib/foundationdb-${FDB_VERSION}${FDB_BUILDTIME_STRING}/lib/systemd/system"
+    DESTINATION "usr/lib/foundationdb-${FDB_VERSION}/lib/systemd/system"
     COMPONENT server-versioned)
   install(PROGRAMS ${CMAKE_SOURCE_DIR}/packaging/deb/foundationdb-init
-    DESTINATION "usr/lib/foundationdb-${FDB_VERSION}${FDB_BUILDTIME_STRING}/etc/init.d"
+    DESTINATION "usr/lib/foundationdb-${FDB_VERSION}/etc/init.d"
     RENAME "foundationdb"
     COMPONENT server-versioned)
 endif()
