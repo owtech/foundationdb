@@ -392,11 +392,6 @@ func (o DatabaseOptions) SetTransactionIncludePortInAddress() error {
 	return o.setOpt(505, nil)
 }
 
-// Set a random idempotency id for all transactions. See the transaction option description for more information.
-func (o DatabaseOptions) SetTransactionAutomaticIdempotency() error {
-	return o.setOpt(506, nil)
-}
-
 // Allows ``get`` operations to read from sections of keyspace that have become unreadable because of versionstamp operations. This sets the ``bypass_unreadable`` option of each transaction created by this database. See the transaction option description for more information.
 func (o DatabaseOptions) SetTransactionBypassUnreadable() error {
 	return o.setOpt(700, nil)
@@ -556,18 +551,6 @@ func (o TransactionOptions) SetSizeLimit(param int64) error {
 	return o.setOpt(503, int64ToBytes(param))
 }
 
-// Associate this transaction with this ID for the purpose of checking whether or not this transaction has already committed. Must be at least 16 bytes and less than 256 bytes.
-//
-// Parameter: Unique ID
-func (o TransactionOptions) SetIdempotencyId(param string) error {
-	return o.setOpt(504, []byte(param))
-}
-
-// Automatically assign a random 16 byte idempotency id for this transaction. Prevents commits from failing with ``commit_unknown_result``. WARNING: If you are also using the multiversion client or transaction timeouts, if either cluster_version_changed or transaction_timed_out was thrown during a commit, then that commit may have already succeeded or may succeed in the future.
-func (o TransactionOptions) SetAutomaticIdempotency() error {
-	return o.setOpt(505, nil)
-}
-
 // Snapshot read operations will see the results of writes done in the same transaction. This is the default behavior.
 func (o TransactionOptions) SetSnapshotRywEnable() error {
 	return o.setOpt(600, nil)
@@ -665,12 +648,12 @@ const (
 	StreamingModeWantAll StreamingMode = -1
 
 	// The default. The client doesn't know how much of the range it is likely
-	// to used and wants different performance concerns to be balanced. Only a
-	// small portion of data is transferred to the client initially (in order to
-	// minimize costs if the client doesn't read the entire range), and as the
-	// caller iterates over more items in the range larger batches will be
-	// transferred in order to minimize latency. After enough iterations, the
-	// iterator mode will eventually reach the same byte limit as “WANT_ALL“
+	// to used and wants different performance concerns to be balanced.
+	// Only a small portion of data is transferred to the client initially (in
+	// order to minimize costs if the client doesn't read the entire range), and
+	// as the caller iterates over more items in the range larger batches will
+	// be transferred in order to minimize latency. After enough iterations,
+	// the iterator mode will eventually reach the same byte limit as “WANT_ALL“
 	StreamingModeIterator StreamingMode = 0
 
 	// Infrequently used. The client has passed a specific row limit and wants
@@ -680,8 +663,8 @@ const (
 	// mode is used.
 	StreamingModeExact StreamingMode = 1
 
-	// Infrequently used. Transfer data in batches small enough to not be much
-	// more expensive than reading individual rows, to minimize cost if
+	// Infrequently used. Transfer data in batches small enough to not be
+	// much more expensive than reading individual rows, to minimize cost if
 	// iteration stops early.
 	StreamingModeSmall StreamingMode = 2
 
@@ -689,16 +672,16 @@ const (
 	// large.
 	StreamingModeMedium StreamingMode = 3
 
-	// Infrequently used. Transfer data in batches large enough to be, in a
-	// high-concurrency environment, nearly as efficient as possible. If the
-	// client stops iteration early, some disk and network bandwidth may be
-	// wasted. The batch size may still be too small to allow a single client to
-	// get high throughput from the database, so if that is what you need
+	// Infrequently used. Transfer data in batches large enough to be,
+	// in a high-concurrency environment, nearly as efficient as possible.
+	// If the client stops iteration early, some disk and network bandwidth may
+	// be wasted. The batch size may still be too small to allow a single client
+	// to get high throughput from the database, so if that is what you need
 	// consider the SERIAL StreamingMode.
 	StreamingModeLarge StreamingMode = 4
 
-	// Transfer data in batches large enough that an individual client can get
-	// reasonable read bandwidth from the database. If the client stops
+	// Transfer data in batches large enough that an individual client can
+	// get reasonable read bandwidth from the database. If the client stops
 	// iteration early, considerable disk and network bandwidth may be wasted.
 	StreamingModeSerial StreamingMode = 5
 )

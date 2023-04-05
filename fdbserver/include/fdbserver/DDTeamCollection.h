@@ -146,6 +146,7 @@ public:
 	LocalityData locality;
 	ServerStatus()
 	  : isWiggling(false), isFailed(true), isUndesired(false), isWrongConfiguration(false), initialized(false) {}
+	ServerStatus(LocalityData const& locality) : ServerStatus(false, false, false, locality) {}
 	ServerStatus(bool isFailed, bool isUndesired, bool isWiggling, LocalityData const& locality)
 	  : isWiggling(isWiggling), isFailed(isFailed), isUndesired(isUndesired), isWrongConfiguration(false),
 	    initialized(true), locality(locality) {}
@@ -288,6 +289,10 @@ class DDTeamCollection : public ReferenceCounted<DDTeamCollection> {
 	// Randomly choose one machine team that has chosenServer and has the correct size
 	// When configuration is changed, we may have machine teams with old storageTeamSize
 	Reference<TCMachineTeamInfo> findOneRandomMachineTeam(TCServerInfo const& chosenServer) const;
+
+	// Returns a server team from given "servers", empty team if not found.
+	// When "wantHealthy" is true, only return if the team is healthy.
+	Optional<Reference<IDataDistributionTeam>> findTeamFromServers(const std::vector<UID>& servers, bool wantHealthy);
 
 	Future<Void> logOnCompletion(Future<Void> signal);
 
@@ -467,6 +472,8 @@ class DDTeamCollection : public ReferenceCounted<DDTeamCollection> {
 	                               DDEnabledState const& ddEnabledState,
 	                               bool recruitTss,
 	                               Reference<TSSPairState> tssState);
+
+	Future<UID> getClusterId();
 
 	// return the next ServerID in storageWiggler
 	Future<UID> getNextWigglingServerID();

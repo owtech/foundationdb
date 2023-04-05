@@ -1464,7 +1464,9 @@ ACTOR Future<Void> fetchShardMetricsList_impl(DataDistributionTracker* self, Get
 ACTOR Future<Void> fetchShardMetricsList(DataDistributionTracker* self, GetMetricsListRequest req) {
 	choose {
 		when(wait(fetchShardMetricsList_impl(self, req))) {}
-		when(wait(delay(SERVER_KNOBS->DD_SHARD_METRICS_TIMEOUT))) { req.reply.sendError(timed_out()); }
+		when(wait(delay(SERVER_KNOBS->DD_SHARD_METRICS_TIMEOUT))) {
+			req.reply.sendError(timed_out());
+		}
 	}
 	return Void();
 }
@@ -1499,7 +1501,7 @@ ACTOR Future<Void> dataDistributionTracker(Reference<InitialDataDistribution> in
 	state Reference<EventCacheHolder> ddTrackerStatsEventHolder = makeReference<EventCacheHolder>("DDTrackerStats");
 	try {
 		wait(trackInitialShards(&self, initData));
-		initData.clear(); // we can release initData after initialization
+		initData.clear(); // Release reference count.
 
 		state PromiseStream<TenantCacheTenantCreated> tenantCreationSignal;
 		if (self.ddTenantCache.present()) {
@@ -1507,7 +1509,9 @@ ACTOR Future<Void> dataDistributionTracker(Reference<InitialDataDistribution> in
 		}
 
 		loop choose {
-			when(Promise<int64_t> req = waitNext(getAverageShardBytes)) { req.send(self.getAverageShardBytes()); }
+			when(Promise<int64_t> req = waitNext(getAverageShardBytes)) {
+				req.send(self.getAverageShardBytes());
+			}
 			when(wait(loggingTrigger)) {
 				TraceEvent("DDTrackerStats", self.distributorId)
 				    .detail("Shards", self.shards->size())
@@ -1615,9 +1619,11 @@ void PhysicalShardCollection::updatekeyRangePhysicalShardIDMap(KeyRange keyRange
 // At beginning of the transition from the initial state without physical shard notion
 // to the physical shard aware state, the physicalShard set only contains one element which is anonymousShardId[0]
 // After a period in the transition, the physicalShard set of the team contains some meaningful physicalShardIDs
-Optional<uint64_t> PhysicalShardCollection::trySelectAvailablePhysicalShardFor(ShardsAffectedByTeamFailure::Team team,
-                                                                               StorageMetrics const& moveInMetrics,
-                                                                               uint64_t debugID) {
+Optional<uint64_t> PhysicalShardCollection::trySelectAvailablePhysicalShardFor(
+    ShardsAffectedByTeamFailure::Team team,
+    StorageMetrics const& moveInMetrics,
+    const std::unordered_set<uint64_t>& excludedPhysicalShards,
+    uint64_t debugID) {
 	ASSERT(team.servers.size() > 0);
 	// Case: The team is not tracked in the mapping (teamPhysicalShardIDs)
 	if (teamPhysicalShardIDs.count(team) == 0) {
@@ -1637,6 +1643,9 @@ Optional<uint64_t> PhysicalShardCollection::trySelectAvailablePhysicalShardFor(S
 		    .detail("Bytes", physicalShardInstances[physicalShardID].metrics.bytes)
 		    .detail("BelongTeam", team.toString())
 		    .detail("DebugID", debugID);*/
+		if (excludedPhysicalShards.find(physicalShardID) != excludedPhysicalShards.end()) {
+			continue;
+		}
 		if (!checkPhysicalShardAvailable(physicalShardID, moveInMetrics)) {
 			continue;
 		}
@@ -1765,26 +1774,8 @@ InOverSizePhysicalShard PhysicalShardCollection::isInOverSizePhysicalShard(KeyRa
 	return InOverSizePhysicalShard::False;
 }
 
-uint64_t PhysicalShardCollection::determinePhysicalShardIDGivenPrimaryTeam(
-    ShardsAffectedByTeamFailure::Team primaryTeam,
-    StorageMetrics const& metrics,
-    bool forceToUseNewPhysicalShard,
-    uint64_t debugID) {
-	ASSERT(SERVER_KNOBS->SHARD_ENCODE_LOCATION_METADATA);
-	ASSERT(SERVER_KNOBS->ENABLE_DD_PHYSICAL_SHARD);
-	ASSERT(primaryTeam.primary == true);
-	if (forceToUseNewPhysicalShard) {
-		return generateNewPhysicalShardID(debugID);
-	}
-	Optional<uint64_t> physicalShardIDFetch = trySelectAvailablePhysicalShardFor(primaryTeam, metrics, debugID);
-	if (!physicalShardIDFetch.present()) {
-		return generateNewPhysicalShardID(debugID);
-	}
-	return physicalShardIDFetch.get();
-}
-
 // May return a problematic remote team
-Optional<ShardsAffectedByTeamFailure::Team> PhysicalShardCollection::tryGetAvailableRemoteTeamWith(
+std::pair<Optional<ShardsAffectedByTeamFailure::Team>, bool> PhysicalShardCollection::tryGetAvailableRemoteTeamWith(
     uint64_t inputPhysicalShardID,
     StorageMetrics const& moveInMetrics,
     uint64_t debugID) {
@@ -1792,10 +1783,10 @@ Optional<ShardsAffectedByTeamFailure::Team> PhysicalShardCollection::tryGetAvail
 	ASSERT(SERVER_KNOBS->ENABLE_DD_PHYSICAL_SHARD);
 	ASSERT(inputPhysicalShardID != anonymousShardId.first() && inputPhysicalShardID != UID().first());
 	if (physicalShardInstances.count(inputPhysicalShardID) == 0) {
-		return Optional<ShardsAffectedByTeamFailure::Team>();
+		return { Optional<ShardsAffectedByTeamFailure::Team>(), true };
 	}
 	if (!checkPhysicalShardAvailable(inputPhysicalShardID, moveInMetrics)) {
-		return Optional<ShardsAffectedByTeamFailure::Team>();
+		return { Optional<ShardsAffectedByTeamFailure::Team>(), false };
 	}
 	for (auto team : physicalShardInstances[inputPhysicalShardID].teams) {
 		if (team.primary == false) {
@@ -1805,10 +1796,12 @@ Optional<ShardsAffectedByTeamFailure::Team> PhysicalShardCollection::tryGetAvail
 			    .detail("TeamSize", team.servers.size())
 			    .detail("PhysicalShardsOfTeam", convertIDsToString(teamPhysicalShardIDs[team]))
 			    .detail("DebugID", debugID);*/
-			return team;
+			return { team, true };
 		}
 	}
-	UNREACHABLE();
+	// In this case, the physical shard may not be populated in the remote region yet, e.g., we are making a
+	// configuration change to turn a single region cluster into HA mode.
+	return { Optional<ShardsAffectedByTeamFailure::Team>(), true };
 }
 
 // The update of PhysicalShardToTeams, Collection, keyRangePhysicalShardIDMap should be atomic
@@ -2079,6 +2072,10 @@ void PhysicalShardCollection::logPhysicalShardCollection() {
 		e.detail("MaxPhysicalShard", std::to_string(maxPhysicalShardID) + ":" + std::to_string(maxPhysicalShardBytes));
 		e.detail("MinPhysicalShard", std::to_string(minPhysicalShardID) + ":" + std::to_string(minPhysicalShardBytes));
 	}
+}
+
+bool PhysicalShardCollection::physicalShardExists(uint64_t physicalShardID) {
+	return physicalShardInstances.find(physicalShardID) != physicalShardInstances.end();
 }
 
 // FIXME: complete this test with non-empty range

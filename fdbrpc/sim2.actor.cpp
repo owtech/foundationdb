@@ -39,6 +39,7 @@
 #include "flow/IAsyncFile.h"
 #include "fdbrpc/AsyncFileCached.actor.h"
 #include "fdbrpc/AsyncFileEncrypted.h"
+#include "fdbrpc/SimulatorProcessInfo.h"
 #include "fdbrpc/AsyncFileNonDurable.actor.h"
 #include "fdbrpc/AsyncFileChaos.h"
 #include "crc32/crc32c.h"
@@ -54,7 +55,44 @@
 #include "fdbrpc/AsyncFileWriteChecker.h"
 #include "flow/FaultInjection.h"
 #include "flow/TaskQueue.h"
+#include "flow/IUDPSocket.h"
+#include "flow/IConnection.h"
 #include "flow/actorcompiler.h" // This must be the last #include.
+
+void CorruptedBytesRecorder::mark(const std::string& fileName, const uint64_t position) {
+	corruptedBytes[fileName].insert(position);
+}
+
+void CorruptedBytesRecorder::truncate(const std::string& fileName, const uint64_t truncatedSize) {
+	if (corruptedBytes.count(fileName) == 0) {
+		return;
+	}
+	corruptedBytes[fileName].erase(corruptedBytes[fileName].upper_bound(truncatedSize),
+	                               std::end(corruptedBytes[fileName]));
+}
+
+void CorruptedBytesRecorder::rename(const std::string& originalFileName, const std::string& newFileName) {
+	corruptedBytes[newFileName].swap(corruptedBytes[originalFileName]);
+	corruptedBytes.erase(originalFileName);
+}
+
+bool CorruptedBytesRecorder::isByteCorrupted(const std::string& fileName, const uint64_t position) const {
+	if (const auto iter = corruptedBytes.find(fileName); iter != std::end(corruptedBytes)) {
+		return iter->second.count(position);
+	}
+	return false;
+}
+
+bool CorruptedBytesRecorder::isByteCorruptedInRange(const std::string& fileName,
+                                                    const uint64_t begin,
+                                                    const uint64_t end) const {
+	ASSERT(begin <= end);
+	if (const auto iter = corruptedBytes.find(fileName); iter != std::end(corruptedBytes)) {
+		const auto lbound = iter->second.lower_bound(begin);
+		return lbound != std::end(iter->second) && *lbound < end;
+	}
+	return false;
+}
 
 ISimulator* g_simulator = nullptr;
 thread_local ISimulator::ProcessInfo* ISimulator::currentProcess = nullptr;
@@ -63,7 +101,8 @@ ISimulator::ISimulator()
   : desiredCoordinators(1), physicalDatacenters(1), processesPerMachine(0), listenersPerProcess(1), usableRegions(1),
     allowLogSetKills(true), tssMode(TSSMode::Disabled), configDBType(ConfigDBType::DISABLED), isStopped(false),
     lastConnectionFailure(0), connectionFailuresDisableDuration(0), speedUpSimulation(false),
-    backupAgents(BackupAgentType::WaitForType), drAgents(BackupAgentType::WaitForType), allSwapsDisabled(false) {}
+    backupAgents(BackupAgentType::WaitForType), drAgents(BackupAgentType::WaitForType), allSwapsDisabled(false),
+    blobGranulesEnabled(false) {}
 ISimulator::~ISimulator() = default;
 
 bool simulator_should_inject_fault(const char* context, const char* file, int line, int error_code) {
@@ -104,6 +143,33 @@ bool simulator_should_inject_fault(const char* context, const char* file, int li
 
 	return false;
 }
+
+void ISimulator::disableFor(const std::string& desc, double time) {
+	disabledMap[desc] = time;
+}
+
+double ISimulator::checkDisabled(const std::string& desc) const {
+	auto iter = disabledMap.find(desc);
+	if (iter != disabledMap.end()) {
+		return iter->second;
+	}
+	return 0;
+}
+
+bool ISimulator::checkInjectedCorruption() {
+	auto iter = corruptWorkerMap.find(currentProcess->address);
+	if (iter != corruptWorkerMap.end())
+		return iter->second;
+	return false;
+}
+
+flowGlobalType ISimulator::global(int id) const {
+	return getCurrentProcess()->global(id);
+};
+
+void ISimulator::setGlobal(size_t id, flowGlobalType v) {
+	getCurrentProcess()->setGlobal(id, v);
+};
 
 void ISimulator::displayWorkers() const {
 	std::map<std::string, std::vector<ISimulator::ProcessInfo*>> machineMap;
@@ -784,12 +850,14 @@ private:
 			std::string sourceFilename = self->filename + ".part";
 
 			if (machineCache.count(sourceFilename)) {
+				// it seems gcc has some trouble with these types. Aliasing with typename is ugly, but seems to work.
 				TraceEvent("SimpleFileRename")
 				    .detail("From", sourceFilename)
 				    .detail("To", self->filename)
 				    .detail("SourceCount", machineCache.count(sourceFilename))
 				    .detail("FileCount", machineCache.count(self->filename));
 				renameFile(sourceFilename.c_str(), self->filename.c_str());
+				g_simulator->corruptedBytes.rename(sourceFilename, self->filename);
 
 				machineCache[self->filename] = machineCache[sourceFilename];
 				machineCache.erase(sourceFilename);
@@ -1219,13 +1287,15 @@ public:
 
 	static void runLoop(Sim2* self) {
 		ISimulator::ProcessInfo* callingMachine = self->currentProcess;
+		int lastPrintTime = 0;
 		while (!self->isStopped) {
 			if (self->taskQueue.canSleep()) {
 				double sleepTime = self->taskQueue.getSleepTime(self->time);
 				self->time +=
 				    sleepTime + FLOW_KNOBS->MAX_RUNLOOP_SLEEP_DELAY * pow(deterministicRandom()->random01(), 1000.0);
-				if (self->printSimTime) {
+				if (self->printSimTime && (int)self->time > lastPrintTime) {
 					printf("Time: %d\n", (int)self->time);
+					lastPrintTime = (int)self->time;
 				}
 				self->timerTime = std::max(self->timerTime, self->time);
 			}
@@ -1240,6 +1310,7 @@ public:
 				PromiseTask* task = self->taskQueue.getReadyTask();
 				self->taskQueue.popReadyTask();
 				self->execTask(*task);
+				delete task;
 				self->yielded = false;
 			}
 		}
@@ -1260,8 +1331,7 @@ public:
 	                        ProcessClass startingClass,
 	                        const char* dataFolder,
 	                        const char* coordinationFolder,
-	                        ProtocolVersion protocol,
-	                        bool drProcess) override {
+	                        ProtocolVersion protocol) override {
 		ASSERT(locality.machineId().present());
 		MachineInfo& machine = machines[locality.machineId().get()];
 		if (!machine.machineId.present())
@@ -1311,7 +1381,6 @@ public:
 		m->excluded = g_simulator->isExcluded(NetworkAddress(ip, port, true, false));
 		m->cleared = g_simulator->isCleared(addresses.address);
 		m->protocolVersion = protocol;
-		m->drProcess = drProcess;
 
 		m->setGlobal(enTDMetrics, (flowGlobalType)&m->tdmetrics);
 		if (FLOW_KNOBS->ENABLE_CHAOS_FEATURES) {
@@ -1325,8 +1394,7 @@ public:
 		    .detail("Address", m->address)
 		    .detail("MachineId", m->locality.machineId())
 		    .detail("Excluded", m->excluded)
-		    .detail("Cleared", m->cleared)
-		    .detail("DrProcess", m->drProcess);
+		    .detail("Cleared", m->cleared);
 
 		if (std::string(name) == "remote flow process") {
 			protectedAddresses.insert(m->address);
@@ -1340,7 +1408,7 @@ public:
 	bool isAvailable() const override {
 		std::vector<ProcessInfo*> processesLeft, processesDead;
 		for (auto processInfo : getAllProcesses()) {
-			if (processInfo->isAvailableClass()) {
+			if (processInfo->isAvailableClass()) { // Only checks availability of main cluster
 				if (processInfo->isExcluded() || processInfo->isCleared() || !processInfo->isAvailable()) {
 					processesDead.push_back(processInfo);
 				} else {
@@ -1348,7 +1416,20 @@ public:
 				}
 			}
 		}
-		return canKillProcesses(processesLeft, processesDead, KillInstantly, nullptr);
+		return canKillProcesses(processesLeft, processesDead, KillType::KillInstantly, nullptr);
+	}
+
+	std::vector<AddressExclusion> getAllAddressesInDCToExclude(Optional<Standalone<StringRef>> dcId) const override {
+		std::vector<AddressExclusion> addresses;
+		if (!dcId.present()) {
+			return addresses;
+		}
+		for (const auto& processInfo : getAllProcesses()) {
+			if (processInfo->locality.dcId() == dcId) {
+				addresses.emplace_back(processInfo->address.ip, processInfo->address.port);
+			}
+		}
+		return addresses;
 	}
 
 	bool datacenterDead(Optional<Standalone<StringRef>> dcId) const override {
@@ -1387,7 +1468,7 @@ public:
 	// The following function will determine if a machine can be remove in case when it has a blob worker
 	bool canKillMachineWithBlobWorkers(Optional<Standalone<StringRef>> machineId, KillType kt, KillType* ktFinal) {
 		// Allow if no blob workers, or it's a reboot(without removing the machine)
-		if (!blobGranulesEnabled && kt >= RebootAndDelete) {
+		if (!blobGranulesEnabled && kt >= KillType::RebootAndDelete) {
 			return true;
 		}
 
@@ -1409,6 +1490,7 @@ public:
 		for (auto processInfo : getAllProcesses()) {
 			if (currentDcId != processInfo->locality.dcId() || // skip other dc
 			    processInfo->startingClass != ProcessClass::BlobWorkerClass || // skip non blob workers
+			    processInfo->failed || // if process was killed but has not yet been removed from the process list
 			    processInfo->locality.machineId() == machineId) { // skip current machine
 				continue;
 			}
@@ -1417,7 +1499,7 @@ public:
 
 		// Ensure there is at least 1 remaining blob workers after removing current machine
 		if (nLeft <= 1) {
-			*ktFinal = RebootAndDelete; // reboot and delete data, but keep this machine
+			*ktFinal = KillType::RebootAndDelete; // reboot and delete data, but keep this machine
 			return false;
 		}
 		return true;
@@ -1433,8 +1515,8 @@ public:
 		int nQuorum = ((desiredCoordinators + 1) / 2) * 2 - 1;
 
 		KillType newKt = kt;
-		if ((kt == KillInstantly) || (kt == InjectFaults) || (kt == FailDisk) || (kt == RebootAndDelete) ||
-		    (kt == RebootProcessAndDelete)) {
+		if ((kt == KillType::KillInstantly) || (kt == KillType::InjectFaults) || (kt == KillType::FailDisk) ||
+		    (kt == KillType::RebootAndDelete) || (kt == KillType::RebootProcessAndDelete)) {
 			LocalityGroup primaryProcessesLeft, primaryProcessesDead;
 			LocalityGroup primarySatelliteProcessesLeft, primarySatelliteProcessesDead;
 			LocalityGroup remoteProcessesLeft, remoteProcessesDead;
@@ -1464,17 +1546,20 @@ public:
 					if (processInfo->locality.dcId() == primaryDcId) {
 						primaryProcessesLeft.add(processInfo->locality);
 						primaryLocalitiesLeft.push_back(processInfo->locality);
-					} else if (processInfo->locality.dcId() == remoteDcId) {
+					}
+					if (processInfo->locality.dcId() == remoteDcId) {
 						remoteProcessesLeft.add(processInfo->locality);
 						remoteLocalitiesLeft.push_back(processInfo->locality);
-					} else if (std::find(primarySatelliteDcIds.begin(),
-					                     primarySatelliteDcIds.end(),
-					                     processInfo->locality.dcId()) != primarySatelliteDcIds.end()) {
+					}
+					if (std::find(primarySatelliteDcIds.begin(),
+					              primarySatelliteDcIds.end(),
+					              processInfo->locality.dcId()) != primarySatelliteDcIds.end()) {
 						primarySatelliteProcessesLeft.add(processInfo->locality);
 						primarySatelliteLocalitiesLeft.push_back(processInfo->locality);
-					} else if (std::find(remoteSatelliteDcIds.begin(),
-					                     remoteSatelliteDcIds.end(),
-					                     processInfo->locality.dcId()) != remoteSatelliteDcIds.end()) {
+					}
+					if (std::find(remoteSatelliteDcIds.begin(),
+					              remoteSatelliteDcIds.end(),
+					              processInfo->locality.dcId()) != remoteSatelliteDcIds.end()) {
 						remoteSatelliteProcessesLeft.add(processInfo->locality);
 						remoteSatelliteLocalitiesLeft.push_back(processInfo->locality);
 					}
@@ -1483,17 +1568,20 @@ public:
 					if (processInfo->locality.dcId() == primaryDcId) {
 						primaryProcessesDead.add(processInfo->locality);
 						primaryLocalitiesDead.push_back(processInfo->locality);
-					} else if (processInfo->locality.dcId() == remoteDcId) {
+					}
+					if (processInfo->locality.dcId() == remoteDcId) {
 						remoteProcessesDead.add(processInfo->locality);
 						remoteLocalitiesDead.push_back(processInfo->locality);
-					} else if (std::find(primarySatelliteDcIds.begin(),
-					                     primarySatelliteDcIds.end(),
-					                     processInfo->locality.dcId()) != primarySatelliteDcIds.end()) {
+					}
+					if (std::find(primarySatelliteDcIds.begin(),
+					              primarySatelliteDcIds.end(),
+					              processInfo->locality.dcId()) != primarySatelliteDcIds.end()) {
 						primarySatelliteProcessesDead.add(processInfo->locality);
 						primarySatelliteLocalitiesDead.push_back(processInfo->locality);
-					} else if (std::find(remoteSatelliteDcIds.begin(),
-					                     remoteSatelliteDcIds.end(),
-					                     processInfo->locality.dcId()) != remoteSatelliteDcIds.end()) {
+					}
+					if (std::find(remoteSatelliteDcIds.begin(),
+					              remoteSatelliteDcIds.end(),
+					              processInfo->locality.dcId()) != remoteSatelliteDcIds.end()) {
 						remoteSatelliteProcessesDead.add(processInfo->locality);
 						remoteSatelliteLocalitiesDead.push_back(processInfo->locality);
 					}
@@ -1600,8 +1688,8 @@ public:
 			}
 
 			// Reboot if dead machines do fulfill policies
-			if (tooManyDead) {
-				newKt = Reboot;
+			if (tooManyDead || (usableRegions > 1 && notEnoughLeft)) {
+				newKt = KillType::Reboot;
 				canSurvive = false;
 				TraceEvent("KillChanged")
 				    .detail("KillType", kt)
@@ -1610,16 +1698,16 @@ public:
 				    .detail("Reason", "Too many dead processes that cannot satisfy tLogPolicy.");
 			}
 			// Reboot and Delete if remaining machines do NOT fulfill policies
-			else if ((kt < RebootAndDelete) && notEnoughLeft) {
-				newKt = RebootAndDelete;
+			else if ((kt < KillType::RebootAndDelete) && notEnoughLeft) {
+				newKt = KillType::RebootAndDelete;
 				canSurvive = false;
 				TraceEvent("KillChanged")
 				    .detail("KillType", kt)
 				    .detail("NewKillType", newKt)
 				    .detail("TLogPolicy", tLogPolicy->info())
 				    .detail("Reason", "Not enough tLog left to satisfy tLogPolicy.");
-			} else if ((kt < RebootAndDelete) && (nQuorum > uniqueMachines.size())) {
-				newKt = RebootAndDelete;
+			} else if ((kt < KillType::RebootAndDelete) && (nQuorum > uniqueMachines.size())) {
+				newKt = KillType::RebootAndDelete;
 				canSurvive = false;
 				TraceEvent("KillChanged")
 				    .detail("KillType", kt)
@@ -1655,26 +1743,26 @@ public:
 			std::swap(*it, processes.back());
 		}
 		processes.pop_back();
-		killProcess_internal(p, KillInstantly);
+		killProcess_internal(p, KillType::KillInstantly);
 	}
 	void killProcess_internal(ProcessInfo* machine, KillType kt) {
 		CODE_PROBE(
 		    true, "Simulated machine was killed with any kill type", probe::context::sim2, probe::assert::simOnly);
-		CODE_PROBE(kt == KillInstantly,
+		CODE_PROBE(kt == KillType::KillInstantly,
 		           "Simulated machine was killed instantly",
 		           probe::context::sim2,
 		           probe::assert::simOnly);
-		CODE_PROBE(kt == InjectFaults,
+		CODE_PROBE(kt == KillType::InjectFaults,
 		           "Simulated machine was killed with faults",
 		           probe::context::sim2,
 		           probe::assert::simOnly);
-		CODE_PROBE(kt == FailDisk,
+		CODE_PROBE(kt == KillType::FailDisk,
 		           "Simulated machine was killed with a failed disk",
 		           probe::context::sim2,
 		           probe::assert::simOnly,
 		           probe::decoration::rare);
 
-		if (kt == KillInstantly) {
+		if (kt == KillType::KillInstantly) {
 			TraceEvent(SevWarn, "FailMachine")
 			    .detail("Name", machine->name)
 			    .detail("Address", machine->address)
@@ -1687,7 +1775,7 @@ public:
 			if (!machine->isSpawnedKVProcess())
 				latestEventCache.clear();
 			machine->failed = true;
-		} else if (kt == InjectFaults) {
+		} else if (kt == KillType::InjectFaults) {
 			TraceEvent(SevWarn, "FaultMachine")
 			    .detail("Name", machine->name)
 			    .detail("Address", machine->address)
@@ -1700,8 +1788,8 @@ public:
 			machine->fault_injection_r = deterministicRandom()->randomUniqueID().first();
 			machine->fault_injection_p1 = 0.1;
 			machine->fault_injection_p2 = deterministicRandom()->random01();
-		} else if (kt == FailDisk) {
-			TraceEvent(SevWarn, "FailDiskMachine")
+		} else if (kt == KillType::FailDisk) {
+			TraceEvent(SevWarn, "KillType::FailDiskMachine")
 			    .detail("Name", machine->name)
 			    .detail("Address", machine->address)
 			    .detail("ZoneId", machine->locality.zoneId())
@@ -1716,13 +1804,13 @@ public:
 		ASSERT(!protectedAddresses.count(machine->address) || machine->rebooting || machine->isSpawnedKVProcess());
 	}
 	void rebootProcess(ProcessInfo* process, KillType kt) override {
-		if (kt == RebootProcessAndDelete && protectedAddresses.count(process->address)) {
+		if (kt == KillType::RebootProcessAndDelete && protectedAddresses.count(process->address)) {
 			TraceEvent("RebootChanged")
 			    .detail("ZoneId", process->locality.describeZone())
-			    .detail("KillType", RebootProcess)
+			    .detail("KillType", KillType::RebootProcess)
 			    .detail("OrigKillType", kt)
 			    .detail("Reason", "Protected process");
-			kt = RebootProcess;
+			kt = KillType::RebootProcess;
 		}
 		doReboot(process, kt);
 	}
@@ -1731,7 +1819,7 @@ public:
 			auto processes = getAllProcesses();
 			for (int i = 0; i < processes.size(); i++)
 				if (processes[i]->locality.zoneId() == zoneId && !processes[i]->rebooting)
-					doReboot(processes[i], RebootProcess);
+					doReboot(processes[i], KillType::RebootProcess);
 		} else {
 			auto processes = getAllProcesses();
 			for (int i = 0; i < processes.size(); i++) {
@@ -1740,18 +1828,18 @@ public:
 				}
 			}
 			if (processes.size())
-				doReboot(deterministicRandom()->randomChoice(processes), RebootProcess);
+				doReboot(deterministicRandom()->randomChoice(processes), KillType::RebootProcess);
 		}
 	}
 	void killProcess(ProcessInfo* machine, KillType kt) override {
 		TraceEvent("AttemptingKillProcess").detail("ProcessInfo", machine->toString());
 		// Refuse to kill a protected process.
-		if (kt < RebootAndDelete && protectedAddresses.count(machine->address) == 0) {
+		if (kt < KillType::RebootAndDelete && protectedAddresses.count(machine->address) == 0) {
 			killProcess_internal(machine, kt);
 		}
 	}
 	void killInterface(NetworkAddress address, KillType kt) override {
-		if (kt < RebootAndDelete) {
+		if (kt < KillType::RebootAndDelete) {
 			std::vector<ProcessInfo*>& processes = machines[addressMap[address]->locality.machineId()].processes;
 			for (auto& process : processes) {
 				// Refuse to kill a protected process.
@@ -1796,15 +1884,6 @@ public:
 		}
 		return result;
 	}
-	bool killAll(KillType kt, bool forceKill, KillType* ktFinal) override {
-		bool result = false;
-		for (auto& machine : machines) {
-			if (killMachine(machine.second.machineId, kt, forceKill, ktFinal)) {
-				result = true;
-			}
-		}
-		return result;
-	}
 	bool killMachine(Optional<Standalone<StringRef>> machineId,
 	                 KillType kt,
 	                 bool forceKill,
@@ -1812,9 +1891,12 @@ public:
 		auto ktOrig = kt;
 
 		CODE_PROBE(true, "Trying to killing a machine", probe::context::sim2, probe::assert::simOnly);
-		CODE_PROBE(kt == KillInstantly, "Trying to kill instantly", probe::context::sim2, probe::assert::simOnly);
 		CODE_PROBE(
-		    kt == InjectFaults, "Trying to kill by injecting faults", probe::context::sim2, probe::assert::simOnly);
+		    kt == KillType::KillInstantly, "Trying to kill instantly", probe::context::sim2, probe::assert::simOnly);
+		CODE_PROBE(kt == KillType::InjectFaults,
+		           "Trying to kill by injecting faults",
+		           probe::context::sim2,
+		           probe::assert::simOnly);
 
 		if (speedUpSimulation && !forceKill) {
 			TraceEvent(SevWarn, "AbortedKill")
@@ -1822,23 +1904,19 @@ public:
 			    .detail("Reason", "Unforced kill within speedy simulation.")
 			    .backtrace();
 			if (ktFinal)
-				*ktFinal = None;
+				*ktFinal = KillType::None;
 			return false;
 		}
 
 		int processesOnMachine = 0;
-		bool isMainCluster = true; // false for machines running DR processes
 
 		KillType originalKt = kt;
 		// Reboot if any of the processes are protected and count the number of processes not rebooting
 		for (auto& process : machines[machineId].processes) {
 			if (protectedAddresses.count(process->address))
-				kt = Reboot;
+				kt = KillType::Reboot;
 			if (!process->rebooting)
 				processesOnMachine++;
-			if (process->drProcess) {
-				isMainCluster = false;
-			}
 		}
 
 		// Do nothing, if no processes to kill
@@ -1850,13 +1928,14 @@ public:
 			    .detail("ProcessesPerMachine", processesPerMachine)
 			    .backtrace();
 			if (ktFinal)
-				*ktFinal = None;
+				*ktFinal = KillType::None;
 			return false;
 		}
 
 		// Check if machine can be removed, if requested
-		if (!forceKill && ((kt == KillInstantly) || (kt == InjectFaults) || (kt == FailDisk) ||
-		                   (kt == RebootAndDelete) || (kt == RebootProcessAndDelete))) {
+		if (!forceKill &&
+		    ((kt == KillType::KillInstantly) || (kt == KillType::InjectFaults) || (kt == KillType::FailDisk) ||
+		     (kt == KillType::RebootAndDelete) || (kt == KillType::RebootProcessAndDelete))) {
 
 			if (!canKillMachineWithBlobWorkers(machineId, kt, &kt)) {
 				TraceEvent("CanKillMachineWithBlobWorkers")
@@ -1905,7 +1984,8 @@ public:
 				    .detail("ProtectedTotal", protectedAddresses.size())
 				    .detail("TLogPolicy", tLogPolicy->info())
 				    .detail("StoragePolicy", storagePolicy->info());
-			} else if ((kt == KillInstantly) || (kt == InjectFaults) || (kt == FailDisk)) {
+			} else if ((kt == KillType::KillInstantly) || (kt == KillType::InjectFaults) ||
+			           (kt == KillType::FailDisk)) {
 				TraceEvent("DeadMachine")
 				    .detail("MachineId", machineId)
 				    .detail("KillType", kt)
@@ -1965,13 +2045,8 @@ public:
 		           probe::context::sim2,
 		           probe::assert::simOnly);
 
-		if (isMainCluster && originalKt == RebootProcessAndSwitch) {
-			// When killing processes with the RebootProcessAndSwitch kill
-			// type, processes in the original cluster should be rebooted in
-			// order to kill any zombie processes.
-			kt = KillType::Reboot;
-		} else if (processesOnMachine != processesPerMachine && kt != RebootProcessAndSwitch) {
-			// Check if any processes on machine are rebooting
+		// Check if any processes on machine are rebooting
+		if (processesOnMachine != processesPerMachine && kt >= KillType::RebootAndDelete) {
 			CODE_PROBE(true,
 			           "Attempted reboot, but the target did not have all of its processes running",
 			           probe::context::sim2,
@@ -1984,7 +2059,25 @@ public:
 			    .detail("ProcessesPerMachine", processesPerMachine)
 			    .backtrace();
 			if (ktFinal)
-				*ktFinal = None;
+				*ktFinal = KillType::None;
+			return false;
+		}
+
+		// Check if any processes on machine are rebooting
+		if (processesOnMachine != processesPerMachine) {
+			CODE_PROBE(true,
+			           "Attempted reboot and kill, but the target did not have all of its processes running",
+			           probe::context::sim2,
+			           probe::assert::simOnly);
+			TraceEvent(SevWarn, "AbortedKill")
+			    .detail("KillType", kt)
+			    .detail("MachineId", machineId)
+			    .detail("Reason", "Machine processes does not match number of processes per machine")
+			    .detail("Processes", processesOnMachine)
+			    .detail("ProcessesPerMachine", processesPerMachine)
+			    .backtrace();
+			if (ktFinal)
+				*ktFinal = KillType::None;
 			return false;
 		}
 
@@ -1995,8 +2088,9 @@ public:
 		    .detail("KillableMachines", processesOnMachine)
 		    .detail("ProcessPerMachine", processesPerMachine)
 		    .detail("KillChanged", kt != ktOrig);
-		if (kt < RebootAndDelete) {
-			if ((kt == InjectFaults || kt == FailDisk) && machines[machineId].machineProcess != nullptr)
+		if (kt < KillType::RebootAndDelete) {
+			if ((kt == KillType::InjectFaults || kt == KillType::FailDisk) &&
+			    machines[machineId].machineProcess != nullptr)
 				killProcess_internal(machines[machineId].machineProcess, kt);
 			for (auto& process : machines[machineId].processes) {
 				TraceEvent("KillMachineProcess")
@@ -2010,7 +2104,8 @@ public:
 				if (process->startingClass != ProcessClass::TesterClass)
 					killProcess_internal(process, kt);
 			}
-		} else if (kt == Reboot || kt == RebootAndDelete || kt == RebootProcessAndSwitch) {
+		} else if (kt == KillType::Reboot || kt == KillType::RebootAndDelete ||
+		           kt == KillType::RebootProcessAndSwitch) {
 			for (auto& process : machines[machineId].processes) {
 				TraceEvent("KillMachineProcess")
 				    .detail("KillType", kt)
@@ -2025,12 +2120,17 @@ public:
 			}
 		}
 
+		CODE_PROBE(kt == KillType::RebootAndDelete,
+		           "Resulted in a reboot and delete",
+		           probe::context::sim2,
+		           probe::assert::simOnly);
+		CODE_PROBE(kt == KillType::Reboot, "Resulted in a reboot", probe::context::sim2, probe::assert::simOnly);
 		CODE_PROBE(
-		    kt == RebootAndDelete, "Resulted in a reboot and delete", probe::context::sim2, probe::assert::simOnly);
-		CODE_PROBE(kt == Reboot, "Resulted in a reboot", probe::context::sim2, probe::assert::simOnly);
-		CODE_PROBE(kt == KillInstantly, "Resulted in an instant kill", probe::context::sim2, probe::assert::simOnly);
-		CODE_PROBE(
-		    kt == InjectFaults, "Resulted in a kill by injecting faults", probe::context::sim2, probe::assert::simOnly);
+		    kt == KillType::KillInstantly, "Resulted in an instant kill", probe::context::sim2, probe::assert::simOnly);
+		CODE_PROBE(kt == KillType::InjectFaults,
+		           "Resulted in a kill by injecting faults",
+		           probe::context::sim2,
+		           probe::assert::simOnly);
 
 		if (ktFinal)
 			*ktFinal = kt;
@@ -2049,8 +2149,8 @@ public:
 			auto processMachineId = procRecord->locality.machineId();
 			ASSERT(processMachineId.present());
 			if (processDcId.present() && (processDcId == dcId)) {
-				if ((kt != Reboot) && (protectedAddresses.count(procRecord->address))) {
-					kt = Reboot;
+				if ((kt != KillType::Reboot) && (protectedAddresses.count(procRecord->address))) {
+					kt = KillType::Reboot;
 					TraceEvent(SevWarn, "DcKillChanged")
 					    .detail("DataCenter", dcId)
 					    .detail("KillType", kt)
@@ -2069,8 +2169,9 @@ public:
 		}
 
 		// Check if machine can be removed, if requested
-		if (!forceKill && ((kt == KillInstantly) || (kt == InjectFaults) || (kt == FailDisk) ||
-		                   (kt == RebootAndDelete) || (kt == RebootProcessAndDelete))) {
+		if (!forceKill &&
+		    ((kt == KillType::KillInstantly) || (kt == KillType::InjectFaults) || (kt == KillType::FailDisk) ||
+		     (kt == KillType::RebootAndDelete) || (kt == KillType::RebootProcessAndDelete))) {
 			std::vector<ProcessInfo*> processesLeft, processesDead;
 			for (auto processInfo : getAllProcesses()) {
 				if (processInfo->isAvailableClass()) {
@@ -2129,7 +2230,7 @@ public:
 					    .detail("KillType", kt)
 					    .detail("KillTypeResult", ktResult)
 					    .detail("KillTypeOrig", ktOrig);
-					ASSERT(ktResult == None);
+					ASSERT(ktResult == KillType::None);
 				}
 				ktMin = std::min<KillType>(ktResult, ktMin);
 			}
@@ -2149,19 +2250,19 @@ public:
 		           probe::context::sim2,
 		           probe::assert::simOnly,
 		           probe::decoration::rare);
-		CODE_PROBE((kt == ktMin) && (kt == RebootAndDelete),
+		CODE_PROBE((kt == ktMin) && (kt == KillType::RebootAndDelete),
 		           "Datacenter kill Resulted in a reboot and delete",
 		           probe::context::sim2,
 		           probe::assert::simOnly);
-		CODE_PROBE((kt == ktMin) && (kt == Reboot),
+		CODE_PROBE((kt == ktMin) && (kt == KillType::Reboot),
 		           "Datacenter kill Resulted in a reboot",
 		           probe::context::sim2,
 		           probe::assert::simOnly);
-		CODE_PROBE((kt == ktMin) && (kt == KillInstantly),
+		CODE_PROBE((kt == ktMin) && (kt == KillType::KillInstantly),
 		           "Datacenter kill Resulted in an instant kill",
 		           probe::context::sim2,
 		           probe::assert::simOnly);
-		CODE_PROBE((kt == ktMin) && (kt == InjectFaults),
+		CODE_PROBE((kt == ktMin) && (kt == KillType::InjectFaults),
 		           "Datacenter kill Resulted in a kill by injecting faults",
 		           probe::context::sim2,
 		           probe::assert::simOnly);
@@ -2237,7 +2338,7 @@ public:
 			ASSERT(process->failed);
 		}
 		if (machine.machineProcess) {
-			killProcess_internal(machine.machineProcess, KillInstantly);
+			killProcess_internal(machine.machineProcess, KillType::KillInstantly);
 		}
 		machines.erase(machineId);
 	}
@@ -2264,7 +2365,7 @@ public:
 	}
 
 	// Implementation
-	struct PromiseTask final {
+	struct PromiseTask final : public FastAllocated<PromiseTask> {
 		Promise<Void> promise;
 		ProcessInfo* machine;
 		explicit PromiseTask(ProcessInfo* machine) : machine(machine) {}
@@ -2281,7 +2382,7 @@ public:
 				ASSERT(this->currentProcess == t.machine);
 			} catch (Error& e) {
 				TraceEvent(SevError, "UnhandledSimulationEventError").errorUnsuppressed(e);
-				killProcess(t.machine, KillInstantly);
+				killProcess(t.machine, KillType::KillInstantly);
 			}
 
 			if (randLog)
@@ -2565,25 +2666,23 @@ ACTOR void doReboot(ISimulator::ProcessInfo* p, ISimulator::KillType kt) {
 	wait(g_sim2.delay(0, TaskPriority::DefaultDelay, p)); // Switch to the machine in question
 
 	try {
-		ASSERT(kt == ISimulator::RebootProcess || kt == ISimulator::Reboot || kt == ISimulator::RebootAndDelete ||
-		       kt == ISimulator::RebootProcessAndDelete || kt == ISimulator::RebootProcessAndSwitch);
+		ASSERT(kt == ISimulator::KillType::RebootProcess || kt == ISimulator::KillType::Reboot ||
+		       kt == ISimulator::KillType::RebootAndDelete || kt == ISimulator::KillType::RebootProcessAndDelete);
 
-		CODE_PROBE(kt == ISimulator::RebootProcess,
+		CODE_PROBE(kt == ISimulator::KillType::RebootProcess,
 		           "Simulated process rebooted",
 		           probe::assert::simOnly,
 		           probe::context::sim2);
-		CODE_PROBE(
-		    kt == ISimulator::Reboot, "Simulated machine rebooted", probe::assert::simOnly, probe::context::sim2);
-		CODE_PROBE(kt == ISimulator::RebootAndDelete,
+		CODE_PROBE(kt == ISimulator::KillType::Reboot,
+		           "Simulated machine rebooted",
+		           probe::assert::simOnly,
+		           probe::context::sim2);
+		CODE_PROBE(kt == ISimulator::KillType::RebootAndDelete,
 		           "Simulated machine rebooted with data and coordination state deletion",
 		           probe::assert::simOnly,
 		           probe::context::sim2);
-		CODE_PROBE(kt == ISimulator::RebootProcessAndDelete,
+		CODE_PROBE(kt == ISimulator::KillType::RebootProcessAndDelete,
 		           "Simulated process rebooted with data and coordination state deletion",
-		           probe::assert::simOnly,
-		           probe::context::sim2);
-		CODE_PROBE(kt == ISimulator::RebootProcessAndSwitch,
-		           "Simulated process rebooted with different cluster file",
 		           probe::assert::simOnly,
 		           probe::context::sim2);
 
@@ -2611,11 +2710,9 @@ ACTOR void doReboot(ISimulator::ProcessInfo* p, ISimulator::KillType kt) {
 		    .detail("Cleared", p->cleared)
 		    .backtrace();
 		p->rebooting = true;
-		if ((kt == ISimulator::RebootAndDelete) || (kt == ISimulator::RebootProcessAndDelete)) {
+		if ((kt == ISimulator::KillType::RebootAndDelete) || (kt == ISimulator::KillType::RebootProcessAndDelete)) {
 			p->cleared = true;
 			g_simulator->clearAddress(p->address);
-		} else if (kt == ISimulator::RebootProcessAndSwitch) {
-			g_simulator->switchCluster(p->address);
 		}
 		p->shutdownSignal.send(kt);
 	} catch (Error& e) {
@@ -2742,6 +2839,11 @@ Future<Void> Sim2FileSystem::deleteFile(const std::string& filename, bool mustBe
 
 ACTOR Future<Void> renameFileImpl(std::string from, std::string to) {
 	wait(delay(0.5 * deterministicRandom()->random01()));
+	// rename all keys in the corrupted list
+	// first we have to delete all corruption of the destination, since this file will be unlinked if it exists
+	TraceEvent("RenamingFile").detail("From", from).detail("To", to).log();
+	g_simulator->corruptedBytes.rename(from, to);
+	// do the rename
 	::renameFile(from, to);
 	wait(delay(0.5 * deterministicRandom()->random01()));
 	return Void();

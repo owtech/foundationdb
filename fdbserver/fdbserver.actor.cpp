@@ -45,6 +45,7 @@
 #include "fdbclient/versions.h"
 #include "fdbclient/BuildFlags.h"
 #include "fdbrpc/WellKnownEndpoints.h"
+#include "fdbrpc/SimulatorProcessInfo.h"
 #include "fdbclient/SimpleIni.h"
 #include "fdbrpc/AsyncFileCached.actor.h"
 #include "fdbrpc/IPAllowList.h"
@@ -362,7 +363,7 @@ ACTOR void failAfter(Future<Void> trigger, ISimulator::ProcessInfo* m = g_simula
 	wait(trigger);
 	if (enableFailures) {
 		printf("Killing machine: %s at %f\n", m->address.toString().c_str(), now());
-		g_simulator->killProcess(m, ISimulator::KillInstantly);
+		g_simulator->killProcess(m, ISimulator::KillType::KillInstantly);
 	}
 }
 
@@ -509,8 +510,8 @@ Future<Void> startSystemMonitor(std::string dataFolder,
                                 Optional<Standalone<StringRef>> dcId,
                                 Optional<Standalone<StringRef>> zoneId,
                                 Optional<Standalone<StringRef>> machineId) {
-	initializeSystemMonitorMachineState(
-	    SystemMonitorMachineState(dataFolder, dcId, zoneId, machineId, g_network->getLocalAddress().ip));
+	initializeSystemMonitorMachineState(SystemMonitorMachineState(
+	    dataFolder, dcId, zoneId, machineId, g_network->getLocalAddress().ip, FDB_VT_VERSION));
 
 	systemMonitor();
 	return recurring(&systemMonitor, SERVER_KNOBS->SYSTEM_MONITOR_FREQUENCY, TaskPriority::FlushTrace);
@@ -2149,7 +2150,7 @@ int main(int argc, char* argv[]) {
 
 			auto dataFolder = opts.dataFolder.size() ? opts.dataFolder : "simfdb";
 			std::vector<std::string> directories = platform::listDirectories(dataFolder);
-			const std::set<std::string> allowedDirectories = { ".", "..", "backups", "unittests" };
+			const std::set<std::string> allowedDirectories = { ".", "..", "backups", "unittests", "fdbblob" };
 
 			for (const auto& dir : directories) {
 				if (dir.size() != 32 && allowedDirectories.count(dir) == 0 && dir.find("snap") == std::string::npos) {

@@ -173,7 +173,6 @@ if(WITH_PYTHON)
   add_fdb_test(TEST_FILES fast/MemoryLifetime.toml)
   add_fdb_test(TEST_FILES fast/MoveKeysCycle.toml)
   add_fdb_test(TEST_FILES fast/MutationLogReaderCorrectness.toml)
-  add_fdb_test(TEST_FILES fast/GetEstimatedRangeSize.toml)
   add_fdb_test(TEST_FILES fast/GetMappedRange.toml)
   add_fdb_test(TEST_FILES fast/IDDTxnProcessorApiCorrectness.toml)
   add_fdb_test(TEST_FILES fast/PrivateEndpoints.toml)
@@ -207,7 +206,7 @@ if(WITH_PYTHON)
   add_fdb_test(TEST_FILES fast/WriteDuringReadClean.toml)
   add_fdb_test(TEST_FILES noSim/RandomUnitTests.toml UNIT)
   if(WITH_ROCKSDB_EXPERIMENTAL)
-    add_fdb_test(TEST_FILES fast/ValidateStorage.toml)
+    add_fdb_test(TEST_FILES fast/ValidateStorage.toml IGNORE)
     add_fdb_test(TEST_FILES noSim/KeyValueStoreRocksDBTest.toml UNIT)
     add_fdb_test(TEST_FILES noSim/ShardedRocksDBTest.toml UNIT)
     add_fdb_test(TEST_FILES fast/PhysicalShardMove.toml)
@@ -282,8 +281,8 @@ if(WITH_PYTHON)
     TEST_FILES restarting/from_6.3.13_until_7.2.0/DrUpgradeRestart-1.txt
     restarting/from_6.3.13_until_7.2.0/DrUpgradeRestart-2.txt)
   add_fdb_test(
-    TEST_FILES restarting/from_7.0.0/UpgradeAndBackupRestore-1.toml
-    restarting/from_7.0.0/UpgradeAndBackupRestore-2.toml)
+    TEST_FILES restarting/from_7.0.0_until_7.2.0/UpgradeAndBackupRestore-1.toml
+    restarting/from_7.0.0_until_7.2.0/UpgradeAndBackupRestore-2.toml)
   add_fdb_test(
     TEST_FILES restarting/to_7.1.0/CycleTestRestart-1.toml
     restarting/to_7.1.0/CycleTestRestart-2.toml)
@@ -314,6 +313,9 @@ if(WITH_PYTHON)
   add_fdb_test(
     TEST_FILES restarting/from_7.2.0/DrUpgradeRestart-1.txt
     restarting/from_7.2.0/DrUpgradeRestart-2.txt)
+  add_fdb_test(
+    TEST_FILES restarting/from_7.2.4/UpgradeAndBackupRestore-1.toml
+    restarting/from_7.2.4/UpgradeAndBackupRestore-2.toml)
 
 
   add_fdb_test(TEST_FILES slow/ApiCorrectness.toml)

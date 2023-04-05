@@ -129,6 +129,7 @@ ACTOR Future<bool> getKeyServers(
 					// one needs to be reachable
 					if (performQuiescentChecks && !shards.present()) {
 						TraceEvent("ConsistencyCheck_CommitProxyUnavailable")
+						    .error(shards.getError())
 						    .detail("CommitProxyID", commitProxyInfo->getId(i));
 						testFailure("Commit proxy unavailable", performQuiescentChecks, true);
 						return false;
@@ -393,6 +394,7 @@ ACTOR Future<bool> checkDataConsistency(Database cx,
 	state double rateLimiterStartTime = now();
 	state int64_t bytesReadInthisRound = 0;
 	state bool resume = !(restart || shuffleShards);
+	state bool testResult = true;
 
 	state double dbSize = 100e12;
 	if (g_network->isSimulated()) {
@@ -421,8 +423,7 @@ ACTOR Future<bool> checkDataConsistency(Database cx,
 	for (int k = 0; k < ranges.size(); k++)
 		shardOrder.push_back(k);
 	if (shuffleShards) {
-		uint32_t seed = sharedRandomNumber + repetitions;
-		DeterministicRandom sharedRandom(seed == 0 ? 1 : seed);
+		DeterministicRandom sharedRandom(sharedRandomNumber + repetitions);
 		sharedRandom.randomShuffle(shardOrder);
 	}
 
@@ -710,7 +711,7 @@ ACTOR Future<bool> checkDataConsistency(Database cx,
 									    (!storageServerInterfaces[j].isTss() &&
 									     !storageServerInterfaces[firstValidServer].isTss())) {
 										testFailure("Data inconsistent", performQuiescentChecks, true);
-										return false;
+										testResult = false;
 									}
 								}
 							}
@@ -728,10 +729,15 @@ ACTOR Future<bool> checkDataConsistency(Database cx,
 							    .detail("ShardEnd", printable(range.end))
 							    .detail("Address", storageServerInterfaces[j].address())
 							    .detail("UID", storageServerInterfaces[j].id())
+							    .detail("Quiesed", performQuiescentChecks)
 							    .detail("GetKeyValuesToken",
 							            storageServerInterfaces[j].getKeyValues.getEndpoint().token)
 							    .detail("IsTSS", storageServerInterfaces[j].isTss() ? "True" : "False");
 
+							if (e.code() == error_code_request_maybe_delivered) {
+								// SS in the team may be removed and we get this error.
+								return false;
+							}
 							// All shards should be available in quiscence
 							if (performQuiescentChecks && !storageServerInterfaces[j].isTss()) {
 								testFailure("Storage server unavailable", performQuiescentChecks, failureIsError);
@@ -949,7 +955,7 @@ ACTOR Future<bool> checkDataConsistency(Database cx,
 	}
 
 	*bytesReadInPrevRound = bytesReadInthisRound;
-	return true;
+	return testResult;
 }
 
 ACTOR Future<Void> runDataValidationCheck(ConsistencyScanData* self) {

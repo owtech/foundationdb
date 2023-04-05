@@ -169,6 +169,7 @@ class UpgradeTest:
 
     def __exit__(self, xc_type, exc_value, traceback):
         self.cluster.stop_cluster()
+        self.cluster.release_ports()
         if CLEANUP_ON_EXIT:
             shutil.rmtree(self.tmp_dir)
 
@@ -279,11 +280,13 @@ class UpgradeTest:
             os.close(self.ctrl_pipe)
 
     # Kill the tester process if it is still alive
-    def kill_tester_if_alive(self, workload_thread):
+    def kill_tester_if_alive(self, workload_thread, dump_stacks):
         if not workload_thread.is_alive():
             return
         if self.tester_proc is not None:
             try:
+                if dump_stacks:
+                    os.system("pstack {}".format(self.tester_proc.pid))
                 print("Killing the tester process")
                 self.tester_proc.kill()
                 workload_thread.join(5)
@@ -309,11 +312,11 @@ class UpgradeTest:
         except Exception:
             print("Upgrade test failed")
             print(traceback.format_exc())
-            self.kill_tester_if_alive(workload_thread)
+            self.kill_tester_if_alive(workload_thread, False)
         finally:
             workload_thread.join(5)
             reader_thread.join(5)
-            self.kill_tester_if_alive(workload_thread)
+            self.kill_tester_if_alive(workload_thread, True)
             if test_retcode == 0:
                 test_retcode = self.tester_retcode
         return test_retcode
@@ -442,7 +445,7 @@ if __name__ == "__main__":
         print("Testing with {} processes".format(args.process_number))
 
     assert len(args.upgrade_path) > 0, "Upgrade path must be specified"
-    assert args.upgrade_path[0] in SUPPORTED_VERSIONS, "Upgrade path begin with a valid version number"
+    assert args.upgrade_path[0] in SUPPORTED_VERSIONS, "Upgrade path begin with a valid version number, got {}".format(args.upgrade_path[0])
 
     if args.run_with_gdb:
         RUN_WITH_GDB = True

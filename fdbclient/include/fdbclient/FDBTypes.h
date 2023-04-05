@@ -543,37 +543,39 @@ struct hash<KeyRange> {
 };
 } // namespace std
 
-enum { invalidVersion = -1, latestVersion = -2, MAX_VERSION = std::numeric_limits<int64_t>::max() };
+enum {
+	invalidVersion = -1,
+	latestVersion = -2,
+	earliestVersion = -3,
+	MAX_VERSION = std::numeric_limits<int64_t>::max()
+};
 
-inline Key keyAfter(const KeyRef& key) {
-	if (key == "\xff\xff"_sr)
-		return key;
-
-	Standalone<StringRef> r;
-	uint8_t* s = new (r.arena()) uint8_t[key.size() + 1];
-	if (key.size() > 0) {
-		memcpy(s, key.begin(), key.size());
-	}
-	s[key.size()] = 0;
-	((StringRef&)r) = StringRef(s, key.size() + 1);
-	return r;
-}
 inline KeyRef keyAfter(const KeyRef& key, Arena& arena) {
-	if (key == "\xff\xff"_sr)
-		return key;
+	// Don't include fdbclient/SystemData.h for the allKeys symbol to avoid a cyclic include
+	static const auto allKeysEnd = "\xff\xff"_sr;
+	if (key == allKeysEnd) {
+		return allKeysEnd;
+	}
 	uint8_t* t = new (arena) uint8_t[key.size() + 1];
 	memcpy(t, key.begin(), key.size());
 	t[key.size()] = 0;
 	return KeyRef(t, key.size() + 1);
 }
-inline KeyRange singleKeyRange(const KeyRef& a) {
-	return KeyRangeRef(a, keyAfter(a));
+inline Key keyAfter(const KeyRef& key) {
+	Key result;
+	result.contents() = keyAfter(key, result.arena());
+	return result;
 }
 inline KeyRangeRef singleKeyRange(KeyRef const& key, Arena& arena) {
 	uint8_t* t = new (arena) uint8_t[key.size() + 1];
 	memcpy(t, key.begin(), key.size());
 	t[key.size()] = 0;
 	return KeyRangeRef(KeyRef(t, key.size()), KeyRef(t, key.size() + 1));
+}
+inline KeyRange singleKeyRange(const KeyRef& a) {
+	KeyRange result;
+	result.contents() = singleKeyRange(a, result.arena());
+	return result;
 }
 inline KeyRange prefixRange(KeyRef prefix) {
 	Standalone<KeyRangeRef> range;
@@ -807,18 +809,9 @@ struct MappedKeyValueRef : KeyValueRef {
 
 	MappedReqAndResultRef reqAndResult;
 
-	// boundary KVs are always returned so that caller can use it as a continuation,
-	// for non-boundary KV, it is always false.
-	// for boundary KV, it is true only when the secondary query succeeds(return non-empty).
-	// Note: only MATCH_INDEX_MATCHED_ONLY and MATCH_INDEX_UNMATCHED_ONLY modes can make use of it,
-	// to decide whether the boudnary is a match/unmatch.
-	// In the case of MATCH_INDEX_ALL and MATCH_INDEX_NONE, caller should not care if boundary has a match or not.
-	bool boundaryAndExist;
-
 	MappedKeyValueRef() = default;
 	MappedKeyValueRef(Arena& a, const MappedKeyValueRef& copyFrom) : KeyValueRef(a, copyFrom) {
 		const auto& reqAndResultCopyFrom = copyFrom.reqAndResult;
-		boundaryAndExist = copyFrom.boundaryAndExist;
 		if (std::holds_alternative<GetValueReqAndResultRef>(reqAndResultCopyFrom)) {
 			auto getValue = std::get<GetValueReqAndResultRef>(reqAndResultCopyFrom);
 			reqAndResult = GetValueReqAndResultRef(a, getValue);
@@ -832,7 +825,7 @@ struct MappedKeyValueRef : KeyValueRef {
 
 	bool operator==(const MappedKeyValueRef& rhs) const {
 		return static_cast<const KeyValueRef&>(*this) == static_cast<const KeyValueRef&>(rhs) &&
-		       reqAndResult == rhs.reqAndResult && boundaryAndExist == rhs.boundaryAndExist;
+		       reqAndResult == rhs.reqAndResult;
 	}
 	bool operator!=(const MappedKeyValueRef& rhs) const { return !(rhs == *this); }
 
@@ -842,7 +835,7 @@ struct MappedKeyValueRef : KeyValueRef {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		serializer(ar, ((KeyValueRef&)*this), reqAndResult, boundaryAndExist);
+		serializer(ar, ((KeyValueRef&)*this), reqAndResult);
 	}
 };
 
@@ -1119,45 +1112,6 @@ struct LogMessageVersion {
 	template <class Ar>
 	void serialize(Ar& ar) {
 		serializer(ar, version, sub);
-	}
-};
-
-struct AddressExclusion {
-	IPAddress ip;
-	int port;
-
-	AddressExclusion() : ip(0), port(0) {}
-	explicit AddressExclusion(const IPAddress& ip) : ip(ip), port(0) {}
-	explicit AddressExclusion(const IPAddress& ip, int port) : ip(ip), port(port) {}
-
-	bool operator<(AddressExclusion const& r) const {
-		if (ip != r.ip)
-			return ip < r.ip;
-		return port < r.port;
-	}
-	bool operator==(AddressExclusion const& r) const { return ip == r.ip && port == r.port; }
-
-	bool isWholeMachine() const { return port == 0; }
-	bool isValid() const { return ip.isValid() || port != 0; }
-
-	bool excludes(NetworkAddress const& addr) const {
-		if (isWholeMachine())
-			return ip == addr.ip;
-		return ip == addr.ip && port == addr.port;
-	}
-
-	// This is for debugging and IS NOT to be used for serialization to persistant state
-	std::string toString() const {
-		if (!isWholeMachine())
-			return formatIpPort(ip, port);
-		return ip.toString();
-	}
-
-	static AddressExclusion parse(StringRef const&);
-
-	template <class Ar>
-	void serialize(Ar& ar) {
-		serializer(ar, ip, port);
 	}
 };
 

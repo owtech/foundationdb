@@ -30,6 +30,7 @@
 #include "flow/Error.h"
 #include "flow/IRandom.h"
 #include "flow/flow.h"
+#include "fdbrpc/SimulatorProcessInfo.h"
 #include "flow/actorcompiler.h" // This must be the last #include.
 
 namespace {
@@ -62,7 +63,9 @@ struct DataLossRecoveryWorkload : TestWorkload {
 
 	Future<Void> setup(Database const& cx) override { return Void(); }
 
-	void disableFailureInjectionWorkloads(std::set<std::string>& out) const override { out.insert("RandomMoveKeys"); }
+	void disableFailureInjectionWorkloads(std::set<std::string>& out) const override {
+		out.insert({ "RandomMoveKeys", "Attrition" });
+	}
 
 	Future<Void> start(Database const& cx) override {
 		if (!enabled) {
@@ -259,7 +262,7 @@ struct DataLossRecoveryWorkload : TestWorkload {
 	void killProcess(DataLossRecoveryWorkload* self, const NetworkAddress& addr) {
 		ISimulator::ProcessInfo* process = g_simulator->getProcessByAddress(addr);
 		ASSERT(process->addresses.contains(addr));
-		g_simulator->killProcess(process, ISimulator::KillInstantly);
+		g_simulator->killProcess(process, ISimulator::KillType::KillInstantly);
 		TraceEvent("TestTeamKilled").detail("Address", addr);
 	}
 

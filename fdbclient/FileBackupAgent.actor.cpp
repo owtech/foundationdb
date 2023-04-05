@@ -1040,13 +1040,10 @@ private:
 	Key lastValue;
 };
 
-ACTOR static Future<Void> decodeKVPairs(StringRefReader* reader,
-                                        Standalone<VectorRef<KeyValueRef>>* results,
-                                        bool encryptedBlock,
-                                        Optional<Database> cx) {
+void decodeKVPairs(StringRefReader* reader, Standalone<VectorRef<KeyValueRef>>* results) {
 	// Read begin key, if this fails then block was invalid.
-	state uint32_t kLen = reader->consumeNetworkUInt32();
-	state const uint8_t* k = reader->consume(kLen);
+	uint32_t kLen = reader->consumeNetworkUInt32();
+	const uint8_t* k = reader->consume(kLen);
 	results->push_back(results->arena(), KeyValueRef(KeyRef(k, kLen), ValueRef()));
 
 	// Read kv pairs and end key
@@ -1075,7 +1072,6 @@ ACTOR static Future<Void> decodeKVPairs(StringRefReader* reader,
 	for (auto b : reader->remainder())
 		if (b != 0xFF)
 			throw restore_corrupted_data_padding();
-	return Void();
 }
 
 ACTOR Future<Standalone<VectorRef<KeyValueRef>>> decodeRangeFileBlock(Reference<IAsyncFile> file,
@@ -1083,7 +1079,7 @@ ACTOR Future<Standalone<VectorRef<KeyValueRef>>> decodeRangeFileBlock(Reference<
                                                                       int len,
                                                                       Optional<Database> cx) {
 	state Standalone<StringRef> buf = makeString(len);
-	int rLen = wait(file->read(mutateString(buf), len, offset));
+	int rLen = wait(uncancellable(holdWhile(buf, file->read(mutateString(buf), len, offset))));
 	if (rLen != len)
 		throw restore_bad_read();
 
@@ -1098,7 +1094,7 @@ ACTOR Future<Standalone<VectorRef<KeyValueRef>>> decodeRangeFileBlock(Reference<
 		// BACKUP_AGENT_ENCRYPTED_SNAPSHOT_FILE_VERSION
 		int32_t file_version = reader.consume<int32_t>();
 		if (file_version == BACKUP_AGENT_SNAPSHOT_FILE_VERSION) {
-			wait(decodeKVPairs(&reader, &results, false, cx));
+			decodeKVPairs(&reader, &results);
 		} else if (file_version == BACKUP_AGENT_ENCRYPTED_SNAPSHOT_FILE_VERSION) {
 			CODE_PROBE(true, "decoding encrypted block");
 			ASSERT(cx.present());
@@ -1121,7 +1117,7 @@ ACTOR Future<Standalone<VectorRef<KeyValueRef>>> decodeRangeFileBlock(Reference<
 			StringRef decryptedData =
 			    wait(EncryptedRangeFileWriter::decrypt(cx.get(), header, dataPayloadStart, dataLen, &results.arena()));
 			reader = StringRefReader(decryptedData, restore_corrupted_data());
-			wait(decodeKVPairs(&reader, &results, true, cx));
+			decodeKVPairs(&reader, &results);
 		} else {
 			throw restore_unsupported_file_version();
 		}
@@ -1715,7 +1711,7 @@ struct BackupRangeTaskFunc : BackupTaskFuncBase {
 
 		state bool done = false;
 		state int64_t nrKeys = 0;
-		state bool encryptionEnabled = false;
+		state Optional<bool> encryptionEnabled;
 
 		loop {
 			state RangeResultWithVersion values;
@@ -1781,7 +1777,7 @@ struct BackupRangeTaskFunc : BackupTaskFuncBase {
 
 						wait(taskBucket->keepRunning(tr, task) &&
 						     storeOrThrow(snapshotBeginVersion, backup.snapshotBeginVersion().get(tr)) &&
-						     storeOrThrow(encryptionEnabled, backup.enableSnapshotBackupEncryption().get(tr)) &&
+						     store(encryptionEnabled, backup.enableSnapshotBackupEncryption().get(tr)) &&
 						     store(snapshotRangeFileCount, backup.snapshotRangeFileCount().getD(tr)));
 
 						break;
@@ -1794,9 +1790,10 @@ struct BackupRangeTaskFunc : BackupTaskFuncBase {
 				    wait(bc->writeRangeFile(snapshotBeginVersion, snapshotRangeFileCount, outVersion, blockSize));
 				outFile = f;
 
-				encryptionEnabled = encryptionEnabled && cx->clientInfo->get().isEncryptionEnabled;
+				const bool encrypted =
+				    encryptionEnabled.present() && encryptionEnabled.get() && cx->clientInfo->get().isEncryptionEnabled;
 				// Initialize range file writer and write begin key
-				if (encryptionEnabled) {
+				if (encrypted) {
 					CODE_PROBE(true, "using encrypted snapshot file writer");
 					if (!tenantCache.isValid()) {
 						tenantCache = makeReference<TenantEntryCache<Void>>(cx, TenantEntryCacheRefreshMode::WATCH);

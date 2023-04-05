@@ -260,6 +260,7 @@ struct RegisterMasterRequest {
 	std::vector<UID> priorCommittedLogServers;
 	RecoveryState recoveryState;
 	bool recoveryStalled;
+	UID clusterId;
 
 	ReplyPromise<Void> reply;
 
@@ -283,9 +284,14 @@ struct RegisterMasterRequest {
 		           priorCommittedLogServers,
 		           recoveryState,
 		           recoveryStalled,
+		           clusterId,
 		           reply);
 	}
 };
+
+// Instantiated in worker.actor.cpp
+extern template class RequestStream<RegisterMasterRequest, false>;
+extern template struct NetNotifiedQueue<RegisterMasterRequest, false>;
 
 struct RecruitFromConfigurationReply {
 	constexpr static FileIdentifier file_identifier = 2224085;
@@ -443,7 +449,6 @@ struct RegisterWorkerRequest {
 	bool requestDbInfo;
 	bool recoveredDiskFiles;
 	ConfigBroadcastInterface configBroadcastInterface;
-	Optional<UID> clusterId;
 
 	RegisterWorkerRequest()
 	  : priorityInfo(ProcessClass::UnsetFit, false, ClusterControllerPriorityInfo::FitnessUnknown), degraded(false) {}
@@ -462,14 +467,13 @@ struct RegisterWorkerRequest {
 	                      Optional<Version> lastSeenKnobVersion,
 	                      Optional<ConfigClassSet> knobConfigClassSet,
 	                      bool recoveredDiskFiles,
-	                      ConfigBroadcastInterface configBroadcastInterface,
-	                      Optional<UID> clusterId)
+	                      ConfigBroadcastInterface configBroadcastInterface)
 	  : wi(wi), initialClass(initialClass), processClass(processClass), priorityInfo(priorityInfo),
 	    generation(generation), distributorInterf(ddInterf), ratekeeperInterf(rkInterf), blobManagerInterf(bmInterf),
 	    blobMigratorInterf(mgInterf), encryptKeyProxyInterf(ekpInterf), consistencyScanInterf(csInterf),
 	    degraded(degraded), lastSeenKnobVersion(lastSeenKnobVersion), knobConfigClassSet(knobConfigClassSet),
 	    requestDbInfo(false), recoveredDiskFiles(recoveredDiskFiles),
-	    configBroadcastInterface(configBroadcastInterface), clusterId(clusterId) {}
+	    configBroadcastInterface(configBroadcastInterface) {}
 
 	template <class Ar>
 	void serialize(Ar& ar) {
@@ -493,8 +497,7 @@ struct RegisterWorkerRequest {
 		           knobConfigClassSet,
 		           requestDbInfo,
 		           recoveredDiskFiles,
-		           configBroadcastInterface,
-		           clusterId);
+		           configBroadcastInterface);
 	}
 };
 
@@ -590,6 +593,7 @@ struct InitializeTLogRequest {
 	Version startVersion;
 	int logRouterTags;
 	int txsTags;
+	UID clusterId;
 	Version recoveryTransactionVersion;
 
 	ReplyPromise<struct TLogInterface> reply;
@@ -616,6 +620,7 @@ struct InitializeTLogRequest {
 		           logVersion,
 		           spillType,
 		           txsTags,
+		           clusterId,
 		           recoveryTransactionVersion);
 	}
 };
@@ -687,6 +692,10 @@ struct RecruitMasterRequest {
 	}
 };
 
+// Instantiated in worker.actor.cpp
+extern template class RequestStream<RecruitMasterRequest, false>;
+extern template struct NetNotifiedQueue<RecruitMasterRequest, false>;
+
 struct InitializeCommitProxyRequest {
 	constexpr static FileIdentifier file_identifier = 10344153;
 	MasterInterface master;
@@ -702,6 +711,10 @@ struct InitializeCommitProxyRequest {
 	}
 };
 
+// Instantiated in worker.actor.cpp
+extern template class RequestStream<InitializeCommitProxyRequest, false>;
+extern template struct NetNotifiedQueue<InitializeCommitProxyRequest, false>;
+
 struct InitializeGrvProxyRequest {
 	constexpr static FileIdentifier file_identifier = 8265613;
 	MasterInterface master;
@@ -714,6 +727,10 @@ struct InitializeGrvProxyRequest {
 		serializer(ar, master, masterLifetime, recoveryCount, reply);
 	}
 };
+
+// Instantiated in worker.actor.cpp
+extern template class RequestStream<InitializeGrvProxyRequest, false>;
+extern template struct NetNotifiedQueue<InitializeGrvProxyRequest, false>;
 
 struct InitializeDataDistributorRequest {
 	constexpr static FileIdentifier file_identifier = 8858952;
@@ -815,12 +832,14 @@ struct InitializeStorageRequest {
 	KeyValueStoreType storeType;
 	Optional<std::pair<UID, Version>>
 	    tssPairIDAndVersion; // Only set if recruiting a tss. Will be the UID and Version of its SS pair.
+	UID clusterId; // Unique cluster identifier. Only needed at recruitment, will be read from txnStateStore on recovery
 	Version initialClusterVersion;
 	ReplyPromise<InitializeStorageReply> reply;
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		serializer(ar, seedTag, reqId, interfaceId, storeType, reply, tssPairIDAndVersion, initialClusterVersion);
+		serializer(
+		    ar, seedTag, reqId, interfaceId, storeType, reply, tssPairIDAndVersion, clusterId, initialClusterVersion);
 	}
 };
 
@@ -1126,8 +1145,7 @@ ACTOR Future<Void> clusterController(Reference<IClusterConnectionRecord> ccr,
                                      Reference<AsyncVar<ClusterControllerPriorityInfo>> asyncPriorityInfo,
                                      Future<Void> recoveredDiskFiles,
                                      LocalityData locality,
-                                     ConfigDBType configDBType,
-                                     Reference<AsyncVar<Optional<UID>>> clusterId);
+                                     ConfigDBType configDBType);
 
 ACTOR Future<Void> blobWorker(BlobWorkerInterface bwi,
                               ReplyPromise<InitializeBlobWorkerReply> blobWorkerReady,
@@ -1142,6 +1160,7 @@ class IPageEncryptionKeyProvider;
 ACTOR Future<Void> storageServer(IKeyValueStore* persistentData,
                                  StorageServerInterface ssi,
                                  Tag seedTag,
+                                 UID clusterId,
                                  Version startVersion,
                                  Version tssSeedVersion,
                                  ReplyPromise<InitializeStorageReply> recruitReply,
@@ -1253,6 +1272,8 @@ ACTOR Future<Void> tLog(IKeyValueStore* persistentData,
 
 typedef decltype(&tLog) TLogFn;
 
+extern bool isSimulatorProcessReliable();
+
 ACTOR template <class T>
 Future<T> ioTimeoutError(Future<T> what, double time) {
 	// Before simulation is sped up, IO operations can take a very long time so limit timeouts
@@ -1262,10 +1283,12 @@ Future<T> ioTimeoutError(Future<T> what, double time) {
 	}
 	Future<Void> end = lowPriorityDelay(time);
 	choose {
-		when(T t = wait(what)) { return t; }
+		when(T t = wait(what)) {
+			return t;
+		}
 		when(wait(end)) {
 			Error err = io_timeout();
-			if (g_network->isSimulated() && !g_simulator->getCurrentProcess()->isReliable()) {
+			if (!isSimulatorProcessReliable()) {
 				err = err.asInjectedFault();
 			}
 			TraceEvent(SevError, "IoTimeoutError").error(err);
@@ -1290,7 +1313,9 @@ Future<T> ioDegradedOrTimeoutError(Future<T> what,
 	if (degradedTime < errTime) {
 		Future<Void> degradedEnd = lowPriorityDelay(degradedTime);
 		choose {
-			when(T t = wait(what)) { return t; }
+			when(T t = wait(what)) {
+				return t;
+			}
 			when(wait(degradedEnd)) {
 				CODE_PROBE(true, "TLog degraded", probe::func::deduplicate);
 				TraceEvent(SevWarnAlways, "IoDegraded").log();
@@ -1301,10 +1326,12 @@ Future<T> ioDegradedOrTimeoutError(Future<T> what,
 
 	Future<Void> end = lowPriorityDelay(errTime - degradedTime);
 	choose {
-		when(T t = wait(what)) { return t; }
+		when(T t = wait(what)) {
+			return t;
+		}
 		when(wait(end)) {
 			Error err = io_timeout();
-			if (g_network->isSimulated() && !g_simulator->getCurrentProcess()->isReliable()) {
+			if (!isSimulatorProcessReliable()) {
 				err = err.asInjectedFault();
 			}
 			TraceEvent(SevError, "IoTimeoutError").error(err);

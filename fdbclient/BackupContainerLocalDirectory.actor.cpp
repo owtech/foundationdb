@@ -24,6 +24,7 @@
 #include "flow/Platform.actor.h"
 #include "flow/Platform.h"
 #include "fdbrpc/simulator.h"
+#include "fdbrpc/SimulatorProcessInfo.h"
 #include "flow/actorcompiler.h" // This must be the last #include.
 
 namespace {
@@ -63,7 +64,7 @@ public:
 		m_buffer = Standalone<VectorRef<uint8_t>>(old.slice(size, old.size()));
 
 		// Write the old buffer to the underlying file and update the write offset
-		Future<Void> r = holdWhile(old, m_file->write(old.begin(), size, m_writeOffset));
+		Future<Void> r = uncancellable(holdWhile(old, m_file->write(old.begin(), size, m_writeOffset)));
 		m_writeOffset += size;
 
 		return r;

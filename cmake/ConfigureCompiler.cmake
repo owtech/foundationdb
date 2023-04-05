@@ -25,7 +25,6 @@ env_set(STATIC_LINK_LIBCXX "${_static_link_libcxx}" BOOL "Statically link libstd
 env_set(TRACE_PC_GUARD_INSTRUMENTATION_LIB "" STRING "Path to a library containing an implementation for __sanitizer_cov_trace_pc_guard. See https://clang.llvm.org/docs/SanitizerCoverage.html for more info.")
 env_set(PROFILE_INSTR_GENERATE OFF BOOL "If set, build FDB as an instrumentation build to generate profiles")
 env_set(PROFILE_INSTR_USE "" STRING "If set, build FDB with profile")
-env_set(FULL_DEBUG_SYMBOLS OFF BOOL "Generate full debug symbols")
 env_set(ENABLE_LONG_RUNNING_TESTS OFF BOOL "Add a long running tests package")
 
 set(USE_SANITIZER OFF)
@@ -166,18 +165,23 @@ else()
   set(SANITIZER_COMPILE_OPTIONS)
   set(SANITIZER_LINK_OPTIONS)
 
-  # we always compile with debug symbols. For release builds CPack will strip them out
-  # and create a debuginfo rpm
-  add_compile_options(-fno-omit-frame-pointer -gz)
-  add_link_options(-gz)
+  add_compile_options(-fno-omit-frame-pointer)
+
   if(FDB_RELEASE OR FULL_DEBUG_SYMBOLS OR CMAKE_BUILD_TYPE STREQUAL "Debug")
     # Configure with FULL_DEBUG_SYMBOLS=ON to generate all symbols for debugging with gdb
-    # Also generating full debug symbols in release builds, because they are packaged
-    # separately and installed optionally
+    # Also generating full debug symbols in release builds. CPack will strip them out
+    # and create a debuginfo rpm
     add_compile_options(-ggdb)
   else()
     # Generating minimal debug symbols by default. They are sufficient for testing purposes
     add_compile_options(-ggdb1)
+  endif()
+
+  if(CLANG)
+    # The default DWARF 5 format does not play nicely with GNU Binutils 2.39 and earlier, resulting
+    # in tools like addr2line omitting line numbers. We can consider removing this once we are able 
+    # to use a version that has a fix.
+    add_compile_options(-gdwarf-4)
   endif()
 
   if(TRACE_PC_GUARD_INSTRUMENTATION_LIB)

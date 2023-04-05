@@ -43,9 +43,9 @@
 #include "flow/actorcompiler.h" // has to be last include
 
 #ifdef SSD_ROCKSDB_EXPERIMENTAL
-// Enforcing rocksdb version to be 6.22.1 or greater.
-static_assert(ROCKSDB_MAJOR == 6 && ROCKSDB_MINOR >= 22 && ROCKSDB_PATCH >= 1,
-              "Unsupported rocksdb version. Update the rocksdb to at least 6.22.1 version");
+// Enforcing rocksdb version to be 7.7.3.
+static_assert((ROCKSDB_MAJOR == 7 && ROCKSDB_MINOR == 7 && ROCKSDB_PATCH == 3),
+              "Unsupported rocksdb version. Update the rocksdb to 7.7.3 version");
 
 namespace {
 
@@ -70,7 +70,7 @@ rocksdb::ColumnFamilyOptions getCFOptions() {
 rocksdb::Options getOptions() {
 	rocksdb::Options options({}, getCFOptions());
 	options.create_if_missing = false;
-	options.db_log_dir = SERVER_KNOBS->LOG_DIRECTORY;
+	options.db_log_dir = g_network->isSimulated() ? "" : SERVER_KNOBS->LOG_DIRECTORY;
 	return options;
 }
 
@@ -529,6 +529,7 @@ ACTOR Future<Void> fetchCheckpointFile(Database cx,
 	state int64_t offset = 0;
 	state Reference<IAsyncFile> asyncFile;
 	loop {
+		offset = 0;
 		try {
 			asyncFile = Reference<IAsyncFile>();
 			++attempt;
@@ -559,7 +560,8 @@ ACTOR Future<Void> fetchCheckpointFile(Database cx,
 				offset += rep.data.size();
 			}
 		} catch (Error& e) {
-			if (e.code() != error_code_end_of_stream) {
+			if (e.code() != error_code_end_of_stream ||
+			    (g_network->isSimulated() && attempt == 1 && deterministicRandom()->coinflip())) {
 				TraceEvent("FetchCheckpointFileError")
 				    .errorUnsuppressed(e)
 				    .detail("RemoteFile", remoteFile)
@@ -751,6 +753,8 @@ ACTOR Future<CheckpointMetaData> fetchRocksDBCheckpoint(Database cx,
 	    .detail("InitialState", initialState.toString())
 	    .detail("CheckpointDir", dir);
 
+	ASSERT(!initialState.ranges.empty());
+
 	state std::shared_ptr<CheckpointMetaData> metaData = std::make_shared<CheckpointMetaData>(initialState);
 
 	if (metaData->format == RocksDBColumnFamily) {
@@ -769,7 +773,7 @@ ACTOR Future<CheckpointMetaData> fetchRocksDBCheckpoint(Database cx,
 	} else if (metaData->format == RocksDB) {
 		std::shared_ptr<rocksdb::SstFileWriter> writer =
 		    std::make_shared<rocksdb::SstFileWriter>(rocksdb::EnvOptions(), rocksdb::Options());
-		wait(fetchCheckpointRange(cx, metaData, metaData->range, dir, writer, cFun));
+		wait(fetchCheckpointRange(cx, metaData, metaData->ranges.front(), dir, writer, cFun));
 	}
 
 	return *metaData;

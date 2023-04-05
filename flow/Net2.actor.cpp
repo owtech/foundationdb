@@ -44,6 +44,7 @@
 #include "flow/ActorCollection.h"
 #include "flow/TaskQueue.h"
 #include "flow/ThreadHelper.actor.h"
+#include "flow/ChaosMetrics.h"
 #include "flow/TDMetric.actor.h"
 #include "flow/AsioReactor.h"
 #include "flow/Profiler.h"
@@ -55,6 +56,8 @@
 #include "flow/Util.h"
 #include "flow/UnitTest.h"
 #include "flow/ScopeExit.h"
+#include "flow/IUDPSocket.h"
+#include "flow/IConnection.h"
 
 #ifdef ADDRESS_SANITIZER
 #include <sanitizer/lsan_interface.h>
@@ -881,8 +884,8 @@ public:
 
 		try {
 			Future<Void> onHandshook;
-			ConfigureSSLStream(N2::g_net2->activeTlsPolicy, self->ssl_sock, [self = self](bool verifyOk) {
-				self->has_trusted_peer = verifyOk;
+			ConfigureSSLStream(N2::g_net2->activeTlsPolicy, self->ssl_sock, [conn = self.getPtr()](bool verifyOk) {
+				conn->has_trusted_peer = verifyOk;
 			});
 
 			// If the background handshakers are not all busy, use one
@@ -933,8 +936,12 @@ public:
 		doAcceptHandshake(self, connected);
 		try {
 			choose {
-				when(wait(connected.getFuture())) { return Void(); }
-				when(wait(delay(FLOW_KNOBS->CONNECTION_MONITOR_TIMEOUT))) { throw connection_failed(); }
+				when(wait(connected.getFuture())) {
+					return Void();
+				}
+				when(wait(delay(FLOW_KNOBS->CONNECTION_MONITOR_TIMEOUT))) {
+					throw connection_failed();
+				}
 			}
 		} catch (Error& e) {
 			if (e.code() != error_code_actor_cancelled) {
@@ -959,8 +966,8 @@ public:
 
 		try {
 			Future<Void> onHandshook;
-			ConfigureSSLStream(N2::g_net2->activeTlsPolicy, self->ssl_sock, [self = self](bool verifyOk) {
-				self->has_trusted_peer = verifyOk;
+			ConfigureSSLStream(N2::g_net2->activeTlsPolicy, self->ssl_sock, [conn = self.getPtr()](bool verifyOk) {
+				conn->has_trusted_peer = verifyOk;
 			});
 
 			// If the background handshakers are not all busy, use one
@@ -993,8 +1000,12 @@ public:
 		doConnectHandshake(self, connected);
 		try {
 			choose {
-				when(wait(connected.getFuture())) { return Void(); }
-				when(wait(delay(FLOW_KNOBS->CONNECTION_MONITOR_TIMEOUT))) { throw connection_failed(); }
+				when(wait(connected.getFuture())) {
+					return Void();
+				}
+				when(wait(delay(FLOW_KNOBS->CONNECTION_MONITOR_TIMEOUT))) {
+					throw connection_failed();
+				}
 			}
 		} catch (Error& e) {
 			// Either the connection failed, or was cancelled by the caller

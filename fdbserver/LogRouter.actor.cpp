@@ -28,6 +28,7 @@
 #include "flow/ActorCollection.h"
 #include "flow/Arena.h"
 #include "flow/Histogram.h"
+#include "flow/Trace.h"
 #include "flow/network.h"
 #include "flow/DebugTrace.h"
 #include "flow/actorcompiler.h" // This must be the last #include.
@@ -59,11 +60,8 @@ struct LogRouterData {
 		                                       TaskPriority taskID) {
 			while (!self->version_messages.empty() && self->version_messages.front().first < before) {
 				Version version = self->version_messages.front().first;
-				int64_t messagesErased = 0;
 
 				while (!self->version_messages.empty() && self->version_messages.front().first == version) {
-					++messagesErased;
-
 					self->version_messages.pop_front();
 				}
 
@@ -449,6 +447,14 @@ Future<Void> logRouterPeekMessages(PromiseType replyPromise,
 	state int sequence = -1;
 	state UID peekId;
 
+	DebugLogTraceEvent("LogRouterPeek0", self->dbgid)
+	    .detail("ReturnIfBlocked", reqReturnIfBlocked)
+	    .detail("Tag", reqTag.toString())
+	    .detail("Seq", reqSequence.present() ? reqSequence.get().second : -1)
+	    .detail("SeqCursor", reqSequence.present() ? reqSequence.get().first : UID())
+	    .detail("Ver", self->version.get())
+	    .detail("Begin", reqBegin);
+
 	if (reqSequence.present()) {
 		try {
 			peekId = reqSequence.get().first;
@@ -482,6 +488,13 @@ Future<Void> logRouterPeekMessages(PromiseType replyPromise,
 			reqOnlySpilled = prevPeekData.second;
 			wait(yield());
 		} catch (Error& e) {
+			DebugLogTraceEvent("LogRouterPeekError", self->dbgid)
+			    .error(e)
+			    .detail("Tag", reqTag.toString())
+			    .detail("Seq", reqSequence.present() ? reqSequence.get().second : -1)
+			    .detail("SeqCursor", reqSequence.present() ? reqSequence.get().first : UID())
+			    .detail("Begin", reqBegin);
+
 			if (e.code() == error_code_timed_out || e.code() == error_code_operation_obsolete) {
 				replyPromise.sendError(e);
 				return Void();
@@ -490,12 +503,6 @@ Future<Void> logRouterPeekMessages(PromiseType replyPromise,
 			}
 		}
 	}
-
-	DebugLogTraceEvent("LogRouterPeek0", self->dbgid)
-	    .detail("ReturnIfBlocked", reqReturnIfBlocked)
-	    .detail("Tag", reqTag.toString())
-	    .detail("Ver", self->version.get())
-	    .detail("Begin", reqBegin);
 
 	if (reqReturnIfBlocked && self->version.get() < reqBegin) {
 		replyPromise.sendError(end_of_stream());
@@ -515,35 +522,41 @@ Future<Void> logRouterPeekMessages(PromiseType replyPromise,
 	}
 
 	state double startTime = now();
-
-	Version poppedVer = poppedVersion(self, reqTag);
-
-	if (poppedVer > reqBegin || reqBegin < self->startVersion) {
-		// This should only happen if a packet is sent multiple times and the reply is not needed.
-		// Since we are using popped differently, do not send a reply.
-		TraceEvent(SevWarnAlways, "LogRouterPeekPopped", self->dbgid)
-		    .detail("Begin", reqBegin)
-		    .detail("Popped", poppedVer)
-		    .detail("Start", self->startVersion);
-		if (std::is_same<PromiseType, Promise<TLogPeekReply>>::value) {
-			// kills logRouterPeekStream actor, otherwise that actor becomes stuck
-			throw operation_obsolete();
-		}
-		replyPromise.send(Never());
-		if (reqSequence.present()) {
-			auto& trackerData = self->peekTracker[peekId];
-			auto& sequenceData = trackerData.sequence_version[sequence + 1];
-			if (!sequenceData.isSet()) {
-				sequenceData.send(std::make_pair(reqBegin, reqOnlySpilled));
-			}
-		}
-		return Void();
-	}
-
+	state Version poppedVer;
 	state Version endVersion;
 	// Run the peek logic in a loop to account for the case where there is no data to return to the caller, and we may
 	// want to wait a little bit instead of just sending back an empty message. This feature is controlled by a knob.
 	loop {
+
+		poppedVer = poppedVersion(self, reqTag);
+
+		if (poppedVer > reqBegin || reqBegin < self->startVersion) {
+			// This should only happen if a packet is sent multiple times and the reply is not needed.
+			// Since we are using popped differently, do not send a reply.
+			TraceEvent(SevWarnAlways, "LogRouterPeekPopped", self->dbgid)
+			    .detail("Begin", reqBegin)
+			    .detail("Popped", poppedVer)
+			    .detail("Tag", reqTag.toString())
+			    .detail("Seq", reqSequence.present() ? reqSequence.get().second : -1)
+			    .detail("SeqCursor", reqSequence.present() ? reqSequence.get().first : UID())
+			    .detail("Start", self->startVersion);
+			if (std::is_same<PromiseType, Promise<TLogPeekReply>>::value) {
+				// kills logRouterPeekStream actor, otherwise that actor becomes stuck
+				throw operation_obsolete();
+			}
+			if (std::is_same<PromiseType, ReplyPromise<TLogPeekReply>>::value) {
+				// Send error to avoid a race condition that the peer is really retrying,
+				// otherwise, the peer could be blocked forever.
+				replyPromise.sendError(operation_obsolete());
+			} else {
+				replyPromise.send(Never());
+			}
+
+			return Void();
+		}
+
+		ASSERT(reqBegin >= poppedVersion(self, reqTag) && reqBegin >= self->startVersion);
+
 		endVersion = self->version.get() + 1;
 		peekMessagesFromMemory(self, reqTag, reqBegin, messages, endVersion);
 
@@ -679,6 +692,7 @@ ACTOR Future<Void> logRouterPop(LogRouterData* self, TLogPopRequest req) {
 	if (!tagData) {
 		tagData = self->createTagData(req.tag, req.to, req.durableKnownCommittedVersion);
 	} else if (req.to > tagData->popped) {
+		DebugLogTraceEvent("LogRouterPop", self->dbgid).detail("Tag", req.tag.toString()).detail("PopVersion", req.to);
 		tagData->popped = req.to;
 		tagData->durableKnownCommittedVersion = req.durableKnownCommittedVersion;
 		wait(tagData->eraseMessagesBefore(req.to, self, TaskPriority::TLogPop));
@@ -771,7 +785,9 @@ ACTOR Future<Void> logRouter(TLogInterface interf,
 		    .detail("Locality", req.locality);
 		state Future<Void> core = logRouterCore(interf, req, db);
 		loop choose {
-			when(wait(core)) { return Void(); }
+			when(wait(core)) {
+				return Void();
+			}
 			when(wait(checkRemoved(db, req.recoveryCount, interf))) {}
 		}
 	} catch (Error& e) {

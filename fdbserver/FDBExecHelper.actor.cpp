@@ -35,6 +35,7 @@
 #include "fdbrpc/FlowProcess.actor.h"
 #include "fdbrpc/Net2FileSystem.h"
 #include "fdbrpc/simulator.h"
+#include "fdbrpc/SimulatorProcessInfo.h"
 #include "fdbrpc/WellKnownEndpoints.h"
 #include "fdbclient/versions.h"
 #include "fdbserver/CoroFlow.h"
@@ -170,8 +171,7 @@ ACTOR Future<int> spawnSimulated(std::vector<std::string> paramList,
 	    ProcessClass(ProcessClass::UnsetClass, ProcessClass::AutoSource),
 	    self->dataFolder.c_str(),
 	    self->coordinationFolder.c_str(), // do we need to customize this coordination folder path?
-	    self->protocolVersion,
-	    false);
+	    self->protocolVersion);
 	wait(g_simulator->onProcess(child));
 	state Future<ISimulator::KillType> onShutdown = child->onShutdown();
 	state Future<ISimulator::KillType> parentShutdown = self->onShutdown();

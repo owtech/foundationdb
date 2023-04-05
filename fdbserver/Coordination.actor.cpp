@@ -47,7 +47,9 @@ class LivenessChecker {
 	ACTOR static Future<Void> checkStuck(LivenessChecker const* self) {
 		loop {
 			choose {
-				when(wait(delayUntil(self->lastTime.get() + self->threshold))) { return Void(); }
+				when(wait(delayUntil(self->lastTime.get() + self->threshold))) {
+					return Void();
+				}
 				when(wait(self->lastTime.onChange())) {}
 			}
 		}
@@ -224,7 +226,7 @@ ACTOR Future<Void> openDatabase(ClientData* db,
 	++(*clientCount);
 	hasConnectedClients->set(true);
 
-	if (req.supportedVersions.size() > 0) {
+	if (req.supportedVersions.size() > 0 && !req.internal) {
 		db->clientStatusInfoMap[req.reply.getEndpoint().getPrimaryAddress()] =
 		    ClientStatusInfo(req.traceLogGroup, req.supportedVersions, req.issues);
 	}
@@ -250,7 +252,7 @@ ACTOR Future<Void> openDatabase(ClientData* db,
 		}
 	}
 
-	if (req.supportedVersions.size() > 0) {
+	if (req.supportedVersions.size() > 0 && !req.internal) {
 		db->clientStatusInfoMap.erase(req.reply.getEndpoint().getPrimaryAddress());
 	}
 
@@ -280,7 +282,9 @@ ACTOR Future<Void> remoteMonitorLeader(int* clientCount,
 			when(wait(yieldedFuture(currentElectedLeaderOnChange))) {
 				currentElectedLeaderOnChange = currentElectedLeader->onChange();
 			}
-			when(wait(delayJittered(SERVER_KNOBS->CLIENT_REGISTER_INTERVAL))) { break; }
+			when(wait(delayJittered(SERVER_KNOBS->CLIENT_REGISTER_INTERVAL))) {
+				break;
+			}
 		}
 	}
 

@@ -29,6 +29,7 @@
 #include "fdbserver/IClosable.h"
 #include "fdbserver/IPageEncryptionKeyProvider.actor.h"
 #include "fdbserver/ServerDBInfo.h"
+#include "fdbserver/StorageMetrics.h"
 
 struct CheckpointRequest {
 	const Version version; // The FDB version at which the checkpoint is created.
@@ -52,7 +53,9 @@ public:
 	// persistRangeMapping().
 	virtual bool shardAware() const { return false; }
 	virtual void set(KeyValueRef keyValue, const Arena* arena = nullptr) = 0;
-	virtual void clear(KeyRangeRef range, const Arena* arena = nullptr) = 0;
+	virtual void clear(KeyRangeRef range,
+	                   const StorageServerMetrics* storageMetrics = nullptr,
+	                   const Arena* arena = nullptr) = 0;
 	virtual Future<Void> canCommit() { return Void(); }
 	virtual Future<Void> commit(
 	    bool sequential = false) = 0; // returns when prior sets and clears are (atomically) durable
@@ -80,9 +83,6 @@ public:
 
 	// Persists key range and physical shard mapping.
 	virtual void persistRangeMapping(KeyRangeRef range, bool isAdd) {}
-
-	// Destroys the physical shards if they're empty.
-	virtual Future<Void> cleanUpShardsIfNeeded(const std::vector<std::string>& shardIds) { return Void(); };
 
 	// To debug MEMORY_RADIXTREE type ONLY
 	// Returns (1) how many key & value pairs have been inserted (2) how many nodes have been created (3) how many

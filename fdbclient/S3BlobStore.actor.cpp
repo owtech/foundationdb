@@ -20,6 +20,7 @@
 
 #include "fdbclient/S3BlobStore.h"
 
+#include "flow/IConnection.h"
 #include "md5/md5.h"
 #include "libb64/encode.h"
 #include "fdbclient/sha1/SHA1.h"
@@ -486,7 +487,9 @@ ACTOR Future<Void> deleteRecursively_impl(Reference<S3BlobStoreEndpoint> b,
 		loop {
 			choose {
 				// Throw if done throws, otherwise don't stop until end_of_stream
-				when(wait(done)) { done = Never(); }
+				when(wait(done)) {
+					done = Never();
+				}
 
 				when(S3BlobStoreEndpoint::ListResult list = waitNext(resultStream.getFuture())) {
 					for (auto& object : list.objects) {
@@ -1202,7 +1205,9 @@ ACTOR Future<S3BlobStoreEndpoint::ListResult> listObjects_impl(Reference<S3BlobS
 		loop {
 			choose {
 				// Throw if done throws, otherwise don't stop until end_of_stream
-				when(wait(done)) { done = Never(); }
+				when(wait(done)) {
+					done = Never();
+				}
 
 				when(S3BlobStoreEndpoint::ListResult info = waitNext(resultStream.getFuture())) {
 					results.commonPrefixes.insert(
