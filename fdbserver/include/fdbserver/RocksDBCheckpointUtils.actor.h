@@ -300,7 +300,9 @@ ACTOR Future<Void> deleteRocksCheckpoint(CheckpointMetaData checkpoint);
 ICheckpointReader* newRocksDBCheckpointReader(const CheckpointMetaData& checkpoint, UID logID);
 
 RocksDBColumnFamilyCheckpoint getRocksCF(const CheckpointMetaData& checkpoint);
+
 RocksDBCheckpoint getRocksCheckpoint(const CheckpointMetaData& checkpoint);
 
 #include "flow/unactorcompiler.h"
+
 #endif

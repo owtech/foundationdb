@@ -60,8 +60,8 @@ function(compile_boost)
 
   set(BOOST_INSTALL_DIR "${CMAKE_BINARY_DIR}/boost_install")
   ExternalProject_add("${COMPILE_BOOST_TARGET}Project"
-    URL "https://boostorg.jfrog.io/artifactory/main/release/1.78.0/source/boost_1_78_0.tar.bz2"
-    URL_HASH SHA256=8681f175d4bdb26c52222665793eef08490d7758529330f98d3b29dd0735bccc
+    URL                "https://boostorg.jfrog.io/artifactory/main/release/1.78.0/source/boost_1_78_0.tar.bz2"
+    URL_HASH           SHA256=8681f175d4bdb26c52222665793eef08490d7758529330f98d3b29dd0735bccc
     CONFIGURE_COMMAND  ${BOOTSTRAP_COMMAND}
                        ${BOOTSTRAP_ARGS}
                        --with-libraries=${BOOTSTRAP_LIBRARIES}
@@ -71,13 +71,13 @@ function(compile_boost)
                        ${COMPILE_BOOST_BUILD_ARGS}
                        --prefix=${BOOST_INSTALL_DIR}
                        ${USER_CONFIG_FLAG} install
-    BUILD_IN_SOURCE ON
-    INSTALL_COMMAND ""
-    UPDATE_COMMAND ""
-    BUILD_BYPRODUCTS "${BOOST_INSTALL_DIR}/boost/config.hpp"
-                     "${BOOST_INSTALL_DIR}/lib/libboost_context.a"
-                     "${BOOST_INSTALL_DIR}/lib/libboost_filesystem.a"
-                     "${BOOST_INSTALL_DIR}/lib/libboost_iostreams.a")
+    BUILD_IN_SOURCE    ON
+    INSTALL_COMMAND    ""
+    UPDATE_COMMAND     ""
+    BUILD_BYPRODUCTS   "${BOOST_INSTALL_DIR}/include/boost/config.hpp"
+                       "${BOOST_INSTALL_DIR}/lib/libboost_context.a"
+                       "${BOOST_INSTALL_DIR}/lib/libboost_filesystem.a"
+                       "${BOOST_INSTALL_DIR}/lib/libboost_iostreams.a")
 
   add_library(${COMPILE_BOOST_TARGET}_context STATIC IMPORTED)
   add_dependencies(${COMPILE_BOOST_TARGET}_context ${COMPILE_BOOST_TARGET}Project)
