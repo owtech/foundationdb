@@ -9,12 +9,13 @@ sudo apt update
 $BASE_DIR/prepare-debian-based-cmake.bash 3.24
 $BASE_DIR/prepare-debian-based-clang.sh
 $BASE_DIR/prepare-debian-based-jdk.bash
-$BASE_DIR/prepare-debian-based-libstdc.sh
+# $BASE_DIR/prepare-debian-based-libstdc.sh
 
 # make is necessary for building Jemalloc on Astra Linux
 
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   git \
+  lld \
   mono-mcs \
   make \
   ninja-build \
@@ -35,4 +36,4 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   libmono-system-runtime-serialization4.0-cil \
   libmono-system-xml-linq4.0-cil
 
-sudo pip install sphinx-bootstrap-theme
+sudo pip3 install sphinx-bootstrap-theme
