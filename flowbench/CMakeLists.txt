@@ -41,6 +41,8 @@ else()
     message(FATAL_ERROR "Build step for Benchmark has Failed. ${results}")
   endif()
   set(BENCHMARK_ENABLE_TESTING OFF)
+  # libc++ implicitly requires -pthread
+  set(CMAKE_CXX_FLAGS${VARIANT} "${CMAKE_CXX_FLAGS} -pthread")
   add_subdirectory(
     ${CMAKE_CURRENT_BINARY_DIR}/googlebenchmark-src
     ${CMAKE_CURRENT_BINARY_DIR}/googlebenchmark-build
