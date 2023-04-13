@@ -9,7 +9,6 @@ sudo apt update
 $BASE_DIR/prepare-debian-based-cmake.bash 3.24
 $BASE_DIR/prepare-debian-based-clang.sh
 $BASE_DIR/prepare-debian-based-jdk.bash
-# $BASE_DIR/prepare-debian-based-libstdc.sh
 
 # make is necessary for building Jemalloc on Astra Linux
 
