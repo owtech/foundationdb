@@ -49,7 +49,7 @@ jobs:
             for: linux
             prepare: "debian-based"
             build_on: linux
-            use_image: ghcr.io/owtech/foundationdb-build:7.3.0-0.ow
+            use_image: ghcr.io/owtech/foundationdb-build:7.3.0-1.ow.build
             parallel: 3
 
     runs-on: ${{ matrix.run_on }}
@@ -93,8 +93,8 @@ jobs:
     needs: [calc_ver, build]
     runs-on: ubuntu-latest
     env:
-      RPM_IMAGE: oraclelinux:9
-      DEB_IMAGE: debian:11
+      RPM_IMAGE: oraclelinux:8
+      DEB_IMAGE: debian:10
 
     steps:
       - name: Checkout
