@@ -16,11 +16,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-if(WIN32)
-  cmake_minimum_required(VERSION 3.15)
-else()
-  cmake_minimum_required(VERSION 3.13)
-endif()
+cmake_minimum_required(VERSION 3.24.2)
 
 # silence deprecation warnings in newer versions of cmake
 if(POLICY CMP0135)
@@ -28,7 +24,7 @@ if(POLICY CMP0135)
 endif()
 
 project(foundationdb
-  VERSION 7.2.5
+  VERSION 7.2.7
   DESCRIPTION "FoundationDB is a scalable, fault-tolerant, ordered key-value store with full ACID transactions."
   HOMEPAGE_URL "http://www.foundationdb.org/"
   LANGUAGES C CXX ASM)

@@ -428,6 +428,8 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( ROCKSDB_MAX_SUBCOMPACTIONS,                              0 );
 	init( ROCKSDB_SOFT_PENDING_COMPACT_BYTES_LIMIT,      64000000000 ); // 64GB, Rocksdb option, Writes will slow down.
 	init( ROCKSDB_HARD_PENDING_COMPACT_BYTES_LIMIT,     100000000000 ); // 100GB, Rocksdb option, Writes will stall.
+	init( SHARD_SOFT_PENDING_COMPACT_BYTES_LIMIT,                  0 );
+	init( SHARD_HARD_PENDING_COMPACT_BYTES_LIMIT,                  0 );
 	init( ROCKSDB_CAN_COMMIT_COMPACT_BYTES_LIMIT,        50000000000 ); // 50GB, Commit waits.
 	// Enable this knob only for experminatal purpose, never enable this in production.
 	// If enabled, all the committed in-memory memtable writes are lost on a crash.
@@ -436,7 +438,9 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	// These knobs have contrary functionality.
 	init( ROCKSDB_SINGLEKEY_DELETES_ON_CLEARRANGE,              true );
 	init( ROCKSDB_SINGLEKEY_DELETES_BYTES_LIMIT,               10000 ); // 10KB
+	init( ROCKSDB_SINGLEKEY_DELETES_MAX,                         200 ); // Max rocksdb::delete calls in a transaction
 	init( ROCKSDB_ENABLE_CLEAR_RANGE_EAGER_READS,              false );
+	init( ROCKSDB_FORCE_DELETERANGE_FOR_CLEARRANGE,            false );
 	// ROCKSDB_STATS_LEVEL=1 indicates rocksdb::StatsLevel::kExceptHistogramOrTimers
 	// Refer StatsLevel: https://github.com/facebook/rocksdb/blob/main/include/rocksdb/statistics.h#L594
 	init( ROCKSDB_STATS_LEVEL,                                     1 ); if( randomize && BUGGIFY ) ROCKSDB_STATS_LEVEL = deterministicRandom()->randomInt(0, 6);
@@ -461,6 +465,13 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( ROCKSDB_DELETE_OBSOLETE_FILE_PERIOD,                 21600 ); // 6h, RocksDB default.
 	init( ROCKSDB_PHYSICAL_SHARD_CLEAN_UP_DELAY, isSimulated ? 10.0 : 300.0 ); // Delays shard clean up, must be larger than ROCKSDB_READ_VALUE_TIMEOUT to prevent reading deleted shard.
 	init( ROCKSDB_RETURN_OVERLOADED_ON_TIMEOUT,                false ); if ( randomize && BUGGIFY ) ROCKSDB_RETURN_OVERLOADED_ON_TIMEOUT = true;
+	init( ROCKSDB_COMPACTION_PRI,                                  3 ); // kMinOverlappingRatio, RocksDB default. 
+	init( ROCKSDB_WAL_RECOVERY_MODE,                               2 ); // kPointInTimeRecovery, RocksDB default.
+	init( ROCKSDB_TARGET_FILE_SIZE_BASE,                    16777216 ); // 16MB, RocksDB default.
+	init( ROCKSDB_MAX_OPEN_FILES,                              50000 ); // Should be smaller than OS's fd limit.
+	init( ROCKSDB_USE_POINT_DELETE_FOR_SYSTEM_KEYS,            false ); if (isSimulated) ROCKSDB_USE_POINT_DELETE_FOR_SYSTEM_KEYS = deterministicRandom()->coinflip();
+	init( ROCKSDB_CF_RANGE_DELETION_LIMIT,                      1000 );
+	init (ROCKSDB_WAIT_ON_CF_FLUSH,                             true ); if (isSimulated) ROCKSDB_WAIT_ON_CF_FLUSH = deterministicRandom()->coinflip();
 
 	// Leader election
 	bool longLeaderElection = randomize && BUGGIFY;
