@@ -1467,9 +1467,12 @@ public:
 	    std::map<Optional<Standalone<StringRef>>, int> preferredSharing = {},
 	    Optional<WorkerFitnessInfo> minWorker = Optional<WorkerFitnessInfo>(),
 	    bool checkStable = false) {
+	        // for avoiding recruiting workers with worse fitness
+		ProcessClass::Fitness used_fitness = ProcessClass::NeverAssign;
 		std::map<std::tuple<ProcessClass::Fitness, int, bool, int>, std::vector<WorkerDetails>> fitness_workers;
 		std::vector<WorkerDetails> results;
 		if (minWorker.present()) {
+		        used_fitness = minWorker.get().fitness;
 			results.push_back(minWorker.get().worker);
 		}
 		if (amount <= results.size()) {
@@ -1483,9 +1486,7 @@ public:
 			    !isExcludedDegradedServer(it.second.details.interf.addresses()) &&
 			    it.second.details.interf.locality.dcId() == dcId &&
 			    (!minWorker.present() ||
-			     (it.second.details.interf.id() != minWorker.get().worker.interf.id() &&
-			      (fitness < minWorker.get().fitness ||
-			       (fitness == minWorker.get().fitness && id_used[it.first] <= minWorker.get().used))))) {
+			     (it.second.details.interf.id() != minWorker.get().worker.interf.id()))) {
 				auto sharing = preferredSharing.find(it.first);
 				fitness_workers[std::make_tuple(fitness,
 				                                id_used[it.first],
@@ -1496,14 +1497,19 @@ public:
 		}
 
 		for (auto& it : fitness_workers) {
+		        ProcessClass::Fitness next_fitness = std::get<0>(it.first);
+
+		        if (next_fitness > used_fitness)
+			        break; // do not recruit with a greater fitness
+			used_fitness = next_fitness;
 			deterministicRandom()->randomShuffle(it.second);
 			for (int i = 0; i < it.second.size(); i++) {
 				results.push_back(it.second[i]);
 				id_used[it.second[i].interf.locality.processId()]++;
 				if (results.size() == amount)
 					return results;
+				}
 			}
-		}
 
 		return results;
 	}
