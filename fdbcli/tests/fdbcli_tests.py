@@ -34,8 +34,11 @@ def enable_logging(level=logging.DEBUG):
             handler.setFormatter(handler_format)
             handler.setLevel(level)
             logger.addHandler(handler)
+            # log the start and the end of the function call
+            logger.debug("STARTED")
             # pass the logger to the decorated function
             result = func(logger, *args, **kwargs)
+            logger.debug("FINISHED")
             return result
 
         return wrapper
@@ -50,9 +53,7 @@ def run_fdbcli_command(*args):
         string: Console output from fdbcli
     """
     commands = command_template + ["{}".format(" ".join(args))]
-    process = subprocess.run(
-        commands, stdout=subprocess.PIPE, env=fdbcli_env
-    )
+    process = subprocess.run(commands, stdout=subprocess.PIPE, env=fdbcli_env)
     return process.stdout.decode("utf-8").strip()
 
 
@@ -455,6 +456,8 @@ def versionepoch(logger):
     assert version10 == "Current version epoch is 0"
     version11 = run_fdbcli_command("versionepoch commit")
     assert version11.startswith("Current read version is ")
+    # the test can trigger recovery, thus we wait until the recovery is finished to move to the next test
+    wait_for_database_available(logger)
 
 
 def get_value_from_status_json(retry, *args):
@@ -1076,8 +1079,8 @@ def tenant_get(logger):
     assert lines[3].strip() == "lock state: unlocked"
     # id = lines[0].strip().removeprefix("id: ")
     # Workaround until Python 3.9+ for removeprefix
-    id = lines[0].strip()[len("id: "):]
-    
+    id = lines[0].strip()[len("id: ") :]
+
     id_output = run_fdbcli_command("tenant getId {}".format(id))
     assert id_output == output
 
@@ -1112,7 +1115,7 @@ def tenant_get(logger):
     assert lines[4].strip() == "tenant group: tenant_group2"
     # id2 = lines[0].strip().removeprefix("id: ")
     # Workaround until Python 3.9+ for removeprefix
-    id2 = lines[0].strip()[len("id: "):]
+    id2 = lines[0].strip()[len("id: ") :]
 
     id_output = run_fdbcli_command("tenant getId {}".format(id2))
     assert id_output == output
@@ -1138,6 +1141,7 @@ def tenant_get(logger):
 
     id_output = run_fdbcli_command("tenant getId {} JSON".format(id2))
     assert id_output == output
+
 
 @enable_logging()
 def tenant_configure(logger):

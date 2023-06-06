@@ -26,7 +26,7 @@
 #include "fdbclient/CommitProxyInterface.h"
 #include "fdbclient/CommitTransaction.h"
 #include "fdbclient/FDBTypes.h"
-#include "fdbclient/GetEncryptCipherKeys.actor.h"
+#include "fdbclient/GetEncryptCipherKeys.h"
 #include "fdbclient/DatabaseContext.h"
 #include "fdbclient/ManagementAPI.actor.h"
 #include "fdbclient/MetaclusterRegistration.h"
@@ -372,12 +372,14 @@ ACTOR static Future<Void> decodeBackupLogValue(Arena* arena,
 				Reference<AsyncVar<ClientDBInfo> const> dbInfo = cx->clientInfo;
 				try {
 					if (CLIENT_KNOBS->ENABLE_CONFIGURABLE_ENCRYPTION) {
-						TextAndHeaderCipherKeys cipherKeys = wait(getEncryptCipherKeys(
-						    dbInfo, logValue.configurableEncryptionHeader(), BlobCipherMetrics::RESTORE));
+						TextAndHeaderCipherKeys cipherKeys =
+						    wait(GetEncryptCipherKeys<ClientDBInfo>::getEncryptCipherKeys(
+						        dbInfo, logValue.configurableEncryptionHeader(), BlobCipherMetrics::RESTORE));
 						logValue = logValue.decrypt(cipherKeys, tempArena, BlobCipherMetrics::RESTORE);
 					} else {
-						TextAndHeaderCipherKeys cipherKeys = wait(
-						    getEncryptCipherKeys(dbInfo, *logValue.encryptionHeader(), BlobCipherMetrics::RESTORE));
+						TextAndHeaderCipherKeys cipherKeys =
+						    wait(GetEncryptCipherKeys<ClientDBInfo>::getEncryptCipherKeys(
+						        dbInfo, *logValue.encryptionHeader(), BlobCipherMetrics::RESTORE));
 						logValue = logValue.decrypt(cipherKeys, tempArena, BlobCipherMetrics::RESTORE);
 					}
 				} catch (Error& e) {
@@ -385,7 +387,8 @@ ACTOR static Future<Void> decodeBackupLogValue(Arena* arena,
 					TraceEvent(SevWarnAlways, "MutationLogRestoreEncryptKeyFetchFailed")
 					    .detail("Version", version)
 					    .detail("TenantId", domainId);
-					if (e.code() == error_code_encrypt_keys_fetch_failed) {
+					if (e.code() == error_code_encrypt_keys_fetch_failed ||
+					    e.code() == error_code_encrypt_key_not_found) {
 						CODE_PROBE(true, "mutation log restore encrypt keys not found");
 						consumed += BackupAgentBase::logHeaderSize + len1 + len2;
 						continue;
@@ -1373,6 +1376,7 @@ VectorRef<KeyRangeRef> const& getSystemBackupRanges() {
 		systemBackupRanges.push_back_deep(systemBackupRanges.arena(), prefixRange(TenantMetadata::subspace()));
 		systemBackupRanges.push_back_deep(systemBackupRanges.arena(),
 		                                  singleKeyRange(metacluster::metadata::metaclusterRegistration().key));
+		systemBackupRanges.push_back_deep(systemBackupRanges.arena(), blobRangeKeys);
 	}
 
 	return systemBackupRanges;

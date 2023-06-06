@@ -53,13 +53,15 @@ Future<StatusReply> clusterGetStatus(
     std::vector<NetworkAddress> const& incompatibleConnections,
     Version const& datacenterVersionDifference,
     ConfigBroadcaster const* const& conifgBroadcaster,
-    Optional<MetaclusterRegistrationEntry> const& metaclusterRegistration,
+    Optional<UnversionedMetaclusterRegistrationEntry> const& metaclusterRegistration,
     metacluster::MetaclusterMetrics const& metaclusterMetrics);
 
 struct WorkerEvents : std::map<NetworkAddress, TraceEventFields> {};
 ACTOR Future<Optional<std::pair<WorkerEvents, std::set<std::string>>>> latestEventOnWorkers(
     std::vector<WorkerDetails> workers,
     std::string eventName);
+
+ACTOR Future<KMSHealthStatus> getKMSHealthStatus(Reference<const AsyncVar<ServerDBInfo>> db);
 
 #include "flow/unactorcompiler.h"
 #endif

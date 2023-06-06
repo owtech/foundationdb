@@ -36,26 +36,33 @@ enum class AuditPhase : uint8_t {
 enum class AuditType : uint8_t {
 	Invalid = 0,
 	ValidateHA = 1,
+	ValidateReplica = 2,
+	ValidateLocationMetadata = 3,
+	ValidateStorageServerShard = 4,
+	CheckMigrationStatus = 5,
 };
 
 struct AuditStorageState {
 	constexpr static FileIdentifier file_identifier = 13804340;
 
-	AuditStorageState() : type(0), phase(0) {}
-	AuditStorageState(UID id, AuditType type) : id(id), type(static_cast<uint8_t>(type)), phase(0) {}
+	AuditStorageState() : type(0), auditServerId(UID()), phase(0), ddId(UID()) {}
+	AuditStorageState(UID id, UID auditServerId, AuditType type)
+	  : id(id), auditServerId(auditServerId), type(static_cast<uint8_t>(type)), phase(0), ddId(UID()) {}
 	AuditStorageState(UID id, KeyRange range, AuditType type)
-	  : id(id), range(range), type(static_cast<uint8_t>(type)), phase(0) {}
+	  : id(id), auditServerId(UID()), range(range), type(static_cast<uint8_t>(type)), phase(0), ddId(UID()) {}
+	AuditStorageState(UID id, AuditType type)
+	  : id(id), auditServerId(UID()), type(static_cast<uint8_t>(type)), phase(0), ddId(UID()) {}
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		serializer(ar, id, range, type, phase, error);
+		serializer(ar, id, auditServerId, range, type, phase, error, ddId);
 	}
 
-	void setType(AuditType type) { this->type = static_cast<uint8_t>(type); }
-	AuditType getType() const { return static_cast<AuditType>(this->type); }
+	inline void setType(AuditType type) { this->type = static_cast<uint8_t>(type); }
+	inline AuditType getType() const { return static_cast<AuditType>(this->type); }
 
-	void setPhase(AuditPhase phase) { this->phase = static_cast<uint8_t>(phase); }
-	AuditPhase getPhase() const { return static_cast<AuditPhase>(this->phase); }
+	inline void setPhase(AuditPhase phase) { this->phase = static_cast<uint8_t>(phase); }
+	inline AuditPhase getPhase() const { return static_cast<AuditPhase>(this->phase); }
 
 	std::string toString() const {
 		std::string res = "AuditStorageState: [ID]: " + id.toString() +
@@ -69,6 +76,14 @@ struct AuditStorageState {
 	}
 
 	UID id;
+	UID ddId; // ddId indicates this audit is managed by which dd
+	// ddId is used to check if dd has changed
+	// When a new dd starts in the middle of an onging audit,
+	// The ongoing audit's ddId gets updated
+	// When SS updates the progress, it checks ddId
+	// If the ddId is updated, SS Audit actors of the old dd will stop themselves
+	// New dd will issue new requests to SSes to continue the remaining work
+	UID auditServerId; // UID of SS who is working on this audit task
 	KeyRange range;
 	uint8_t type;
 	uint8_t phase;
@@ -79,18 +94,20 @@ struct AuditStorageRequest {
 	constexpr static FileIdentifier file_identifier = 13804341;
 
 	AuditStorageRequest() = default;
+	// for audit user data
 	AuditStorageRequest(UID id, KeyRange range, AuditType type)
 	  : id(id), range(range), type(static_cast<uint8_t>(type)) {}
 
-	void setType(AuditType type) { this->type = static_cast<uint8_t>(this->type); }
-	AuditType getType() const { return static_cast<AuditType>(this->type); }
+	inline void setType(AuditType type) { this->type = static_cast<uint8_t>(this->type); }
+	inline AuditType getType() const { return static_cast<AuditType>(this->type); }
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		serializer(ar, id, range, type, targetServers, reply);
+		serializer(ar, id, range, type, targetServers, reply, ddId);
 	}
 
 	UID id;
+	UID ddId; // UID of DD who claims the audit
 	KeyRange range;
 	uint8_t type;
 	std::vector<UID> targetServers;
@@ -105,20 +122,19 @@ struct TriggerAuditRequest {
 
 	TriggerAuditRequest() = default;
 	TriggerAuditRequest(AuditType type, KeyRange range)
-	  : type(static_cast<uint8_t>(type)), range(range), force(false), async(false) {}
+	  : type(static_cast<uint8_t>(type)), range(range), force(false) {}
 
 	void setType(AuditType type) { this->type = static_cast<uint8_t>(this->type); }
 	AuditType getType() const { return static_cast<AuditType>(this->type); }
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		serializer(ar, type, range, force, async, reply);
+		serializer(ar, type, range, force, reply);
 	}
 
 	uint8_t type;
 	KeyRange range;
 	bool force;
-	bool async;
 	ReplyPromise<UID> reply;
 };
 
