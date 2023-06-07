@@ -453,7 +453,6 @@ struct GetMappedKeyValuesRequest : TimedRequest {
 	KeyRef mapper;
 	Version version; // or latestVersion
 	int limit, limitBytes;
-	int matchIndex;
 	Optional<TagSet> tags;
 	Optional<ReadOptions> options;
 	ReplyPromise<GetMappedKeyValuesReply> reply;
@@ -480,7 +479,6 @@ struct GetMappedKeyValuesRequest : TimedRequest {
 		           tenantInfo,
 		           options,
 		           ssLatestCommitVersions,
-		           matchIndex,
 		           arena);
 	}
 };
@@ -642,6 +640,9 @@ struct StorageMetrics {
 	int64_t opsReadPerKSecond = 0;
 
 	static const int64_t infinity = 1LL << 60;
+
+	// the read load model coming from both read ops and read bytes
+	int64_t readLoadKSecond() const;
 
 	bool allLessOrEqual(const StorageMetrics& rhs) const {
 		return bytes <= rhs.bytes && bytesWrittenPerKSecond <= rhs.bytesWrittenPerKSecond &&
@@ -1167,34 +1168,38 @@ struct GetStorageMetricsRequest {
 	}
 };
 
+// Tracks the busyness of tags on individual storage servers.
+struct BusyTagInfo {
+	constexpr static FileIdentifier file_identifier = 4528694;
+	TransactionTag tag;
+	double rate{ 0.0 };
+	double fractionalBusyness{ 0.0 };
+
+	BusyTagInfo() = default;
+	BusyTagInfo(TransactionTag const& tag, double rate, double fractionalBusyness)
+	  : tag(tag), rate(rate), fractionalBusyness(fractionalBusyness) {}
+
+	bool operator<(BusyTagInfo const& rhs) const { return rate < rhs.rate; }
+	bool operator>(BusyTagInfo const& rhs) const { return rate > rhs.rate; }
+
+	template <class Ar>
+	void serialize(Ar& ar) {
+		serializer(ar, tag, rate, fractionalBusyness);
+	}
+};
+
 struct StorageQueuingMetricsReply {
-	struct TagInfo {
-		constexpr static FileIdentifier file_identifier = 4528694;
-		TransactionTag tag;
-		double rate{ 0.0 };
-		double fractionalBusyness{ 0.0 };
-
-		TagInfo() = default;
-		TagInfo(TransactionTag const& tag, double rate, double fractionalBusyness)
-		  : tag(tag), rate(rate), fractionalBusyness(fractionalBusyness) {}
-
-		template <class Ar>
-		void serialize(Ar& ar) {
-			serializer(ar, tag, rate, fractionalBusyness);
-		}
-	};
-
 	constexpr static FileIdentifier file_identifier = 7633366;
 	double localTime;
 	int64_t instanceID; // changes if bytesDurable and bytesInput reset
-	int64_t bytesDurable, bytesInput;
+	int64_t bytesDurable{ 0 }, bytesInput{ 0 };
 	StorageBytes storageBytes;
 	Version version; // current storage server version
 	Version durableVersion; // latest version durable on storage server
-	double cpuUsage;
-	double diskUsage;
+	double cpuUsage{ 0.0 };
+	double diskUsage{ 0.0 };
 	double localRateLimit;
-	std::vector<TagInfo> busiestTags;
+	std::vector<BusyTagInfo> busiestTags;
 
 	template <class Ar>
 	void serialize(Ar& ar) {

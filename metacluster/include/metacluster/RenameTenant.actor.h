@@ -107,6 +107,7 @@ struct RenameTenantImpl {
 		    wait(metadata::management::clusterTenantCount().getD(tr, tenantEntry.assignedCluster, Snapshot::False, 0));
 
 		if (clusterTenantCount + 1 > CLIENT_KNOBS->MAX_TENANTS_PER_CLUSTER) {
+			CODE_PROBE(true, "Rename failed due to cluster capacity limit");
 			throw cluster_no_capacity();
 		}
 
@@ -154,6 +155,7 @@ struct RenameTenantImpl {
 			return Void();
 		}
 		if (tenantEntry.get().tenantState == TenantState::REMOVING) {
+			CODE_PROBE(true, "Tenant removed during rename");
 			throw tenant_removed();
 		}
 
@@ -169,7 +171,15 @@ struct RenameTenantImpl {
 
 			metadata::management::tenantMetadata().tenantNameIndex.erase(tr, self->oldName);
 
-			// Remove the tenant from the cluster -> tenant index
+			// Update the tenant in the tenant group -> tenant index
+			if (updatedEntry.tenantGroup.present()) {
+				metadata::management::tenantMetadata().tenantGroupTenantIndex.erase(
+				    tr, Tuple::makeTuple(updatedEntry.tenantGroup.get(), self->oldName, self->tenantId));
+				metadata::management::tenantMetadata().tenantGroupTenantIndex.insert(
+				    tr, Tuple::makeTuple(updatedEntry.tenantGroup.get(), self->newName, self->tenantId));
+			}
+
+			// Update the tenant in the cluster -> tenant index
 			metadata::management::clusterTenantIndex().erase(
 			    tr, Tuple::makeTuple(updatedEntry.assignedCluster, self->oldName, self->tenantId));
 			metadata::management::clusterTenantIndex().erase(

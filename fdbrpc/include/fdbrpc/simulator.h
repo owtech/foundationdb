@@ -37,6 +37,7 @@
 #include "fdbrpc/Locality.h"
 #include "flow/IAsyncFile.h"
 #include "flow/TDMetric.actor.h"
+#include "fdbrpc/HTTP.h"
 #include "fdbrpc/FailureMonitor.h"
 #include "fdbrpc/Locality.h"
 #include "fdbrpc/ReplicationPolicy.h"
@@ -91,6 +92,7 @@ public:
 	ProcessInfo* getProcess(Endpoint const& endpoint) { return getProcessByAddress(endpoint.getPrimaryAddress()); }
 	ProcessInfo* getCurrentProcess() { return currentProcess; }
 	ProcessInfo const* getCurrentProcess() const { return currentProcess; }
+
 	// onProcess: wait for the process to be scheduled by the runloop; a task will be created for the process.
 	virtual Future<Void> onProcess(ISimulator::ProcessInfo* process, TaskPriority taskID = TaskPriority::Zero) = 0;
 	virtual Future<Void> onMachine(ISimulator::ProcessInfo* process, TaskPriority taskID = TaskPriority::Zero) = 0;
@@ -128,6 +130,8 @@ public:
 	                          KillType* ktFinal = nullptr) = 0;
 	virtual bool killAll(KillType kt, bool forceKill = false, KillType* ktFinal = nullptr) = 0;
 	// virtual KillType getMachineKillState( UID zoneID ) = 0;
+	virtual void processInjectBlobFault(ProcessInfo* machine, double failureRate) = 0;
+	virtual void processStopInjectBlobFault(ProcessInfo* machine) = 0;
 	virtual bool canKillProcesses(std::vector<ProcessInfo*> const& availableProcesses,
 	                              std::vector<ProcessInfo*> const& deadProcesses,
 	                              KillType kt,
@@ -206,6 +210,17 @@ public:
 		return roleText;
 	}
 
+	bool hasRole(NetworkAddress const& address, std::string const& role) const {
+		auto addressIt = roleAddresses.find(address);
+		if (addressIt != roleAddresses.end()) {
+			auto rolesIt = addressIt->second.find(role);
+			if (rolesIt != addressIt->second.end()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	void clearAddress(NetworkAddress const& address) {
 		clearedAddresses[address]++;
 		TraceEvent("ClearAddress").detail("Address", address).detail("Value", clearedAddresses[address]);
@@ -279,6 +294,12 @@ public:
 	virtual void destroyProcess(ProcessInfo* p) = 0;
 	virtual void destroyMachine(Optional<Standalone<StringRef>> const& machineId) = 0;
 
+	virtual void addSimHTTPProcess(Reference<HTTP::SimServerContext> serverContext) = 0;
+	virtual void removeSimHTTPProcess() = 0;
+	virtual Future<Void> registerSimHTTPServer(std::string hostname,
+	                                           std::string service,
+	                                           Reference<HTTP::IRequestHandler> requestHandler) = 0;
+
 	int desiredCoordinators;
 	int physicalDatacenters;
 	int processesPerMachine;
@@ -331,6 +352,7 @@ public:
 	BackupAgentType drAgents;
 	bool willRestart = false;
 	bool restarted = false;
+	bool isConsistencyChecked = false;
 	ValidationData validationData;
 
 	bool hasDiffProtocolProcess; // true if simulator is testing a process with a different version
@@ -342,6 +364,9 @@ public:
 	double injectTargetedBMRestartTime = std::numeric_limits<double>::max();
 	double injectTargetedBWRestartTime = std::numeric_limits<double>::max();
 
+	enum SimConsistencyScanState { DisabledStart = 0, Enabling = 1, Enabled = 2, Complete = 3, DisabledEnd = 4 };
+	SimConsistencyScanState consistencyScanState = SimConsistencyScanState::DisabledStart;
+
 	std::unordered_map<Standalone<StringRef>, PrivateKey> authKeys;
 
 	std::set<std::pair<std::string, unsigned>> corruptedBlocks;
@@ -351,9 +376,10 @@ public:
 	// 'plaintext marker' is present.
 	Optional<std::string> dataAtRestPlaintextMarker;
 
-	// A collection of custom shard boundaries (begin, end, replication factor) that will be removed once this feature
-	// is integrated with a way to set these boundaries in the database
-	std::vector<std::tuple<std::string, std::string, int>> customReplicas;
+	std::unordered_map<std::string, Reference<HTTP::SimRegisteredHandlerContext>> httpHandlers;
+	std::vector<std::pair<ProcessInfo*, Reference<HTTP::SimServerContext>>> httpServerProcesses;
+	std::set<IPAddress> httpServerIps;
+	bool httpProtected = false;
 
 	flowGlobalType global(int id) const final;
 	void setGlobal(size_t id, flowGlobalType v) final;

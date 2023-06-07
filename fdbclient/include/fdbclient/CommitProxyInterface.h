@@ -29,6 +29,7 @@
 #include "fdbclient/CommitTransaction.h"
 #include "fdbclient/EncryptKeyProxyInterface.h"
 #include "fdbclient/FDBTypes.h"
+#include "fdbclient/GetEncryptCipherKeys.h"
 #include "fdbclient/GlobalConfig.h"
 #include "fdbclient/GrvProxyInterface.h"
 #include "fdbclient/IdempotencyId.actor.h"
@@ -524,7 +525,7 @@ struct GetBlobGranuleLocationsRequest {
 	}
 };
 
-struct GetRawCommittedVersionReply {
+struct SWIFT_CXX_IMPORT_OWNED GetRawCommittedVersionReply {
 	constexpr static FileIdentifier file_identifier = 1314732;
 	Optional<UID> debugID;
 	Version version;
@@ -543,7 +544,7 @@ struct GetRawCommittedVersionReply {
 	}
 };
 
-struct GetRawCommittedVersionRequest {
+struct SWIFT_CXX_IMPORT_OWNED GetRawCommittedVersionRequest {
 	constexpr static FileIdentifier file_identifier = 12954034;
 	SpanContext spanContext;
 	Optional<UID> debugID;
@@ -562,7 +563,7 @@ struct GetRawCommittedVersionRequest {
 	}
 };
 
-struct GetStorageServerRejoinInfoReply {
+struct SWIFT_CXX_IMPORT_OWNED GetStorageServerRejoinInfoReply {
 	constexpr static FileIdentifier file_identifier = 9469225;
 	Version version;
 	Tag tag;
@@ -748,5 +749,8 @@ struct GlobalConfigRefreshRequest {
 		serializer(ar, lastKnown, reply);
 	}
 };
+
+// Instantiated in CommitProxyInterface.cpp
+extern template class GetEncryptCipherKeys<ClientDBInfo>;
 
 #endif

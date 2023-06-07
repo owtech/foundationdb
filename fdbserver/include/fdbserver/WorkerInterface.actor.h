@@ -158,7 +158,7 @@ struct WorkerDetails {
 
 // This interface and its serialization depend on slicing, since the client will deserialize only the first part of this
 // structure
-struct ClusterControllerFullInterface {
+struct SWIFT_CXX_IMPORT_OWNED ClusterControllerFullInterface {
 	constexpr static FileIdentifier file_identifier = ClusterControllerClientInterface::file_identifier;
 	ClusterInterface clientInterface;
 	RequestStream<struct RecruitFromConfigurationRequest> recruitFromConfiguration;
@@ -232,6 +232,8 @@ struct ClusterControllerFullInterface {
 		           getEncryptionAtRestMode);
 	}
 };
+
+using AsyncVar_Optional_ClusterControllerFullInterface = AsyncVar<Optional<ClusterControllerFullInterface>>;
 
 struct RegisterWorkerReply {
 	constexpr static FileIdentifier file_identifier = 16475696;
@@ -625,7 +627,7 @@ struct InitializeTLogRequest {
 	int logRouterTags;
 	int txsTags;
 	Version recoveryTransactionVersion;
-	std::vector<Version> oldGenerationStartVersions;
+	std::vector<Version> oldGenerationRecoverAtVersions;
 
 	ReplyPromise<struct TLogInterface> reply;
 
@@ -652,7 +654,7 @@ struct InitializeTLogRequest {
 		           spillType,
 		           txsTags,
 		           recoveryTransactionVersion,
-		           oldGenerationStartVersions);
+		           oldGenerationRecoverAtVersions);
 	}
 };
 
@@ -1150,6 +1152,7 @@ void startRole(const Role& role,
                const std::map<std::string, std::string>& details = std::map<std::string, std::string>(),
                const std::string& origination = "Recruited");
 void endRole(const Role& role, UID id, std::string reason, bool ok = true, Error e = Error());
+
 ACTOR Future<Void> traceRole(Role role, UID roleId);
 
 struct ServerDBInfo;
@@ -1318,6 +1321,8 @@ ACTOR template <class T>
 Future<T> ioTimeoutError(Future<T> what, double time, const char* context = nullptr) {
 	// Before simulation is sped up, IO operations can take a very long time so limit timeouts
 	// to not end until at least time after simulation is sped up.
+	state double orig = now();
+	state std::string trace = platform::get_backtrace();
 	if (g_network->isSimulated() && !g_simulator->speedUpSimulation) {
 		time += std::max(0.0, FLOW_KNOBS->SIM_SPEEDUP_AFTER_SECONDS - now());
 	}
@@ -1336,7 +1341,7 @@ Future<T> ioTimeoutError(Future<T> what, double time, const char* context = null
 			if (context != nullptr) {
 				e.detail("Context", context);
 			}
-			e.log();
+			e.detail("OrigTime", orig).detail("OrigTrace", trace).log();
 			throw err;
 		}
 	}
