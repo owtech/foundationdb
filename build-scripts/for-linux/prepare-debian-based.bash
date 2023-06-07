@@ -14,6 +14,7 @@ $BASE_DIR/prepare-debian-based-jdk.bash
 
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   git \
+  libncurses5 \
   lld \
   mono-mcs \
   make \
@@ -24,6 +25,8 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   python3-sphinx \
   python3-venv \
   rpm
+
+$BASE_DIR/prepare-debian-based-swift.bash
 
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   libjemalloc-dev \
