@@ -14,6 +14,7 @@ sudo dnf install -y \
   ninja-build \
   python3-sphinx \
   python3-sphinx-bootstrap-theme \
+  swift-lang \
   rpm-build
 
 sudo dnf install -y \
