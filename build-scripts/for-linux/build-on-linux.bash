@@ -35,6 +35,9 @@ APP_PRMS="\
 [ ! -e /usr/lib64/libcrypto.a -a -e /opt/openssl/lib/libcrypto.a ] && \
   APP_PRMS="$APP_PRMS -DOPENSSL_ROOT_DIR=/opt/openssl"
 
+# find swift
+APP_PRMS="$APP_PRMS -DCMAKE_Swift_COMPILER=`$BASE_DIR/find-swift.bash`"
+
 echo "env CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS . $SRC_DIR"
 env CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS . $SRC_DIR
 
