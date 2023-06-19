@@ -10,6 +10,7 @@ sudo dnf install -y \
   dpkg \
   git \
   java-1.8.0-openjdk-devel \
+  lld \
   mono-core \
   ninja-build \
   python3-sphinx \
@@ -22,7 +23,9 @@ sudo dnf install -y \
   bzip2-static \
   jemalloc-devel \
   libatomic \
-  libstdc++-static \
+  libcxx-devel \
+  libcxx-static \
+  libcxxabi-static \
   libzstd-static \
   lz4-devel \
   lz4-static \
