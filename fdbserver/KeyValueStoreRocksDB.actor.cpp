@@ -92,7 +92,7 @@ public:
 	rocksdb::DBOptions getDbOptions() const { return this->dbOptions; }
 	rocksdb::ColumnFamilyOptions getCfOptions() const { return this->cfOptions; }
 	rocksdb::Options getOptions() const { return rocksdb::Options(this->dbOptions, this->cfOptions); }
-	rocksdb::ReadOptions& getReadOptions() { return this->readOptions; }
+	rocksdb::ReadOptions getReadOptions() { return this->readOptions; }
 
 private:
 	const UID id;
@@ -158,6 +158,7 @@ rocksdb::ColumnFamilyOptions SharedRocksDBState::initialCfOptions() {
 	if (SERVER_KNOBS->ROCKSDB_HARD_PENDING_COMPACT_BYTES_LIMIT > 0) {
 		options.hard_pending_compaction_bytes_limit = SERVER_KNOBS->ROCKSDB_HARD_PENDING_COMPACT_BYTES_LIMIT;
 	}
+	options.paranoid_file_checks = SERVER_KNOBS->ROCKSDB_PARANOID_FILE_CHECKS;
 
 	// Compact sstables when there's too much deleted stuff.
 	if (SERVER_KNOBS->ROCKSDB_ENABLE_COMPACT_ON_DELETION) {
@@ -185,8 +186,7 @@ rocksdb::ColumnFamilyOptions SharedRocksDBState::initialCfOptions() {
 		options.prefix_extractor.reset(rocksdb::NewFixedPrefixTransform(SERVER_KNOBS->ROCKSDB_PREFIX_LEN));
 
 		// Also turn on bloom filters in the memtable.
-		// TODO: Make a knob for this as well.
-		options.memtable_prefix_bloom_size_ratio = 0.1;
+		options.memtable_prefix_bloom_size_ratio = SERVER_KNOBS->ROCKSDB_MEMTABLE_PREFIX_BLOOM_SIZE_RATIO;
 
 		// 5 -- Can be read by RocksDB's versions since 6.6.0. Full and partitioned
 		// filters use a generally faster and more accurate Bloom filter
@@ -197,11 +197,11 @@ rocksdb::ColumnFamilyOptions SharedRocksDBState::initialCfOptions() {
 		// Create and apply a bloom filter using the 10 bits
 		// which should yield a ~1% false positive rate:
 		// https://github.com/facebook/rocksdb/wiki/RocksDB-Bloom-Filter#full-filters-new-format
-		bbOpts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10));
+		bbOpts.filter_policy.reset(rocksdb::NewBloomFilterPolicy(SERVER_KNOBS->ROCKSDB_BLOOM_BITS_PER_KEY));
 
 		// The whole key blooms are only used for point lookups.
 		// https://github.com/facebook/rocksdb/wiki/RocksDB-Bloom-Filter#prefix-vs-whole-key
-		bbOpts.whole_key_filtering = false;
+		bbOpts.whole_key_filtering = SERVER_KNOBS->ROCKSDB_BLOOM_WHOLE_KEY_FILTERING;
 	}
 
 	if (SERVER_KNOBS->ROCKSDB_BLOCK_CACHE_SIZE > 0) {
@@ -210,6 +210,12 @@ rocksdb::ColumnFamilyOptions SharedRocksDBState::initialCfOptions() {
 
 	if (SERVER_KNOBS->ROCKSDB_BLOCK_SIZE > 0) {
 		bbOpts.block_size = SERVER_KNOBS->ROCKSDB_BLOCK_SIZE;
+	}
+
+	// The readahead size starts with 8KB and is exponentially increased on each additional sequential IO,
+	// up to a max of BlockBasedTableOptions.max_auto_readahead_size (default 256 KB)
+	if (SERVER_KNOBS->ROCKSDB_MAX_AUTO_READAHEAD_SIZE > 0) {
+		bbOpts.max_auto_readahead_size = SERVER_KNOBS->ROCKSDB_MAX_AUTO_READAHEAD_SIZE;
 	}
 
 	options.table_factory.reset(rocksdb::NewBlockBasedTableFactory(bbOpts));
@@ -230,22 +236,42 @@ rocksdb::DBOptions SharedRocksDBState::initialDbOptions() {
 	if (SERVER_KNOBS->ROCKSDB_COMPACTION_READAHEAD_SIZE > 0) {
 		options.compaction_readahead_size = SERVER_KNOBS->ROCKSDB_COMPACTION_READAHEAD_SIZE;
 	}
+	// The following two fields affect how archived logs will be deleted.
+	// 1. If both set to 0, logs will be deleted asap and will not get into
+	//    the archive.
+	// 2. If WAL_ttl_seconds is 0 and WAL_size_limit_MB is not 0,
+	//    WAL files will be checked every 10 min and if total size is greater
+	//    then WAL_size_limit_MB, they will be deleted starting with the
+	//    earliest until size_limit is met. All empty files will be deleted.
+	// 3. If WAL_ttl_seconds is not 0 and WAL_size_limit_MB is 0, then
+	//    WAL files will be checked every WAL_ttl_seconds / 2 and those that
+	//    are older than WAL_ttl_seconds will be deleted.
+	// 4. If both are not 0, WAL files will be checked every 10 min and both
+	//    checks will be performed with ttl being first.
+	options.WAL_ttl_seconds = SERVER_KNOBS->ROCKSDB_WAL_TTL_SECONDS;
+	options.WAL_size_limit_MB = SERVER_KNOBS->ROCKSDB_WAL_SIZE_LIMIT_MB;
 
 	options.statistics = rocksdb::CreateDBStatistics();
 	options.statistics->set_stats_level(rocksdb::StatsLevel(SERVER_KNOBS->ROCKSDB_STATS_LEVEL));
 
 	options.db_log_dir = g_network->isSimulated() ? "" : SERVER_KNOBS->LOG_DIRECTORY;
+	if (SERVER_KNOBS->ROCKSDB_LOG_LEVEL_DEBUG) {
+		options.info_log_level = rocksdb::InfoLogLevel::DEBUG_LEVEL;
+	}
+
+	options.max_log_file_size = SERVER_KNOBS->ROCKSDB_MAX_LOG_FILE_SIZE;
+	options.keep_log_file_num = SERVER_KNOBS->ROCKSDB_KEEP_LOG_FILE_NUM;
 
 	if (!SERVER_KNOBS->ROCKSDB_MUTE_LOGS) {
 		options.info_log = std::make_shared<RocksDBLogForwarder>(id, options.info_log_level);
 	}
-
 	return options;
 }
 
 rocksdb::ReadOptions SharedRocksDBState::initialReadOptions() {
 	rocksdb::ReadOptions options;
 	options.background_purge_on_iterator_cleanup = true;
+	options.auto_prefix_mode = (SERVER_KNOBS->ROCKSDB_PREFIX_LEN > 0);
 	return options;
 }
 
@@ -436,13 +462,14 @@ struct Counters {
 	Counter convertedDeleteKeyReqs;
 	Counter convertedDeleteRangeReqs;
 	Counter rocksdbReadRangeQueries;
+	Counter commitDelayed;
 
 	Counters()
 	  : cc("RocksDBThrottle"), immediateThrottle("ImmediateThrottle", cc), failedToAcquire("FailedToAcquire", cc),
 	    deleteKeyReqs("DeleteKeyRequests", cc), deleteRangeReqs("DeleteRangeRequests", cc),
 	    convertedDeleteKeyReqs("ConvertedDeleteKeyRequests", cc),
 	    convertedDeleteRangeReqs("ConvertedDeleteRangeRequests", cc),
-	    rocksdbReadRangeQueries("RocksdbReadRangeQueries", cc) {}
+	    rocksdbReadRangeQueries("RocksdbReadRangeQueries", cc), commitDelayed("CommitDelayed", cc) {}
 };
 
 struct ReadIterator {
@@ -452,16 +479,17 @@ struct ReadIterator {
 	double creationTime;
 	KeyRange keyRange;
 	std::shared_ptr<rocksdb::Slice> beginSlice, endSlice;
-	ReadIterator(CF& cf, uint64_t index, DB& db, rocksdb::ReadOptions& options)
-	  : index(index), inUse(true), creationTime(now()), iter(db->NewIterator(options, cf)) {}
-	ReadIterator(CF& cf, uint64_t index, DB& db, rocksdb::ReadOptions options, KeyRange keyRange)
+	ReadIterator(CF& cf, uint64_t index, DB& db, std::shared_ptr<SharedRocksDBState> sharedState)
+	  : index(index), inUse(true), creationTime(now()), iter(db->NewIterator(sharedState->getReadOptions(), cf)) {}
+	ReadIterator(CF& cf, uint64_t index, DB& db, std::shared_ptr<SharedRocksDBState> sharedState, KeyRange keyRange)
 	  : index(index), inUse(true), creationTime(now()), keyRange(keyRange) {
+		rocksdb::ReadOptions readOptions = sharedState->getReadOptions();
 		beginSlice = std::shared_ptr<rocksdb::Slice>(new rocksdb::Slice(toSlice(keyRange.begin)));
-		options.iterate_lower_bound = beginSlice.get();
+		readOptions.iterate_lower_bound = beginSlice.get();
 		endSlice = std::shared_ptr<rocksdb::Slice>(new rocksdb::Slice(toSlice(keyRange.end)));
-		options.iterate_upper_bound = endSlice.get();
+		readOptions.iterate_upper_bound = endSlice.get();
 
-		iter = std::shared_ptr<rocksdb::Iterator>(db->NewIterator(options, cf));
+		iter = std::shared_ptr<rocksdb::Iterator>(db->NewIterator(readOptions, cf));
 	}
 };
 
@@ -479,10 +507,8 @@ gets deleted as the ref count becomes 0.
 */
 class ReadIteratorPool {
 public:
-	ReadIteratorPool(UID id, DB& db, CF& cf, const rocksdb::ReadOptions readOptions)
-	  : db(db), cf(cf), index(0), deletedUptoIndex(0), iteratorsReuseCount(0), readRangeOptions(readOptions) {
-		readRangeOptions.background_purge_on_iterator_cleanup = true;
-		readRangeOptions.auto_prefix_mode = (SERVER_KNOBS->ROCKSDB_PREFIX_LEN > 0);
+	ReadIteratorPool(UID id, DB& db, CF& cf, std::shared_ptr<SharedRocksDBState> sharedState)
+	  : db(db), cf(cf), index(0), deletedUptoIndex(0), iteratorsReuseCount(0), sharedState(sharedState) {
 		TraceEvent("ReadIteratorPool", id)
 		    .detail("KnobRocksDBReadRangeReuseIterators", SERVER_KNOBS->ROCKSDB_READ_RANGE_REUSE_ITERATORS)
 		    .detail("KnobRocksDBReadRangeReuseBoundedIterators",
@@ -526,7 +552,7 @@ public:
 			uint64_t readIteratorIndex = index;
 			mutex.unlock();
 
-			ReadIterator iter(cf, readIteratorIndex, db, readRangeOptions);
+			ReadIterator iter(cf, readIteratorIndex, db, sharedState);
 			mutex.lock();
 			iteratorsMap.insert({ readIteratorIndex, iter });
 			mutex.unlock();
@@ -548,7 +574,7 @@ public:
 			uint64_t readIteratorIndex = index;
 			mutex.unlock();
 
-			ReadIterator iter(cf, readIteratorIndex, db, readRangeOptions, keyRange);
+			ReadIterator iter(cf, readIteratorIndex, db, sharedState, keyRange);
 			if (iteratorsMap.size() < SERVER_KNOBS->ROCKSDB_READ_RANGE_BOUNDED_ITERATORS_MAX_LIMIT) {
 				// Not storing more than ROCKSDB_READ_RANGE_BOUNDED_ITERATORS_MAX_LIMIT of iterators
 				// to avoid 'out of memory' issues.
@@ -559,7 +585,7 @@ public:
 			return iter;
 		} else {
 			index++;
-			ReadIterator iter(cf, index, db, readRangeOptions, keyRange);
+			ReadIterator iter(cf, index, db, sharedState, keyRange);
 			return iter;
 		}
 	}
@@ -605,7 +631,7 @@ private:
 	std::unordered_map<int, ReadIterator>::iterator it;
 	DB& db;
 	CF& cf;
-	rocksdb::ReadOptions readRangeOptions;
+	std::shared_ptr<SharedRocksDBState> sharedState;
 	std::mutex mutex;
 	// incrementing counter for every new iterator creation, to uniquely identify the iterator in returnIterator().
 	uint64_t index;
@@ -961,6 +987,8 @@ ACTOR Future<Void> rocksDBMetricLogger(UID id,
 		{ "RowCacheHit", rocksdb::ROW_CACHE_HIT, 0 },
 		{ "RowCacheMiss", rocksdb::ROW_CACHE_MISS, 0 },
 		{ "CountIterSkippedKeys", rocksdb::NUMBER_ITER_SKIP, 0 },
+		{ "NoIteratorCreated", rocksdb::NO_ITERATOR_CREATED, 0 },
+		{ "NoIteratorDeleted", rocksdb::NO_ITERATOR_DELETED, 0 },
 	};
 
 	// To control the rocksdb::StatsLevel, use ROCKSDB_STATS_LEVEL knob.
@@ -1527,16 +1555,16 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 			}
 
 			rocksdb::PinnableSlice value;
-			auto& options = sharedState->getReadOptions();
+			rocksdb::ReadOptions readOptions = sharedState->getReadOptions();
 			if (SERVER_KNOBS->ROCKSDB_SET_READ_TIMEOUT) {
 				uint64_t deadlineMircos =
 				    db->GetEnv()->NowMicros() + (readValueTimeout - (readBeginTime - a.startTime)) * 1000000;
 				std::chrono::seconds deadlineSeconds(deadlineMircos / 1000000);
-				options.deadline = std::chrono::duration_cast<std::chrono::microseconds>(deadlineSeconds);
+				readOptions.deadline = std::chrono::duration_cast<std::chrono::microseconds>(deadlineSeconds);
 			}
 
 			double dbGetBeginTime = a.getHistograms ? timer_monotonic() : 0;
-			auto s = db->Get(options, cf, toSlice(a.key), &value);
+			auto s = db->Get(readOptions, cf, toSlice(a.key), &value);
 			if (!s.ok() && !s.IsNotFound()) {
 				logRocksDBError(id, s, "ReadValue");
 				a.result.sendError(statusToError(s));
@@ -1616,16 +1644,16 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 			}
 
 			rocksdb::PinnableSlice value;
-			auto& options = sharedState->getReadOptions();
+			rocksdb::ReadOptions readOptions = sharedState->getReadOptions();
 			if (SERVER_KNOBS->ROCKSDB_SET_READ_TIMEOUT) {
 				uint64_t deadlineMircos =
 				    db->GetEnv()->NowMicros() + (readValuePrefixTimeout - (readBeginTime - a.startTime)) * 1000000;
 				std::chrono::seconds deadlineSeconds(deadlineMircos / 1000000);
-				options.deadline = std::chrono::duration_cast<std::chrono::microseconds>(deadlineSeconds);
+				readOptions.deadline = std::chrono::duration_cast<std::chrono::microseconds>(deadlineSeconds);
 			}
 
 			double dbGetBeginTime = a.getHistograms ? timer_monotonic() : 0;
-			auto s = db->Get(options, cf, toSlice(a.key), &value);
+			auto s = db->Get(readOptions, cf, toSlice(a.key), &value);
 			if (a.getHistograms) {
 				metricPromiseStream->send(
 				    std::make_pair(ROCKSDB_READPREFIX_GET_HISTOGRAM.toString(), timer_monotonic() - dbGetBeginTime));
@@ -1798,7 +1826,7 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 	explicit RocksDBKeyValueStore(const std::string& path, UID id)
 	  : id(id), sharedState(std::make_shared<SharedRocksDBState>(id)), path(path),
 	    perfContextMetrics(new PerfContextMetrics()),
-	    readIterPool(new ReadIteratorPool(id, db, defaultFdbCF, sharedState->getReadOptions())),
+	    readIterPool(new ReadIteratorPool(id, db, defaultFdbCF, sharedState)),
 	    readSemaphore(SERVER_KNOBS->ROCKSDB_READ_QUEUE_SOFT_MAX),
 	    fetchSemaphore(SERVER_KNOBS->ROCKSDB_FETCH_QUEUE_SOFT_MAX),
 	    numReadWaiters(SERVER_KNOBS->ROCKSDB_READ_QUEUE_HARD_MAX - SERVER_KNOBS->ROCKSDB_READ_QUEUE_SOFT_MAX),
@@ -2042,12 +2070,12 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 			if (SERVER_KNOBS->ROCKSDB_SINGLEKEY_DELETES_ON_CLEARRANGE &&
 			    !SERVER_KNOBS->ROCKSDB_FORCE_DELETERANGE_FOR_CLEARRANGE && maxDeletes > 0) {
 				++counters.convertedDeleteRangeReqs;
-				rocksdb::ReadOptions options = sharedState->getReadOptions();
+				rocksdb::ReadOptions readOptions = sharedState->getReadOptions();
 				auto beginSlice = toSlice(keyRange.begin);
 				auto endSlice = toSlice(keyRange.end);
-				options.iterate_lower_bound = &beginSlice;
-				options.iterate_upper_bound = &endSlice;
-				auto cursor = std::unique_ptr<rocksdb::Iterator>(db->NewIterator(options, defaultFdbCF));
+				readOptions.iterate_lower_bound = &beginSlice;
+				readOptions.iterate_upper_bound = &endSlice;
+				auto cursor = std::unique_ptr<rocksdb::Iterator>(db->NewIterator(readOptions, defaultFdbCF));
 				cursor->Seek(toSlice(keyRange.begin));
 				while (cursor->Valid() && toStringRef(cursor->key()) < keyRange.end && maxDeletes > 0) {
 					writeBatch->Delete(defaultFdbCF, cursor->key());
@@ -2081,9 +2109,12 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 		                                   &estPendCompactBytes);
 		while (count && estPendCompactBytes > SERVER_KNOBS->ROCKSDB_CAN_COMMIT_COMPACT_BYTES_LIMIT) {
 			wait(delay(SERVER_KNOBS->ROCKSDB_CAN_COMMIT_DELAY_ON_OVERLOAD));
+			++self->counters.commitDelayed;
 			count--;
 			self->db->GetAggregatedIntProperty(rocksdb::DB::Properties::kEstimatePendingCompactionBytes,
 			                                   &estPendCompactBytes);
+			if (deterministicRandom()->random01() < 0.001)
+				TraceEvent(SevWarn, "RocksDBCommitsDelayed1000x", self->id);
 		}
 
 		return Void();
@@ -2327,7 +2358,7 @@ void RocksDBKeyValueStore::Writer::action(CheckpointAction& a) {
 	}
 
 	rocksdb::PinnableSlice value;
-	rocksdb::ReadOptions& readOptions = sharedState->getReadOptions();
+	rocksdb::ReadOptions readOptions = sharedState->getReadOptions();
 	s = db->Get(readOptions, cf, toSlice(persistVersion), &value);
 
 	if (!s.ok() && !s.IsNotFound()) {

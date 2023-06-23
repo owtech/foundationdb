@@ -284,6 +284,7 @@ rocksdb::ColumnFamilyOptions getCFOptions() {
 	if (SERVER_KNOBS->SHARD_HARD_PENDING_COMPACT_BYTES_LIMIT > 0) {
 		options.hard_pending_compaction_bytes_limit = SERVER_KNOBS->SHARD_HARD_PENDING_COMPACT_BYTES_LIMIT;
 	}
+	options.paranoid_file_checks = SERVER_KNOBS->ROCKSDB_PARANOID_FILE_CHECKS;
 
 	// Compact sstables when there's too much deleted stuff.
 	if (SERVER_KNOBS->ROCKSDB_ENABLE_COMPACT_ON_DELETION) {
@@ -359,11 +360,34 @@ rocksdb::Options getOptions() {
 	options.max_subcompactions = SERVER_KNOBS->ROCKSDB_MAX_SUBCOMPACTIONS;
 	options.max_background_jobs = SERVER_KNOBS->ROCKSDB_MAX_BACKGROUND_JOBS;
 
+	// The following two fields affect how archived logs will be deleted.
+	// 1. If both set to 0, logs will be deleted asap and will not get into
+	//    the archive.
+	// 2. If WAL_ttl_seconds is 0 and WAL_size_limit_MB is not 0,
+	//    WAL files will be checked every 10 min and if total size is greater
+	//    then WAL_size_limit_MB, they will be deleted starting with the
+	//    earliest until size_limit is met. All empty files will be deleted.
+	// 3. If WAL_ttl_seconds is not 0 and WAL_size_limit_MB is 0, then
+	//    WAL files will be checked every WAL_ttl_seconds / 2 and those that
+	//    are older than WAL_ttl_seconds will be deleted.
+	// 4. If both are not 0, WAL files will be checked every 10 min and both
+	//    checks will be performed with ttl being first.
+	options.WAL_ttl_seconds = SERVER_KNOBS->ROCKSDB_WAL_TTL_SECONDS;
+	options.WAL_size_limit_MB = SERVER_KNOBS->ROCKSDB_WAL_SIZE_LIMIT_MB;
+
 	options.db_write_buffer_size = SERVER_KNOBS->ROCKSDB_WRITE_BUFFER_SIZE;
 	options.write_buffer_size = SERVER_KNOBS->ROCKSDB_CF_WRITE_BUFFER_SIZE;
 	options.statistics = rocksdb::CreateDBStatistics();
 	options.statistics->set_stats_level(rocksdb::kExceptHistogramOrTimers);
 	options.db_log_dir = g_network->isSimulated() ? "" : SERVER_KNOBS->LOG_DIRECTORY;
+	if (SERVER_KNOBS->ROCKSDB_LOG_LEVEL_DEBUG) {
+		options.info_log_level = rocksdb::InfoLogLevel::DEBUG_LEVEL;
+	}
+	options.max_log_file_size = SERVER_KNOBS->ROCKSDB_MAX_LOG_FILE_SIZE;
+	options.keep_log_file_num = SERVER_KNOBS->ROCKSDB_KEEP_LOG_FILE_NUM;
+
+	options.skip_stats_update_on_db_open = SERVER_KNOBS->ROCKSDB_SKIP_STATS_UPDATE_ON_OPEN;
+	options.skip_checking_sst_file_sizes_on_db_open = SERVER_KNOBS->ROCKSDB_SKIP_FILE_SIZE_CHECK_ON_OPEN;
 	return options;
 }
 
@@ -596,7 +620,7 @@ struct PhysicalShard {
 	std::shared_ptr<ReadIteratorPool> readIterPool;
 	bool deletePending = false;
 	std::atomic<bool> isInitialized;
-	uint64_t numRangeDeletions;
+	uint64_t numRangeDeletions = 0;
 	double deleteTimeSec;
 };
 
@@ -689,7 +713,7 @@ public:
 		try {
 			wait(openFuture);
 			loop {
-				wait(delay(SERVER_KNOBS->ROCKSDB_METRICS_DELAY));
+				wait(delay(SERVER_KNOBS->ROCKSDB_CF_METRICS_DELAY));
 				if (rState->closing) {
 					break;
 				}
@@ -701,6 +725,13 @@ public:
 					if (!shard->initialized()) {
 						continue;
 					}
+					uint64_t liveDataSize = 0;
+					ASSERT(shard->db->GetIntProperty(
+					    shard->cf, rocksdb::DB::Properties::kEstimateLiveDataSize, &liveDataSize));
+					TraceEvent(SevInfo, "PhysicalShardCFSize")
+					    .detail("ShardId", id)
+					    .detail("LiveDataSize", liveDataSize);
+
 					std::string propValue = "";
 					ASSERT(shard->db->GetProperty(shard->cf, rocksdb::DB::Properties::kCFStats, &propValue));
 					TraceEvent(SevInfo, "PhysicalShardCFStats").detail("ShardId", id).detail("Detail", propValue);
@@ -1217,7 +1248,7 @@ public:
 		}
 		rocksdb::FlushOptions fOptions;
 		fOptions.wait = SERVER_KNOBS->ROCKSDB_WAIT_ON_CF_FLUSH;
-		fOptions.allow_write_stall = true;
+		fOptions.allow_write_stall = SERVER_KNOBS->ROCKSDB_ALLOW_WRITE_STALL_ON_FLUSH;
 
 		db->Flush(fOptions, it->second->cf);
 	}
@@ -2097,7 +2128,7 @@ struct ShardedRocksDBKeyValueStore : IKeyValueStore {
 			if (SERVER_KNOBS->ROCKSDB_CF_RANGE_DELETION_LIMIT > 0) {
 				rocksdb::FlushOptions fOptions;
 				fOptions.wait = SERVER_KNOBS->ROCKSDB_WAIT_ON_CF_FLUSH;
-				fOptions.allow_write_stall = true;
+				fOptions.allow_write_stall = SERVER_KNOBS->ROCKSDB_ALLOW_WRITE_STALL_ON_FLUSH;
 
 				for (auto shard : (*a.dirtyShards)) {
 					if (shard->shouldFlush()) {
