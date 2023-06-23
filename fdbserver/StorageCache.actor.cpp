@@ -25,7 +25,7 @@
 #include "fdbclient/FDBOptions.g.h"
 #include "fdbclient/NativeAPI.actor.h"
 #include "fdbclient/SystemData.h"
-#include "fdbclient/GetEncryptCipherKeys.actor.h"
+#include "fdbclient/GetEncryptCipherKeys.h"
 #include "fdbserver/Knobs.h"
 #include "fdbserver/ServerDBInfo.h"
 #include "fdbclient/StorageServerInterface.h"
@@ -1241,8 +1241,9 @@ ACTOR Future<RangeResult> tryFetchRange(Database cx,
 			if (e.code() == error_code_transaction_too_old)
 				*isTooOld = true;
 			output.more = true;
-			if (begin.isFirstGreaterOrEqual())
-				output.readThrough = begin.getKey();
+			if (begin.isFirstGreaterOrEqual()) {
+				output.setReadThrough(begin.getKey());
+			}
 			return output;
 		}
 		throw;
@@ -1949,7 +1950,8 @@ ACTOR Future<Void> pullAsyncData(StorageCacheData* data) {
 
 				if (collectingCipherKeys) {
 					std::unordered_map<BlobCipherDetails, Reference<BlobCipherKey>> result =
-					    wait(getEncryptCipherKeys(data->db, cipherDetails, BlobCipherMetrics::TLOG));
+					    wait(GetEncryptCipherKeys<ServerDBInfo>::getEncryptCipherKeys(
+					        data->db, cipherDetails, BlobCipherMetrics::TLOG));
 					cipherKeys = result;
 					collectingCipherKeys = false;
 				} else {

@@ -46,6 +46,7 @@
 #include "fdbclient/NativeAPI.actor.h"
 #include "fdbclient/SystemData.h"
 #include "fdbclient/TenantManagement.actor.h"
+#include "fdbclient/DataDistributionConfig.actor.h"
 #include "fdbserver/KnobProtectiveGroups.h"
 #include "fdbserver/TesterInterface.actor.h"
 #include "fdbserver/WorkerInterface.actor.h"
@@ -875,37 +876,38 @@ ACTOR Future<Void> testerServerCore(TesterInterface interf,
 
 ACTOR Future<Void> clearData(Database cx, Optional<TenantName> defaultTenant) {
 	state Transaction tr(cx);
-	state UID debugID = debugRandom()->randomUniqueID();
-	tr.debugTransaction(debugID);
 
 	loop {
 		try {
-			TraceEvent("TesterClearingDatabaseStart", debugID).log();
+			tr.debugTransaction(debugRandom()->randomUniqueID());
+			ASSERT(tr.trState->readOptions.present() && tr.trState->readOptions.get().debugID.present());
+			TraceEvent("TesterClearingDatabaseStart", tr.trState->readOptions.get().debugID.get()).log();
 			// This transaction needs to be self-conflicting, but not conflict consistently with
 			// any other transactions
 			tr.clear(normalKeys);
 			tr.makeSelfConflicting();
 			Version rv = wait(tr.getReadVersion()); // required since we use addReadConflictRange but not get
-			TraceEvent("TesterClearingDatabaseRV", debugID).detail("RV", rv);
+			TraceEvent("TesterClearingDatabaseRV", tr.trState->readOptions.get().debugID.get()).detail("RV", rv);
 			wait(tr.commit());
-			TraceEvent("TesterClearingDatabase", debugID).detail("AtVersion", tr.getCommittedVersion());
+			TraceEvent("TesterClearingDatabase", tr.trState->readOptions.get().debugID.get())
+			    .detail("AtVersion", tr.getCommittedVersion());
 			break;
 		} catch (Error& e) {
-			TraceEvent(SevWarn, "TesterClearingDatabaseError", debugID).error(e);
+			TraceEvent(SevWarn, "TesterClearingDatabaseError", tr.trState->readOptions.get().debugID.get()).error(e);
 			wait(tr.onError(e));
-			debugID = debugRandom()->randomUniqueID();
-			tr.debugTransaction(debugID);
 		}
 	}
 
 	tr = Transaction(cx);
 	loop {
 		try {
-			TraceEvent("TesterClearingTenantsStart", debugID);
+			tr.debugTransaction(debugRandom()->randomUniqueID());
+			ASSERT(tr.trState->readOptions.present() && tr.trState->readOptions.get().debugID.present());
+			TraceEvent("TesterClearingTenantsStart", tr.trState->readOptions.get().debugID.get());
 			state KeyBackedRangeResult<std::pair<int64_t, TenantMapEntry>> tenants =
 			    wait(TenantMetadata::tenantMap().getRange(&tr, {}, {}, 1000));
 
-			TraceEvent("TesterClearingTenantsDeletingBatch", debugID)
+			TraceEvent("TesterClearingTenantsDeletingBatch", tr.trState->readOptions.get().debugID.get())
 			    .detail("FirstTenant", tenants.results.empty() ? "<none>"_sr : tenants.results[0].second.tenantName)
 			    .detail("BatchSize", tenants.results.size());
 
@@ -919,17 +921,18 @@ ACTOR Future<Void> clearData(Database cx, Optional<TenantName> defaultTenant) {
 			wait(waitForAll(deleteFutures));
 			wait(tr.commit());
 
-			TraceEvent("TesterClearingTenantsDeletedBatch", debugID)
+			TraceEvent("TesterClearingTenantsDeletedBatch", tr.trState->readOptions.get().debugID.get())
 			    .detail("FirstTenant", tenants.results.empty() ? "<none>"_sr : tenants.results[0].second.tenantName)
 			    .detail("BatchSize", tenants.results.size());
 
 			if (!tenants.more) {
-				TraceEvent("TesterClearingTenantsComplete", debugID).detail("AtVersion", tr.getCommittedVersion());
+				TraceEvent("TesterClearingTenantsComplete", tr.trState->readOptions.get().debugID.get())
+				    .detail("AtVersion", tr.getCommittedVersion());
 				break;
 			}
 			tr.reset();
 		} catch (Error& e) {
-			TraceEvent(SevWarn, "TesterClearingTenantsError", debugID).error(e);
+			TraceEvent(SevWarn, "TesterClearingTenantsError", tr.trState->readOptions.get().debugID.get()).error(e);
 			wait(tr.onError(e));
 		}
 	}
@@ -937,6 +940,7 @@ ACTOR Future<Void> clearData(Database cx, Optional<TenantName> defaultTenant) {
 	tr = Transaction(cx);
 	loop {
 		try {
+			tr.debugTransaction(debugRandom()->randomUniqueID());
 			tr.setOption(FDBTransactionOptions::RAW_ACCESS);
 			state RangeResult rangeResult = wait(tr.getRange(normalKeys, 1));
 			state Optional<Key> tenantPrefix;
@@ -962,9 +966,12 @@ ACTOR Future<Void> clearData(Database cx, Optional<TenantName> defaultTenant) {
 
 				ASSERT(false);
 			}
+			ASSERT(tr.trState->readOptions.present() && tr.trState->readOptions.get().debugID.present());
+			TraceEvent("TesterCheckDatabaseClearedDone", tr.trState->readOptions.get().debugID.get());
 			break;
 		} catch (Error& e) {
-			TraceEvent(SevWarn, "TesterCheckDatabaseClearedError").error(e);
+			TraceEvent(SevWarn, "TesterCheckDatabaseClearedError", tr.trState->readOptions.get().debugID.get())
+			    .error(e);
 			wait(tr.onError(e));
 		}
 	}
@@ -1099,7 +1106,7 @@ ACTOR Future<DistributedTestResults> runWorkload(Database cx,
 		}
 
 		state std::vector<Future<ErrorOr<CheckReply>>> checks;
-		TraceEvent("CheckingResults").log();
+		TraceEvent("TestCheckingResults").detail("WorkloadTitle", spec.title);
 
 		printf("checking test (%s)...\n", printable(spec.title).c_str());
 
@@ -1116,6 +1123,7 @@ ACTOR Future<DistributedTestResults> runWorkload(Database cx,
 			else
 				failure++;
 		}
+		TraceEvent("TestCheckComplete").detail("WorkloadTitle", spec.title);
 	}
 
 	if (spec.phases & TestWorkload::METRICS) {
@@ -1156,40 +1164,74 @@ ACTOR Future<Void> changeConfiguration(Database cx, std::vector<TesterInterface>
 	return Void();
 }
 
-ACTOR Future<Void> auditStorageCorrectness(Reference<AsyncVar<ServerDBInfo>> dbInfo) {
+ACTOR Future<Void> auditStorageCorrectness(Reference<AsyncVar<ServerDBInfo>> dbInfo, AuditType auditType) {
+	TraceEvent(SevDebug, "AuditStorageCorrectnessBegin").detail("AuditType", auditType);
+	state Database cx;
 	state UID auditId;
-	TraceEvent("AuditStorageCorrectnessBegin");
-
+	state AuditStorageState auditState;
 	loop {
 		try {
-			TriggerAuditRequest req(AuditType::ValidateHA, allKeys);
-			req.async = true;
-			UID auditId_ = wait(dbInfo->get().clusterInterface.clientInterface.triggerAudit.getReply(req));
+			while (dbInfo->get().recoveryState < RecoveryState::ACCEPTING_COMMITS ||
+			       !dbInfo->get().distributor.present()) {
+				wait(dbInfo->onChange());
+			}
+			TriggerAuditRequest req(auditType, allKeys);
+			UID auditId_ = wait(timeoutError(dbInfo->get().distributor.get().triggerAudit.getReply(req), 300));
 			auditId = auditId_;
+			TraceEvent(SevDebug, "AuditStorageCorrectnessTriggered")
+			    .detail("AuditID", auditId)
+			    .detail("AuditType", auditType);
 			break;
 		} catch (Error& e) {
-			TraceEvent(SevWarn, "StartAuditStorageError").errorUnsuppressed(e);
+			TraceEvent(SevWarn, "AuditStorageCorrectnessTriggerError")
+			    .errorUnsuppressed(e)
+			    .detail("AuditID", auditId)
+			    .detail("AuditType", auditType);
 			wait(delay(1));
 		}
 	}
-
-	state Database cx = openDBOnServer(dbInfo);
+	state int retryCount = 0;
 	loop {
 		try {
-			AuditStorageState auditState = wait(getAuditState(cx, AuditType::ValidateHA, auditId));
-			if (auditState.getPhase() != AuditPhase::Complete) {
-				ASSERT(auditState.getPhase() == AuditPhase::Running);
-				wait(delay(30));
-			} else {
-				TraceEvent(SevInfo, "AuditStorageResult").detail("AuditStorageState", auditState.toString());
-				ASSERT(auditState.getPhase() == AuditPhase::Complete);
+			cx = openDBOnServer(dbInfo);
+			AuditStorageState auditState_ = wait(getAuditState(cx, auditType, auditId));
+			auditState = auditState_;
+			if (auditState.getPhase() == AuditPhase::Complete) {
 				break;
+			} else if (auditState.getPhase() == AuditPhase::Running) {
+				TraceEvent("AuditStorageCorrectnessWait")
+				    .detail("AuditID", auditId)
+				    .detail("AuditType", auditType)
+				    .detail("RetryCount", retryCount);
+				wait(delay(25));
+				if (retryCount > 20) {
+					TraceEvent("AuditStorageCorrectnessWaitFailed")
+					    .detail("AuditID", auditId)
+					    .detail("AuditType", auditType);
+					break;
+				}
+				retryCount++;
+				continue;
+			} else if (auditState.getPhase() == AuditPhase::Error) {
+				break;
+			} else if (auditState.getPhase() == AuditPhase::Failed) {
+				break;
+			} else {
+				UNREACHABLE();
 			}
 		} catch (Error& e) {
-			TraceEvent("WaitAuditStorageError").errorUnsuppressed(e).detail("AuditID", auditId);
+			TraceEvent("AuditStorageCorrectnessWaitError")
+			    .errorUnsuppressed(e)
+			    .detail("AuditID", auditId)
+			    .detail("AuditType", auditType)
+			    .detail("AuditState", auditState.toString());
 			wait(delay(1));
 		}
 	}
+	TraceEvent("AuditStorageCorrectnessWaitEnd")
+	    .detail("AuditID", auditId)
+	    .detail("AuditType", auditType)
+	    .detail("AuditState", auditState.toString());
 
 	return Void();
 }
@@ -1211,6 +1253,7 @@ ACTOR Future<Void> checkConsistency(Database cx,
 		// NOTE: the value will be reset after consistency check
 		connectionFailures = g_simulator->connectionFailuresDisableDuration;
 		disableConnectionFailures("ConsistencyCheck");
+		g_simulator->isConsistencyChecked = true;
 	}
 
 	Standalone<VectorRef<KeyValueRef>> options;
@@ -1248,6 +1291,7 @@ ACTOR Future<Void> checkConsistency(Database cx,
 		if (testResults.ok() || lastRun) {
 			if (g_network->isSimulated()) {
 				g_simulator->connectionFailuresDisableDuration = connectionFailures;
+				g_simulator->isConsistencyChecked = false;
 			}
 			return Void();
 		}
@@ -1314,8 +1358,8 @@ ACTOR Future<bool> runTest(Database cx,
 
 		// Run the consistency check workload
 		if (spec.runConsistencyCheck) {
+			state bool quiescent = g_network->isSimulated() ? !BUGGIFY : spec.waitForQuiescenceEnd;
 			try {
-				bool quiescent = g_network->isSimulated() ? !BUGGIFY : spec.waitForQuiescenceEnd;
 				wait(timeoutError(checkConsistency(cx,
 				                                   testers,
 				                                   quiescent,
@@ -1329,6 +1373,26 @@ ACTOR Future<bool> runTest(Database cx,
 			} catch (Error& e) {
 				TraceEvent(SevError, "TestFailure").error(e).detail("Reason", "Unable to perform consistency check");
 				ok = false;
+			}
+
+			// Run auditStorage at the end of simulation
+			if (quiescent && g_network->isSimulated()) {
+				try {
+					TraceEvent("AuditStorageStart");
+					wait(timeoutError(auditStorageCorrectness(dbInfo, AuditType::ValidateHA), 1000.0));
+					TraceEvent("AuditStorageCorrectnessHADone");
+					wait(timeoutError(auditStorageCorrectness(dbInfo, AuditType::ValidateReplica), 1000.0));
+					TraceEvent("AuditStorageCorrectnessReplicaDone");
+					wait(timeoutError(auditStorageCorrectness(dbInfo, AuditType::ValidateLocationMetadata), 1000.0));
+					TraceEvent("AuditStorageCorrectnessLocationMetadataDone");
+					wait(timeoutError(auditStorageCorrectness(dbInfo, AuditType::ValidateStorageServerShard), 1000.0));
+					TraceEvent("AuditStorageCorrectnessStorageServerShardDone");
+				} catch (Error& e) {
+					ok = false;
+					TraceEvent(SevError, "TestFailure")
+					    .error(e)
+					    .detail("Reason", "Unable to perform auditStorage check.");
+				}
 			}
 		}
 	}
@@ -2038,12 +2102,11 @@ ACTOR Future<Void> runTests(Reference<AsyncVar<Optional<struct ClusterController
 		ASSERT(g_simulator->storagePolicy && g_simulator->tLogPolicy);
 		ASSERT(!g_simulator->hasSatelliteReplication || g_simulator->satelliteTLogPolicy);
 
-		if (deterministicRandom()->random01() < 1 && (g_simulator->storagePolicy->info() == "zoneid^1 x 1" ||
-		                                              g_simulator->storagePolicy->info() == "zoneid^2 x 1")) {
-			g_simulator->customReplicas.push_back(std::make_tuple("\xff\x03", "\xff\x04", 3));
-			g_simulator->customReplicas.push_back(std::make_tuple("\xff\x04", "\xff\x05", 3));
-			TraceEvent("SettingCustomReplicas");
-			MoveKeysLock lock = wait(takeMoveKeysLock(cx, UID()));
+		// Randomly inject custom shard configuration
+		// TOOO:  Move this to a workload representing non-failure behaviors which can be randomly added to any test
+		// run.
+		if (deterministicRandom()->random01() < 0.25) {
+			wait(customShardConfigWorkload(cx));
 		}
 	}
 

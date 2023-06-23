@@ -453,7 +453,6 @@ struct GetMappedKeyValuesRequest : TimedRequest {
 	KeyRef mapper;
 	Version version; // or latestVersion
 	int limit, limitBytes;
-	int matchIndex;
 	Optional<TagSet> tags;
 	Optional<ReadOptions> options;
 	ReplyPromise<GetMappedKeyValuesReply> reply;
@@ -480,7 +479,6 @@ struct GetMappedKeyValuesRequest : TimedRequest {
 		           tenantInfo,
 		           options,
 		           ssLatestCommitVersions,
-		           matchIndex,
 		           arena);
 	}
 };
@@ -642,6 +640,10 @@ struct StorageMetrics {
 	int64_t opsReadPerKSecond = 0;
 
 	static const int64_t infinity = 1LL << 60;
+
+	// assume each read op has a constant load cost (knob EMPTY_READ_PENALTY),
+	// return max(op * cost, bytesRead)
+	int64_t readLoadKSecond() const;
 
 	bool allLessOrEqual(const StorageMetrics& rhs) const {
 		return bytes <= rhs.bytes && bytesWrittenPerKSecond <= rhs.bytesWrittenPerKSecond &&

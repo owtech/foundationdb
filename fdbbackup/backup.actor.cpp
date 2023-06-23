@@ -43,7 +43,7 @@
 #include "fdbclient/Status.h"
 #include "fdbclient/BackupContainer.h"
 #include "fdbclient/ClusterConnectionFile.h"
-#include "fdbclient/KeyBackedTypes.h"
+#include "fdbclient/KeyBackedTypes.actor.h"
 #include "fdbclient/IKnobCollection.h"
 #include "fdbclient/RunRYWTransaction.actor.h"
 #include "fdbclient/S3BlobStore.h"
@@ -314,7 +314,7 @@ CSimpleOpt::SOption g_rgBackupModifyOptions[] = {
 	{ OPT_SNAPSHOTINTERVAL, "-s", SO_REQ_SEP },
 	{ OPT_SNAPSHOTINTERVAL, "--snapshot-interval", SO_REQ_SEP },
 	{ OPT_MOD_ACTIVE_INTERVAL, "--active-snapshot-interval", SO_REQ_SEP },
-
+	TLS_OPTION_FLAGS,
 	SO_END_OF_OPTIONS
 };
 

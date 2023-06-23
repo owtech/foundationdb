@@ -239,16 +239,35 @@ rocksdb::DBOptions SharedRocksDBState::initialDbOptions() {
 	if (SERVER_KNOBS->ROCKSDB_COMPACTION_READAHEAD_SIZE > 0) {
 		options.compaction_readahead_size = SERVER_KNOBS->ROCKSDB_COMPACTION_READAHEAD_SIZE;
 	}
+	// The following two fields affect how archived logs will be deleted.
+	// 1. If both set to 0, logs will be deleted asap and will not get into
+	//    the archive.
+	// 2. If WAL_ttl_seconds is 0 and WAL_size_limit_MB is not 0,
+	//    WAL files will be checked every 10 min and if total size is greater
+	//    then WAL_size_limit_MB, they will be deleted starting with the
+	//    earliest until size_limit is met. All empty files will be deleted.
+	// 3. If WAL_ttl_seconds is not 0 and WAL_size_limit_MB is 0, then
+	//    WAL files will be checked every WAL_ttl_seconds / 2 and those that
+	//    are older than WAL_ttl_seconds will be deleted.
+	// 4. If both are not 0, WAL files will be checked every 10 min and both
+	//    checks will be performed with ttl being first.
+	options.WAL_ttl_seconds = SERVER_KNOBS->ROCKSDB_WAL_TTL_SECONDS;
+	options.WAL_size_limit_MB = SERVER_KNOBS->ROCKSDB_WAL_SIZE_LIMIT_MB;
 
 	options.statistics = rocksdb::CreateDBStatistics();
 	options.statistics->set_stats_level(rocksdb::StatsLevel(SERVER_KNOBS->ROCKSDB_STATS_LEVEL));
 
 	options.db_log_dir = g_network->isSimulated() ? "" : SERVER_KNOBS->LOG_DIRECTORY;
+	if (SERVER_KNOBS->ROCKSDB_LOG_LEVEL_DEBUG) {
+		options.info_log_level = rocksdb::InfoLogLevel::DEBUG_LEVEL;
+	}
+
+	options.max_log_file_size = SERVER_KNOBS->ROCKSDB_MAX_LOG_FILE_SIZE;
+	options.keep_log_file_num = SERVER_KNOBS->ROCKSDB_KEEP_LOG_FILE_NUM;
 
 	if (!SERVER_KNOBS->ROCKSDB_MUTE_LOGS) {
 		options.info_log = std::make_shared<RocksDBLogForwarder>(id, options.info_log_level);
 	}
-
 	return options;
 }
 
@@ -1504,12 +1523,13 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 
 		struct ReadValueAction : TypedAction<Reader, ReadValueAction> {
 			Key key;
+			ReadType type;
 			Optional<UID> debugID;
 			double startTime;
 			bool getHistograms;
 			ThreadReturnPromise<Optional<Value>> result;
-			ReadValueAction(KeyRef key, Optional<UID> debugID)
-			  : key(key), debugID(debugID), startTime(timer_monotonic()),
+			ReadValueAction(KeyRef key, ReadType type, Optional<UID> debugID)
+			  : key(key), type(type), debugID(debugID), startTime(timer_monotonic()),
 			    getHistograms(deterministicRandom()->random01() < SERVER_KNOBS->ROCKSDB_HISTOGRAMS_SAMPLE_RATE) {}
 			double getTimeEstimate() const override { return SERVER_KNOBS->READ_VALUE_TIME_ESTIMATE; }
 		};
@@ -1532,7 +1552,8 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 				traceBatch = { TraceBatch{} };
 				traceBatch.get().addEvent("GetValueDebug", a.debugID.get().first(), "Reader.Before");
 			}
-			if (SERVER_KNOBS->ROCKSDB_SET_READ_TIMEOUT && readBeginTime - a.startTime > readValueTimeout) {
+			if (shouldThrottle(a.type, a.key) && SERVER_KNOBS->ROCKSDB_SET_READ_TIMEOUT &&
+			    readBeginTime - a.startTime > readValueTimeout) {
 				TraceEvent(SevWarn, "KVSTimeout", id)
 				    .detail("Error", "Read value request timedout")
 				    .detail("Method", "ReadValueAction")
@@ -1592,12 +1613,13 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 		struct ReadValuePrefixAction : TypedAction<Reader, ReadValuePrefixAction> {
 			Key key;
 			int maxLength;
+			ReadType type;
 			Optional<UID> debugID;
 			double startTime;
 			bool getHistograms;
 			ThreadReturnPromise<Optional<Value>> result;
-			ReadValuePrefixAction(Key key, int maxLength, Optional<UID> debugID)
-			  : key(key), maxLength(maxLength), debugID(debugID), startTime(timer_monotonic()),
+			ReadValuePrefixAction(Key key, int maxLength, ReadType type, Optional<UID> debugID)
+			  : key(key), maxLength(maxLength), type(type), debugID(debugID), startTime(timer_monotonic()),
 			    getHistograms(deterministicRandom()->random01() < SERVER_KNOBS->ROCKSDB_HISTOGRAMS_SAMPLE_RATE) {}
 			double getTimeEstimate() const override { return SERVER_KNOBS->READ_VALUE_TIME_ESTIMATE; }
 		};
@@ -1621,7 +1643,8 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 				                          a.debugID.get().first(),
 				                          "Reader.Before"); //.detail("TaskID", g_network->getCurrentTask());
 			}
-			if (SERVER_KNOBS->ROCKSDB_SET_READ_TIMEOUT && readBeginTime - a.startTime > readValuePrefixTimeout) {
+			if (shouldThrottle(a.type, a.key) && SERVER_KNOBS->ROCKSDB_SET_READ_TIMEOUT &&
+			    readBeginTime - a.startTime > readValuePrefixTimeout) {
 				TraceEvent(SevWarn, "KVSTimeout", id)
 				    .detail("Error", "Read value prefix request timedout")
 				    .detail("Method", "ReadValuePrefixAction")
@@ -1677,12 +1700,14 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 		struct ReadRangeAction : TypedAction<Reader, ReadRangeAction>, FastAllocated<ReadRangeAction> {
 			KeyRange keys;
 			int rowLimit, byteLimit;
+			ReadType type;
 			double startTime;
 			bool getHistograms;
 			ThreadReturnPromise<RangeResult> result;
 			Counters& counters;
-			ReadRangeAction(KeyRange keys, int rowLimit, int byteLimit, Counters& counters)
-			  : keys(keys), rowLimit(rowLimit), byteLimit(byteLimit), startTime(timer_monotonic()), counters(counters),
+			ReadRangeAction(KeyRange keys, int rowLimit, int byteLimit, ReadType type, Counters& counters)
+			  : keys(keys), rowLimit(rowLimit), byteLimit(byteLimit), type(type), startTime(timer_monotonic()),
+			    counters(counters),
 			    getHistograms(deterministicRandom()->random01() < SERVER_KNOBS->ROCKSDB_HISTOGRAMS_SAMPLE_RATE) {}
 			double getTimeEstimate() const override { return SERVER_KNOBS->READ_RANGE_TIME_ESTIMATE; }
 		};
@@ -1700,7 +1725,8 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 				metricPromiseStream->send(
 				    std::make_pair(ROCKSDB_READRANGE_QUEUEWAIT_HISTOGRAM.toString(), readBeginTime - a.startTime));
 			}
-			if (SERVER_KNOBS->ROCKSDB_SET_READ_TIMEOUT && readBeginTime - a.startTime > readRangeTimeout) {
+			if (shouldThrottle(a.type, a.keys.begin) && SERVER_KNOBS->ROCKSDB_SET_READ_TIMEOUT &&
+			    readBeginTime - a.startTime > readRangeTimeout) {
 				TraceEvent(SevWarn, "KVSTimeout", id)
 				    .detail("Error", "Read range request timedout")
 				    .detail("Method", "ReadRangeAction")
@@ -1732,7 +1758,8 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 					if (result.size() >= a.rowLimit || accumulatedBytes >= a.byteLimit) {
 						break;
 					}
-					if (SERVER_KNOBS->ROCKSDB_SET_READ_TIMEOUT && timer_monotonic() - a.startTime > readRangeTimeout) {
+					if (shouldThrottle(a.type, a.keys.begin) && SERVER_KNOBS->ROCKSDB_SET_READ_TIMEOUT &&
+					    timer_monotonic() - a.startTime > readRangeTimeout) {
 						TraceEvent(SevWarn, "KVSTimeout", id)
 						    .detail("Error", "Read range request timedout")
 						    .detail("Method", "ReadRangeAction")
@@ -1764,7 +1791,8 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 					if (result.size() >= -a.rowLimit || accumulatedBytes >= a.byteLimit) {
 						break;
 					}
-					if (SERVER_KNOBS->ROCKSDB_SET_READ_TIMEOUT && timer_monotonic() - a.startTime > readRangeTimeout) {
+					if (shouldThrottle(a.type, a.keys.begin) && SERVER_KNOBS->ROCKSDB_SET_READ_TIMEOUT &&
+					    timer_monotonic() - a.startTime > readRangeTimeout) {
 						TraceEvent(SevWarn, "KVSTimeout", id)
 						    .detail("Error", "Read range request timedout")
 						    .detail("Method", "ReadRangeAction")
@@ -1785,9 +1813,6 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 			}
 			result.more =
 			    (result.size() == a.rowLimit) || (result.size() == -a.rowLimit) || (accumulatedBytes >= a.byteLimit);
-			if (result.more) {
-				result.readThrough = result[result.size() - 1].key;
-			}
 			a.result.send(result);
 			// Temporarily not sampling to understand the pattern of readRange results.
 			if (metricPromiseStream) {
@@ -2164,7 +2189,7 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 		}
 
 		if (!shouldThrottle(type, key)) {
-			auto a = new Reader::ReadValueAction(key, debugID);
+			auto a = new Reader::ReadValueAction(key, type, debugID);
 			auto res = a->result.getFuture();
 			readThreads->post(a);
 			return res;
@@ -2174,7 +2199,7 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 		int maxWaiters = (type == ReadType::FETCH) ? numFetchWaiters : numReadWaiters;
 
 		checkWaiters(semaphore, maxWaiters);
-		auto a = std::make_unique<Reader::ReadValueAction>(key, debugID);
+		auto a = std::make_unique<Reader::ReadValueAction>(key, type, debugID);
 		return read(a.release(), &semaphore, readThreads.getPtr(), &counters.failedToAcquire);
 	}
 
@@ -2188,7 +2213,7 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 		}
 
 		if (!shouldThrottle(type, key)) {
-			auto a = new Reader::ReadValuePrefixAction(key, maxLength, debugID);
+			auto a = new Reader::ReadValuePrefixAction(key, maxLength, type, debugID);
 			auto res = a->result.getFuture();
 			readThreads->post(a);
 			return res;
@@ -2198,7 +2223,7 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 		int maxWaiters = (type == ReadType::FETCH) ? numFetchWaiters : numReadWaiters;
 
 		checkWaiters(semaphore, maxWaiters);
-		auto a = std::make_unique<Reader::ReadValuePrefixAction>(key, maxLength, debugID);
+		auto a = std::make_unique<Reader::ReadValuePrefixAction>(key, maxLength, type, debugID);
 		return read(a.release(), &semaphore, readThreads.getPtr(), &counters.failedToAcquire);
 	}
 
@@ -2233,7 +2258,7 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 		}
 
 		if (!shouldThrottle(type, keys.begin)) {
-			auto a = new Reader::ReadRangeAction(keys, rowLimit, byteLimit, counters);
+			auto a = new Reader::ReadRangeAction(keys, rowLimit, byteLimit, type, counters);
 			auto res = a->result.getFuture();
 			readThreads->post(a);
 			return res;
@@ -2243,7 +2268,7 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 		int maxWaiters = (type == ReadType::FETCH) ? numFetchWaiters : numReadWaiters;
 
 		checkWaiters(semaphore, maxWaiters);
-		auto a = std::make_unique<Reader::ReadRangeAction>(keys, rowLimit, byteLimit, counters);
+		auto a = std::make_unique<Reader::ReadRangeAction>(keys, rowLimit, byteLimit, type, counters);
 		return read(a.release(), &semaphore, readThreads.getPtr(), &counters.failedToAcquire);
 	}
 
@@ -2735,6 +2760,33 @@ TEST_CASE("noSim/fdbserver/KeyValueStoreRocksDB/CheckpointRestoreKeyValues") {
 	return Void();
 }
 
+TEST_CASE("noSim/RocksDB/RangeClear") {
+	state const std::string rocksDBTestDir = "rocksdb-perf-db";
+	platform::eraseDirectoryRecursive(rocksDBTestDir);
+
+	state IKeyValueStore* kvStore = new RocksDBKeyValueStore(rocksDBTestDir, deterministicRandom()->randomUniqueID());
+	wait(kvStore->init());
+
+	state KeyRef shardPrefix = "\xffprefix/"_sr;
+
+	state int i = 0;
+	for (; i < 50000; ++i) {
+		state std::string key1 = format("\xffprefix/%d", i);
+		state std::string key2 = format("\xffprefix/%d", i + 1);
+
+		kvStore->set({ key2, std::to_string(i) });
+		RangeResult result = wait(kvStore->readRange(KeyRangeRef(shardPrefix, key1), 10000, 10000));
+		kvStore->clear({ KeyRangeRef(shardPrefix, key1) });
+		wait(kvStore->commit(false));
+	}
+
+	// TODO: flush memtable. The process is expected to OOM.
+
+	Future<Void> closed = kvStore->onClosed();
+	kvStore->dispose();
+	wait(closed);
+	return Void();
+}
 } // namespace
 
 #endif // SSD_ROCKSDB_EXPERIMENTAL

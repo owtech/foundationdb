@@ -93,6 +93,7 @@ ShardSizeBounds getShardSizeBounds(KeyRangeRef shard, int64_t maxShardSize) {
 	bounds.max.bytesWrittenPerKSecond = bounds.max.infinity;
 	bounds.max.iosPerKSecond = bounds.max.infinity;
 	bounds.max.bytesReadPerKSecond = bounds.max.infinity;
+	bounds.max.opsReadPerKSecond = bounds.max.infinity;
 
 	// The first shard can have arbitrarily small size
 	if (shard.begin == allKeys.begin) {
@@ -104,6 +105,7 @@ ShardSizeBounds getShardSizeBounds(KeyRangeRef shard, int64_t maxShardSize) {
 	bounds.min.bytesWrittenPerKSecond = 0;
 	bounds.min.iosPerKSecond = 0;
 	bounds.min.bytesReadPerKSecond = 0;
+	bounds.min.opsReadPerKSecond = 0;
 
 	// The permitted error is 1/3 of the general-case minimum bytes (even in the special case where this is the last
 	// shard)
@@ -111,6 +113,7 @@ ShardSizeBounds getShardSizeBounds(KeyRangeRef shard, int64_t maxShardSize) {
 	bounds.permittedError.bytesWrittenPerKSecond = bounds.permittedError.infinity;
 	bounds.permittedError.iosPerKSecond = bounds.permittedError.infinity;
 	bounds.permittedError.bytesReadPerKSecond = bounds.permittedError.infinity;
+	bounds.permittedError.opsReadPerKSecond = bounds.permittedError.infinity;
 
 	return bounds;
 }
@@ -123,7 +126,7 @@ int64_t getMaxShardSize(double dbSizeEstimate) {
 }
 
 bool ddLargeTeamEnabled() {
-	return SERVER_KNOBS->DD_MAXIMUM_LARGE_TEAMS > 0 && !SERVER_KNOBS->SHARD_ENCODE_LOCATION_METADATA;
+	return SERVER_KNOBS->DD_MAX_SHARDS_ON_LARGE_TEAMS > 0 && !SERVER_KNOBS->SHARD_ENCODE_LOCATION_METADATA;
 }
 
 // Returns the shard size bounds as well as whether `keys` a read hot shard.
@@ -880,7 +883,7 @@ static bool shardForwardMergeFeasible(DataDistributionTracker* self, KeyRange co
 		return false;
 	}
 
-	if (self->customReplication->rangeContaining(keys.begin).range().end < nextRange.end) {
+	if (self->userRangeConfig->rangeContaining(keys.begin)->range().end < nextRange.end) {
 		return false;
 	}
 
@@ -892,7 +895,7 @@ static bool shardBackwardMergeFeasible(DataDistributionTracker* self, KeyRange c
 		return false;
 	}
 
-	if (self->customReplication->rangeContaining(keys.begin).range().begin > prevRange.begin) {
+	if (self->userRangeConfig->rangeContaining(keys.begin)->range().begin > prevRange.begin) {
 		return false;
 	}
 
@@ -902,6 +905,8 @@ static bool shardBackwardMergeFeasible(DataDistributionTracker* self, KeyRange c
 Future<Void> shardMerger(DataDistributionTracker* self,
                          KeyRange const& keys,
                          Reference<AsyncVar<Optional<ShardMetrics>>> shardSize) {
+	const UID actionId = deterministicRandom()->randomUniqueID();
+	const Severity stSev = static_cast<Severity>(SERVER_KNOBS->DD_SHARD_TRACKING_LOG_SEVERITY);
 	int64_t maxShardSize = self->maxShardSize->get().get();
 
 	auto prevIter = self->shards->rangeContaining(keys.begin);
@@ -947,8 +952,19 @@ Future<Void> shardMerger(DataDistributionTracker* self,
 
 			// If going forward, give up when the next shard's stats are not yet present, or if the
 			// the shard is already over the merge bounds.
-			if (!newMetrics.present() || shardCount + newMetrics.get().shardCount >= CLIENT_KNOBS->SHARD_COUNT_LIMIT ||
-			    (endingStats.bytes + newMetrics.get().metrics.bytes > maxShardSize)) {
+			const int newCount = newMetrics.present() ? (shardCount + newMetrics.get().shardCount) : shardCount;
+			const int64_t newSize =
+			    newMetrics.present() ? (endingStats.bytes + newMetrics.get().metrics.bytes) : endingStats.bytes;
+			if (!newMetrics.present() || newCount >= CLIENT_KNOBS->SHARD_COUNT_LIMIT || newSize > maxShardSize) {
+				if (shardsMerged == 1) {
+					TraceEvent(stSev, "ShardMergeStopForward", self->distributorId)
+					    .detail("ActionID", actionId)
+					    .detail("Keys", keys)
+					    .detail("MetricsPresent", newMetrics.present())
+					    .detail("ShardCount", newCount)
+					    .detail("ShardSize", newSize)
+					    .detail("MaxShardSize", maxShardSize);
+				}
 				--nextIter;
 				forwardComplete = true;
 				continue;
@@ -965,9 +981,18 @@ Future<Void> shardMerger(DataDistributionTracker* self,
 			// If going backward, stop when the stats are not present or if the shard is already over the merge
 			//  bounds. If this check triggers right away (if we have not merged anything) then return a trigger
 			//  on the previous shard changing "size".
-			if (!newMetrics.present() || shardCount + newMetrics.get().shardCount >= CLIENT_KNOBS->SHARD_COUNT_LIMIT ||
-			    (endingStats.bytes + newMetrics.get().metrics.bytes > maxShardSize)) {
+			const int newCount = newMetrics.present() ? (shardCount + newMetrics.get().shardCount) : shardCount;
+			const int64_t newSize =
+			    newMetrics.present() ? (endingStats.bytes + newMetrics.get().metrics.bytes) : endingStats.bytes;
+			if (!newMetrics.present() || newCount >= CLIENT_KNOBS->SHARD_COUNT_LIMIT || newSize > maxShardSize) {
 				if (shardsMerged == 1) {
+					TraceEvent(stSev, "ShardMergeStopBackward", self->distributorId)
+					    .detail("ActionID", actionId)
+					    .detail("Keys", keys)
+					    .detail("MetricsPresent", newMetrics.present())
+					    .detail("ShardCount", newCount)
+					    .detail("ShardSize", newSize)
+					    .detail("MaxShardSize", maxShardSize);
 					CODE_PROBE(true, "shardMerger cannot merge anything");
 					return brokenPromiseToReady(prevIter->value().stats->onChange());
 				}
@@ -1002,13 +1027,21 @@ Future<Void> shardMerger(DataDistributionTracker* self,
 			if (forwardComplete)
 				break;
 
+			shardsMerged--;
+			if (shardsMerged == 1) {
+				TraceEvent(stSev, "ShardMergeUndoForward", self->distributorId)
+				    .detail("ActionID", actionId)
+				    .detail("Keys", keys)
+				    .detail("ShardCount", shardCount)
+				    .detail("EndingMetrics", endingStats.toString())
+				    .detail("MaxShardSize", maxShardSize);
+			}
 			// If going forward, remove most recently added range
 			endingStats -= newMetrics.get().metrics;
 			shardCount -= newMetrics.get().shardCount;
 			if (nextIter->range().begin >= systemKeys.begin) {
 				systemBytes -= newMetrics.get().metrics.bytes;
 			}
-			shardsMerged--;
 			--nextIter;
 			merged = KeyRangeRef(prevIter->range().begin, nextIter->range().end);
 			forwardComplete = true;
@@ -1203,7 +1236,7 @@ ACTOR Future<Void> trackInitialShards(DataDistributionTracker* self, Reference<I
 	wait(delay(0.0, TaskPriority::DataDistribution));
 
 	state std::vector<Key> customBoundaries;
-	for (auto& it : self->customReplication->ranges()) {
+	for (auto it : self->userRangeConfig->ranges()) {
 		customBoundaries.push_back(it->range().begin);
 	}
 
@@ -1238,7 +1271,7 @@ ACTOR Future<Void> fetchTopKShardMetrics_impl(DataDistributionTracker* self, Get
 	state std::vector<GetTopKMetricsReply::KeyRangeStorageMetrics> returnMetrics;
 	// random pick a portion of shard
 	if (req.keys.size() > SERVER_KNOBS->DD_SHARD_COMPARE_LIMIT) {
-		deterministicRandom()->randomShuffle(req.keys, SERVER_KNOBS->DD_SHARD_COMPARE_LIMIT);
+		deterministicRandom()->randomShuffle(req.keys, 0, SERVER_KNOBS->DD_SHARD_COMPARE_LIMIT);
 	}
 	try {
 		loop {
@@ -1264,15 +1297,11 @@ ACTOR Future<Void> fetchTopKShardMetrics_impl(DataDistributionTracker* self, Get
 					break;
 				}
 
-				if (metrics.bytesReadPerKSecond > 0) {
-					if (minReadLoad == -1) {
-						minReadLoad = metrics.bytesReadPerKSecond;
-					} else {
-						minReadLoad = std::min(metrics.bytesReadPerKSecond, minReadLoad);
-					}
-					maxReadLoad = std::max(metrics.bytesReadPerKSecond, maxReadLoad);
-					if (req.minBytesReadPerKSecond <= metrics.bytesReadPerKSecond &&
-					    metrics.bytesReadPerKSecond <= req.maxBytesReadPerKSecond) {
+				auto readLoad = metrics.readLoadKSecond();
+				if (readLoad > 0) {
+					minReadLoad = std::min(readLoad, minReadLoad);
+					maxReadLoad = std::max(readLoad, maxReadLoad);
+					if (req.minReadLoadPerKSecond <= readLoad && readLoad <= req.maxReadLoadPerKSecond) {
 						returnMetrics.emplace_back(range, metrics);
 					}
 				}
@@ -1486,7 +1515,7 @@ Future<Void> DataDistributionTracker::run(Reference<DataDistributionTracker> sel
 	self->getTopKMetrics = getTopKMetrics;
 	self->getShardMetricsList = getShardMetricsList;
 	self->averageShardBytes = getAverageShardBytes;
-	self->customReplication = initData->customReplication;
+	self->userRangeConfig = initData->userRangeConfig;
 	return holdWhile(self, DataDistributionTrackerImpl::run(self.getPtr(), initData));
 }
 

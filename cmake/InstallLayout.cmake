@@ -256,6 +256,7 @@ set(rpm_filename_suffix "${FDB_PACKAGE_VERSION}${package_version_postfix}.${CMAK
 set(CPACK_RPM_PACKAGE_GROUP                                ${CURRENT_GIT_VERSION})
 set(CPACK_RPM_PACKAGE_LICENSE                              "Apache 2.0")
 set(CPACK_RPM_PACKAGE_NAME                                 "${package_name}")
+set(CPACK_RPM_COMPRESSION_TYPE                             "gzip")
 set(CPACK_RPM_CLIENTS-EL7_PACKAGE_NAME                     "${clients_package_name}")
 set(CPACK_RPM_CLIENTS-EL7_FILE_NAME                        "${CPACK_RPM_CLIENTS-EL7_PACKAGE_NAME}-${rpm_filename_suffix}")
 set(CPACK_RPM_CLIENTS-EL7_DEBUGINFO_FILE_NAME              "${CPACK_RPM_CLIENTS-EL7_PACKAGE_NAME}-debuginfo--${rpm_filename_suffix}")

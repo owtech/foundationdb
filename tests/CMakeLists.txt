@@ -31,7 +31,7 @@ if(WITH_PYTHON)
 
     message(WARNING "\
   No old fdbserver binary found - using ${fdbserver_location} \
-  It is recommended to install the current stable version from https://www.foundationdb.org/download/ \
+  It is recommended to install the current stable version from https://github.com/apple/foundationdb/releases \
   Or provide a path to another fdbserver")
   endif()
 
@@ -168,13 +168,16 @@ if(WITH_PYTHON)
   add_fdb_test(TEST_FILES fast/DataLossRecovery.toml)
   if(WITH_TLS)
     add_fdb_test(TEST_FILES fast/EncryptionOps.toml)
+    add_fdb_test(TEST_FILES fast/EncryptionUnitTests.toml)
     add_fdb_test(TEST_FILES fast/EncryptKeyProxyTest.toml)
   else()
     add_fdb_test(TEST_FILES fast/EncryptionOps.toml IGNORE)
+    add_fdb_test(TEST_FILES fast/EncryptionUnitTests.toml IGNORE)
     add_fdb_test(TEST_FILES fast/EncryptKeyProxyTest.toml IGNORE)
   endif()
   add_fdb_test(TEST_FILES fast/FuzzApiCorrectness.toml)
   add_fdb_test(TEST_FILES fast/FuzzApiCorrectnessClean.toml)
+  add_fdb_test(TEST_FILES fast/HTTPKeyValueStore.toml)
   add_fdb_test(TEST_FILES fast/IncrementalBackup.toml)
   add_fdb_test(TEST_FILES fast/IncrementalBackupWithEKPKeyFetchFailures.toml)
   add_fdb_test(TEST_FILES fast/IncrementalBackupWithTenantDeletion.toml)
@@ -234,17 +237,25 @@ if(WITH_PYTHON)
     add_fdb_test(TEST_FILES fast/ValidateStorage.toml)
     add_fdb_test(TEST_FILES noSim/KeyValueStoreRocksDBTest.toml UNIT)
     add_fdb_test(TEST_FILES noSim/ShardedRocksDBTest.toml UNIT)
+    if (USE_VALGRIND)
+      add_fdb_test(TEST_FILES noSim/PerfShardedRocksDBTest.toml IGNORE)
+    else()
+      add_fdb_test(TEST_FILES noSim/PerfShardedRocksDBTest.toml UNIT)
+    endif()
     add_fdb_test(TEST_FILES fast/PhysicalShardMove.toml)
     add_fdb_test(TEST_FILES fast/StorageServerCheckpointRestore.toml IGNORE)
   else()
     add_fdb_test(TEST_FILES fast/ValidateStorage.toml IGNORE)
     add_fdb_test(TEST_FILES noSim/KeyValueStoreRocksDBTest.toml IGNORE)
     add_fdb_test(TEST_FILES noSim/ShardedRocksDBTest.toml IGNORE)
+    add_fdb_test(TEST_FILES noSim/PerfShardedRocksDBTest.toml IGNORE)
     add_fdb_test(TEST_FILES fast/PhysicalShardMove.toml IGNORE)
     add_fdb_test(TEST_FILES fast/StorageServerCheckpointRestore.toml IGNORE)
   endif()
 
   add_fdb_test(TEST_FILES rare/BlobGranuleRanges.toml)
+  add_fdb_test(TEST_FILES rare/BlobGranuleRangesChangeLog.toml)
+  add_fdb_test(TEST_FILES rare/BlobGranuleMergeBoundaries.toml)
   add_fdb_test(TEST_FILES rare/CheckRelocation.toml)
   add_fdb_test(TEST_FILES rare/ClogTlog.toml)
   add_fdb_test(TEST_FILES rare/ClogUnclog.toml)
@@ -310,20 +321,8 @@ if(WITH_PYTHON)
     TEST_FILES restarting/from_7.1.0_until_7.2.0/ConfigureTestRestart-1.toml
     restarting/from_7.1.0_until_7.2.0/ConfigureTestRestart-2.toml)
   add_fdb_test(
-    TEST_FILES restarting/from_7.1.0_until_7.2.0/SnapCycleRestart-1.txt
-    restarting/from_7.1.0_until_7.2.0/SnapCycleRestart-2.txt)
-  add_fdb_test(
     TEST_FILES restarting/from_7.1.0_until_7.2.0/SnapIncrementalRestore-1.txt
     restarting/from_7.1.0_until_7.2.0/SnapIncrementalRestore-2.txt)
-  add_fdb_test(
-    TEST_FILES restarting/from_7.1.0_until_7.2.0/SnapTestAttrition-1.txt
-    restarting/from_7.1.0_until_7.2.0/SnapTestAttrition-2.txt)
-  add_fdb_test(
-    TEST_FILES restarting/from_7.1.0_until_7.2.0/SnapTestSimpleRestart-1.txt
-    restarting/from_7.1.0_until_7.2.0/SnapTestSimpleRestart-2.txt)
-  add_fdb_test(
-    TEST_FILES restarting/from_7.1.0_until_7.2.0/SnapTestRestart-1.txt
-    restarting/from_7.1.0_until_7.2.0/SnapTestRestart-2.txt)
   add_fdb_test(
     TEST_FILES restarting/from_7.1.0_until_7.2.0/ConfigureStorageMigrationTestRestart-1.toml
     restarting/from_7.1.0_until_7.2.0/ConfigureStorageMigrationTestRestart-2.toml)
@@ -379,17 +378,29 @@ if(WITH_PYTHON)
     TEST_FILES restarting/from_7.3.0/BlobGranuleRestartLarge-1.toml
     restarting/from_7.3.0/BlobGranuleRestartLarge-2.toml)
   add_fdb_test(
+    TEST_FILES restarting/from_7.3.0/SnapCycleRestart-1.txt
+    restarting/from_7.3.0/SnapCycleRestart-2.txt)
+  add_fdb_test(
+    TEST_FILES restarting/from_7.3.0/SnapTestAttrition-1.txt
+    restarting/from_7.3.0/SnapTestAttrition-2.txt)
+  add_fdb_test(
+    TEST_FILES restarting/from_7.3.0/SnapTestSimpleRestart-1.txt
+    restarting/from_7.3.0/SnapTestSimpleRestart-2.txt)
+  add_fdb_test(
+    TEST_FILES restarting/from_7.3.0/SnapTestRestart-1.txt
+    restarting/from_7.3.0/SnapTestRestart-2.txt)
+  add_fdb_test(
     TEST_FILES restarting/to_7.1.0_until_7.2.0/ConfigureStorageMigrationTestRestart-1.toml
-    restarting/to_7.1.0_until_7.2.0/ConfigureStorageMigrationTestRestart-2.toml)
+    restarting/to_7.1.0_until_7.2.0/ConfigureStorageMigrationTestRestart-2.toml IGNORE)
   add_fdb_test(
     TEST_FILES restarting/to_7.1.0_until_7.2.0/CycleTestRestart-1.toml
-    restarting/to_7.1.0_until_7.2.0/CycleTestRestart-2.toml)
+    restarting/to_7.1.0_until_7.2.0/CycleTestRestart-2.toml IGNORE)
   add_fdb_test(
     TEST_FILES restarting/to_7.2.0_until_7.3.0/ConfigureStorageMigrationTestRestart-1.toml
-    restarting/to_7.2.0_until_7.3.0/ConfigureStorageMigrationTestRestart-2.toml)
+    restarting/to_7.2.0_until_7.3.0/ConfigureStorageMigrationTestRestart-2.toml IGNORE)
   add_fdb_test(
     TEST_FILES restarting/to_7.2.0_until_7.3.0/CycleTestRestart-1.toml
-    restarting/to_7.2.0_until_7.3.0/CycleTestRestart-2.toml)
+    restarting/to_7.2.0_until_7.3.0/CycleTestRestart-2.toml IGNORE)
   add_fdb_test(
     TEST_FILES restarting/to_7.3.0/ConfigureStorageMigrationTestRestart-1.toml
     restarting/to_7.3.0/ConfigureStorageMigrationTestRestart-2.toml)
@@ -418,7 +429,7 @@ if(WITH_PYTHON)
   add_fdb_test(TEST_FILES slow/DifferentClustersSameRV.toml)
   add_fdb_test(TEST_FILES slow/DiskFailureCycle.toml)
   add_fdb_test(TEST_FILES slow/FastTriggeredWatches.toml)
-  add_fdb_test(TEST_FILES slow/GcGenerations.toml IGNORE)
+  add_fdb_test(TEST_FILES slow/GcGenerations.toml)
   add_fdb_test(TEST_FILES slow/LongRunning.toml LONG_RUNNING)
   add_fdb_test(TEST_FILES slow/LowLatencyWithFailures.toml)
   add_fdb_test(TEST_FILES slow/MetaclusterManagement.toml)

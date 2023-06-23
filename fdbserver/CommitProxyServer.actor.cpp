@@ -43,7 +43,7 @@
 #include "fdbserver/ConflictSet.h"
 #include "fdbserver/DataDistributorInterface.h"
 #include "fdbserver/FDBExecHelper.actor.h"
-#include "fdbclient/GetEncryptCipherKeys.actor.h"
+#include "fdbclient/GetEncryptCipherKeys.h"
 #include "fdbserver/IKeyValueStore.h"
 #include "fdbserver/Knobs.h"
 #include "fdbserver/LogSystem.h"
@@ -1014,7 +1014,8 @@ ACTOR Future<Void> getResolution(CommitBatchContext* self) {
 				}
 			}
 		}
-		getCipherKeys = getLatestEncryptCipherKeys(pProxyCommitData->db, encryptDomainIds, BlobCipherMetrics::TLOG);
+		getCipherKeys = GetEncryptCipherKeys<ServerDBInfo>::getLatestEncryptCipherKeys(
+		    pProxyCommitData->db, encryptDomainIds, BlobCipherMetrics::TLOG);
 	}
 
 	self->releaseFuture = releaseResolvingAfter(pProxyCommitData, self->releaseDelay, self->localBatchNumber);
@@ -1677,7 +1678,7 @@ ACTOR Future<Void> applyMetadataToCommittedTransactions(CommitBatchContext* self
 		}
 		if (!extraDomainIds.empty()) {
 			std::unordered_map<EncryptCipherDomainId, Reference<BlobCipherKey>> extraCipherKeys =
-			    wait(getLatestEncryptCipherKeys(
+			    wait(GetEncryptCipherKeys<ServerDBInfo>::getLatestEncryptCipherKeys(
 			        pProxyCommitData->db, extraDomainIds, BlobCipherMetrics::TLOG_POST_RESOLUTION));
 			self->cipherKeys.insert(extraCipherKeys.begin(), extraCipherKeys.end());
 		}
@@ -1704,11 +1705,13 @@ ACTOR Future<WriteMutationRefVar> writeMutationEncryptedMutation(CommitBatchCont
 	Reference<AsyncVar<ServerDBInfo> const> dbInfo = self->pProxyCommitData->db;
 	if (CLIENT_KNOBS->ENABLE_CONFIGURABLE_ENCRYPTION) {
 		headerRef = encryptedMutation.configurableEncryptionHeader();
-		TextAndHeaderCipherKeys cipherKeys = wait(getEncryptCipherKeys(dbInfo, headerRef, BlobCipherMetrics::TLOG));
+		TextAndHeaderCipherKeys cipherKeys =
+		    wait(GetEncryptCipherKeys<ServerDBInfo>::getEncryptCipherKeys(dbInfo, headerRef, BlobCipherMetrics::TLOG));
 		decryptedMutation = encryptedMutation.decrypt(cipherKeys, *arena, BlobCipherMetrics::TLOG);
 	} else {
 		header = encryptedMutation.encryptionHeader();
-		TextAndHeaderCipherKeys cipherKeys = wait(getEncryptCipherKeys(dbInfo, *header, BlobCipherMetrics::TLOG));
+		TextAndHeaderCipherKeys cipherKeys =
+		    wait(GetEncryptCipherKeys<ServerDBInfo>::getEncryptCipherKeys(dbInfo, *header, BlobCipherMetrics::TLOG));
 		decryptedMutation = encryptedMutation.decrypt(cipherKeys, *arena, BlobCipherMetrics::TLOG);
 	}
 
@@ -2629,7 +2632,8 @@ ACTOR static Future<Void> tenantIdServer(CommitProxyInterface proxy,
 		GetTenantIdRequest req = waitNext(proxy.getTenantId.getFuture());
 		// WARNING: this code is run at a high priority, so it needs to do as little work as possible
 		if (commitData->stats.tenantIdRequestIn.getValue() - commitData->stats.tenantIdRequestOut.getValue() >
-		    SERVER_KNOBS->TENANT_ID_REQUEST_MAX_QUEUE_SIZE) {
+		        SERVER_KNOBS->TENANT_ID_REQUEST_MAX_QUEUE_SIZE ||
+		    (g_network->isSimulated() && !g_simulator->speedUpSimulation && BUGGIFY_WITH_PROB(0.0001))) {
 			++commitData->stats.tenantIdRequestErrors;
 			req.reply.sendError(commit_proxy_memory_limit_exceeded());
 			TraceEvent(SevWarnAlways, "ProxyGetTenantRequestThresholdExceeded").suppressFor(60);
@@ -2725,8 +2729,9 @@ ACTOR static Future<Void> readRequestServer(CommitProxyInterface proxy,
 		GetKeyServerLocationsRequest req = waitNext(proxy.getKeyServersLocations.getFuture());
 		// WARNING: this code is run at a high priority, so it needs to do as little work as possible
 		if (req.limit != CLIENT_KNOBS->STORAGE_METRICS_SHARD_LIMIT && // Always do data distribution requests
-		    commitData->stats.keyServerLocationIn.getValue() - commitData->stats.keyServerLocationOut.getValue() >
-		        SERVER_KNOBS->KEY_LOCATION_MAX_QUEUE_SIZE) {
+		    (commitData->stats.keyServerLocationIn.getValue() - commitData->stats.keyServerLocationOut.getValue() >
+		         SERVER_KNOBS->KEY_LOCATION_MAX_QUEUE_SIZE ||
+		     (g_network->isSimulated() && BUGGIFY_WITH_PROB(0.001)))) {
 			++commitData->stats.keyServerLocationErrors;
 			req.reply.sendError(commit_proxy_memory_limit_exceeded());
 			TraceEvent(SevWarnAlways, "ProxyLocationRequestThresholdExceeded").suppressFor(60);
@@ -3394,8 +3399,9 @@ ACTOR Future<Void> processCompleteTransactionStateRequest(TransactionStateResolv
 
 	state std::unordered_map<EncryptCipherDomainId, Reference<BlobCipherKey>> systemCipherKeys;
 	if (pContext->pCommitData->encryptMode.isEncryptionEnabled()) {
-		std::unordered_map<EncryptCipherDomainId, Reference<BlobCipherKey>> cks = wait(getLatestEncryptCipherKeys(
-		    pContext->pCommitData->db, ENCRYPT_CIPHER_SYSTEM_DOMAINS, BlobCipherMetrics::TLOG));
+		std::unordered_map<EncryptCipherDomainId, Reference<BlobCipherKey>> cks =
+		    wait(GetEncryptCipherKeys<ServerDBInfo>::getLatestEncryptCipherKeys(
+		        pContext->pCommitData->db, ENCRYPT_CIPHER_SYSTEM_DOMAINS, BlobCipherMetrics::TLOG));
 		systemCipherKeys = cks;
 	}
 
@@ -3617,9 +3623,6 @@ ACTOR Future<Void> commitProxyServerCore(CommitProxyInterface proxy,
 	state PromiseStream<Future<Void>> addActor;
 	state Future<Void> onError = transformError(actorCollection(addActor.getFuture()), broken_promise(), tlog_failed());
 
-	state GetHealthMetricsReply healthMetricsReply;
-	state GetHealthMetricsReply detailedHealthMetricsReply;
-
 	TraceEvent("CPEncryptionAtRestMode", proxy.id()).detail("Mode", commitData.encryptMode);
 
 	addActor.send(waitFailureServer(proxy.waitFailure.getFuture()));
@@ -3628,9 +3631,10 @@ ACTOR Future<Void> commitProxyServerCore(CommitProxyInterface proxy,
 	//TraceEvent("CommitProxyInit1", proxy.id());
 
 	// Wait until we can load the "real" logsystem, since we don't support switching them currently
-	while (!(masterLifetime.isEqual(commitData.db->get().masterLifetime) &&
-	         commitData.db->get().recoveryState >= RecoveryState::RECOVERY_TRANSACTION &&
-	         (!commitData.encryptMode.isEncryptionEnabled() || commitData.db->get().encryptKeyProxy.present()))) {
+	while (
+	    !(masterLifetime.isEqual(commitData.db->get().masterLifetime) &&
+	      commitData.db->get().recoveryState >= RecoveryState::RECOVERY_TRANSACTION &&
+	      (!commitData.encryptMode.isEncryptionEnabled() || commitData.db->get().client.encryptKeyProxy.present()))) {
 		//TraceEvent("ProxyInit2", proxy.id()).detail("LSEpoch", db->get().logSystemConfig.epoch).detail("Need", epoch);
 		wait(commitData.db->onChange());
 	}
