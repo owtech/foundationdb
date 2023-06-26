@@ -394,7 +394,11 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( ROCKSDB_LEVEL_STYLE_COMPACTION,                       true );
 	init( ROCKSDB_UNSAFE_AUTO_FSYNC,                           false );
 	init( ROCKSDB_PERIODIC_COMPACTION_SECONDS,                     0 );
-	init( ROCKSDB_PREFIX_LEN,                                      0 );
+	init( ROCKSDB_PREFIX_LEN,                                      0 ); if( randomize && BUGGIFY )  ROCKSDB_PREFIX_LEN = deterministicRandom()->randomInt(1, 20);
+	init( ROCKSDB_MEMTABLE_PREFIX_BLOOM_SIZE_RATIO,              0.1 );
+	init( ROCKSDB_BLOOM_BITS_PER_KEY,                             10 );
+	init( ROCKSDB_BLOOM_WHOLE_KEY_FILTERING,                   false );
+	init( ROCKSDB_MAX_AUTO_READAHEAD_SIZE,                         0 );
 	// If rocksdb block cache size is 0, the default 8MB is used.
 	int64_t blockCacheSize = isSimulated ? 16 * 1024 * 1024 : 2147483648 /* 2GB */;
 	init( ROCKSDB_BLOCK_CACHE_SIZE,                   blockCacheSize );
@@ -431,13 +435,17 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( SHARD_SOFT_PENDING_COMPACT_BYTES_LIMIT,                  0 );
 	init( SHARD_HARD_PENDING_COMPACT_BYTES_LIMIT,                  0 );
 	init( ROCKSDB_CAN_COMMIT_COMPACT_BYTES_LIMIT,        50000000000 ); // 50GB, Commit waits.
+	// Enabling ROCKSDB_PARANOID_FILE_CHECKS knob will have overhead. Be cautious to enable in prod.
+	init( ROCKSDB_PARANOID_FILE_CHECKS,                        false ); if( randomize && BUGGIFY ) ROCKSDB_PARANOID_FILE_CHECKS = deterministicRandom()->coinflip();
 	// Enable this knob only for experminatal purpose, never enable this in production.
 	// If enabled, all the committed in-memory memtable writes are lost on a crash.
 	init( ROCKSDB_DISABLE_WAL_EXPERIMENTAL,                    false );
+	init( ROCKSDB_WAL_TTL_SECONDS,                                 0 );
+	init( ROCKSDB_WAL_SIZE_LIMIT_MB,                               0 );
+	init( ROCKSDB_LOG_LEVEL_DEBUG,                             false );
 	// If ROCKSDB_SINGLEKEY_DELETES_ON_CLEARRANGE is enabled, disable ROCKSDB_ENABLE_CLEAR_RANGE_EAGER_READS knob.
 	// These knobs have contrary functionality.
 	init( ROCKSDB_SINGLEKEY_DELETES_ON_CLEARRANGE,              true );
-	init( ROCKSDB_SINGLEKEY_DELETES_BYTES_LIMIT,               10000 ); // 10KB
 	init( ROCKSDB_SINGLEKEY_DELETES_MAX,                         200 ); // Max rocksdb::delete calls in a transaction
 	init( ROCKSDB_ENABLE_CLEAR_RANGE_EAGER_READS,              false );
 	init( ROCKSDB_FORCE_DELETERANGE_FOR_CLEARRANGE,            false );
@@ -457,7 +465,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( ROCKSDB_CAN_COMMIT_DELAY_TIMES_ON_OVERLOAD,              5 );
 	init( ROCKSDB_COMPACTION_READAHEAD_SIZE,                   32768 ); // 32 KB, performs bigger reads when doing compaction.
 	init( ROCKSDB_BLOCK_SIZE,                                  32768 ); // 32 KB, size of the block in rocksdb cache.
- 	init( ENABLE_SHARDED_ROCKSDB,                              false );
+	init( ENABLE_SHARDED_ROCKSDB,                              false );
 	init( ROCKSDB_WRITE_BUFFER_SIZE,                         1 << 30 ); // 1G
 	init( ROCKSDB_CF_WRITE_BUFFER_SIZE,                     64 << 20 ); // 64M, RocksDB default.
 	init( ROCKSDB_MAX_TOTAL_WAL_SIZE,                              0 ); // RocksDB default.
@@ -472,6 +480,12 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( ROCKSDB_USE_POINT_DELETE_FOR_SYSTEM_KEYS,            false ); if (isSimulated) ROCKSDB_USE_POINT_DELETE_FOR_SYSTEM_KEYS = deterministicRandom()->coinflip();
 	init( ROCKSDB_CF_RANGE_DELETION_LIMIT,                      1000 );
 	init (ROCKSDB_WAIT_ON_CF_FLUSH,                             true ); if (isSimulated) ROCKSDB_WAIT_ON_CF_FLUSH = deterministicRandom()->coinflip();
+	init (ROCKSDB_ALLOW_WRITE_STALL_ON_FLUSH,                   true ); if (isSimulated) ROCKSDB_ALLOW_WRITE_STALL_ON_FLUSH = deterministicRandom()->coinflip();
+	init (ROCKSDB_CF_METRICS_DELAY,                            900.0 );
+	init (ROCKSDB_MAX_LOG_FILE_SIZE,                         10485760 ); // 10MB.
+	init (ROCKSDB_KEEP_LOG_FILE_NUM,                             200 ); // Keeps 2GB log per storage server.
+        init (ROCKSDB_SKIP_STATS_UPDATE_ON_OPEN,                    false ); if (isSimulated) ROCKSDB_SKIP_STATS_UPDATE_ON_OPEN = deterministicRandom()->coinflip(); 
+        init (ROCKSDB_SKIP_FILE_SIZE_CHECK_ON_OPEN,                 false ); if (isSimulated) ROCKSDB_SKIP_FILE_SIZE_CHECK_ON_OPEN = deterministicRandom()->coinflip();
 
 	// Leader election
 	bool longLeaderElection = randomize && BUGGIFY;
