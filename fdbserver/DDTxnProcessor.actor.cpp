@@ -242,6 +242,11 @@ class DDTxnProcessorImpl {
 
 		state Transaction tr(cx);
 
+		if (ddLargeTeamEnabled()) {
+			wait(store(result->userRangeConfig,
+			           DDConfiguration().userRangeConfig().getSnapshot(
+			               SystemDBWriteLockedNow(cx.getReference()), allKeys.begin, allKeys.end)));
+		}
 		state std::map<UID, Optional<Key>> server_dc;
 		state std::map<std::vector<UID>, std::pair<std::vector<UID>, std::vector<UID>>> team_cache;
 		state std::vector<std::pair<StorageServerInterface, ProcessClass>> tss_servers;
@@ -259,12 +264,6 @@ class DDTxnProcessorImpl {
 			tss_servers.clear();
 			team_cache.clear();
 			succeeded = false;
-			result->customReplication->insert(allKeys, -1);
-			if (g_network->isSimulated() && ddLargeTeamEnabled()) {
-				for (auto& it : g_simulator->customReplicas) {
-					result->customReplication->insert(KeyRangeRef(std::get<0>(it), std::get<1>(it)), std::get<2>(it));
-				}
-			}
 			try {
 				// Read healthyZone value which is later used to determine on/off of failure triggered DD
 				tr.setOption(FDBTransactionOptions::READ_SYSTEM_KEYS);
@@ -320,10 +319,13 @@ class DDTxnProcessorImpl {
 					auto dataMove = std::make_shared<DataMove>(decodeDataMoveValue(dms[i].value), true);
 					const DataMoveMetaData& meta = dataMove->meta;
 					if (meta.ranges.empty()) {
-						// This dataMove cancellation is delayed to background cancellation
-						// For this case, the dataMove has empty ranges but it is in Deleting phase
-						// We simply bypass this case
+						// Any persisted datamove with an empty range must be an tombstone persisted by
+						// a background cleanup (with retry_clean_up_datamove_tombstone_added),
+						// and this datamove must be in DataMoveMetaData::Deleting state
+						// A datamove without processed by a background cleanup must have a non-empty range
+						// For this case, we simply clear the range when dd init
 						ASSERT(meta.getPhase() == DataMoveMetaData::Deleting);
+						result->toCleanDataMoveTombstone.push_back(meta.id);
 						continue;
 					}
 					ASSERT(!meta.ranges.empty());
@@ -359,7 +361,8 @@ class DDTxnProcessorImpl {
 				RangeResult ads = wait(tr.getRange(auditKeys, CLIENT_KNOBS->TOO_MANY));
 				ASSERT(!ads.more && ads.size() < CLIENT_KNOBS->TOO_MANY);
 				for (int i = 0; i < ads.size(); ++i) {
-					result->auditStates.push_back(decodeAuditStorageState(ads[i].value));
+					auto auditState = decodeAuditStorageState(ads[i].value);
+					result->auditStates.push_back(auditState);
 				}
 
 				succeeded = true;
@@ -1048,4 +1051,14 @@ ACTOR Future<Void> rawFinishMovement(std::shared_ptr<MockGlobalState> mgs,
 Future<Void> DDMockTxnProcessor::rawFinishMovement(const MoveKeysParams& params,
                                                    const std::map<UID, StorageServerInterface>& tssMapping) {
 	return ::rawFinishMovement(mgs, params, tssMapping);
+}
+
+Future<Optional<HealthMetrics::StorageStats>> DDTxnProcessor::getStorageStats(const UID& id,
+                                                                              double maxStaleness) const {
+	return cx->getStorageStats(id, maxStaleness);
+}
+
+Future<Optional<HealthMetrics::StorageStats>> DDMockTxnProcessor::getStorageStats(const UID& id,
+                                                                                  double maxStaleness) const {
+	return {};
 }

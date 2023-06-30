@@ -25,7 +25,7 @@
 #include "fmt/format.h"
 #include "fdbclient/BackupAgent.actor.h"
 #include "fdbclient/BlobWorkerInterface.h"
-#include "fdbclient/KeyBackedTypes.h"
+#include "fdbclient/KeyBackedTypes.actor.h"
 #include "fdbserver/Status.actor.h"
 #include "flow/ITrace.h"
 #include "flow/ProtocolVersion.h"
@@ -841,8 +841,8 @@ ACTOR static Future<JsonBuilderObject> processStatusFetcher(
 		roles.addRole("consistency_scan", db->get().consistencyScan.get());
 	}
 
-	if (db->get().encryptKeyProxy.present()) {
-		roles.addRole("encrypt_key_proxy", db->get().encryptKeyProxy.get());
+	if (db->get().client.encryptKeyProxy.present()) {
+		roles.addRole("encrypt_key_proxy", db->get().client.encryptKeyProxy.get());
 	}
 
 	for (auto& tLogSet : db->get().logSystemConfig.tLogs) {
@@ -853,14 +853,23 @@ ACTOR static Future<JsonBuilderObject> processStatusFetcher(
 		}
 	}
 
-	for (auto& old : db->get().logSystemConfig.oldTLogs) {
-		for (auto& tLogSet : old.tLogs) {
+	state std::vector<OldTLogConf>::const_iterator oldTLogIter;
+	for (oldTLogIter = db->get().logSystemConfig.oldTLogs.begin();
+	     oldTLogIter != db->get().logSystemConfig.oldTLogs.end();
+	     ++oldTLogIter) {
+		for (auto& tLogSet : oldTLogIter->tLogs) {
+			for (auto& it : tLogSet.tLogs) {
+				if (it.present()) {
+					roles.addRole("log", it.interf());
+				}
+			}
 			for (auto& it : tLogSet.logRouters) {
 				if (it.present()) {
 					roles.addRole("router", it.interf());
 				}
 			}
 		}
+		wait(yield());
 	}
 
 	for (const auto& coordinator : coordinatorAddresses) {
@@ -2485,13 +2494,15 @@ ACTOR static Future<JsonBuilderObject> blobGranulesStatusFetcher(
 		// Mutation log backup
 		state std::string mlogsUrl = wait(getMutationLogUrl());
 		statusObj["mutation_log_location"] = mlogsUrl;
-		state Reference<IBackupContainer> bc = IBackupContainer::openContainer(mlogsUrl, {}, {});
-		BackupDescription desc = wait(timeoutError(bc->describeBackup(), 2.0));
-		if (desc.contiguousLogEnd.present()) {
-			statusObj["mutation_log_end_version"] = desc.contiguousLogEnd.get();
-		}
-		if (desc.minLogBegin.present()) {
-			statusObj["mutation_log_begin_version"] = desc.minLogBegin.get();
+		if (mlogsUrl != "") {
+			state Reference<IBackupContainer> bc = IBackupContainer::openContainer(mlogsUrl, {}, {});
+			BackupDescription desc = wait(timeoutError(bc->describeBackup(), 2.0));
+			if (desc.contiguousLogEnd.present()) {
+				statusObj["mutation_log_end_version"] = desc.contiguousLogEnd.get();
+			}
+			if (desc.minLogBegin.present()) {
+				statusObj["mutation_log_begin_version"] = desc.minLogBegin.get();
+			}
 		}
 	} catch (Error& e) {
 		if (e.code() == error_code_actor_cancelled)

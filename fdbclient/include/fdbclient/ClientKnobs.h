@@ -190,6 +190,7 @@ public:
 	double BACKUP_STATUS_JITTER;
 	double MIN_CLEANUP_SECONDS;
 	int64_t FASTRESTORE_ATOMICOP_WEIGHT; // workload amplication factor for atomic op
+	int RESTORE_RANGES_READ_BATCH;
 
 	// Configuration
 	int32_t DEFAULT_AUTO_COMMIT_PROXIES;
@@ -313,6 +314,7 @@ public:
 
 	// REST KMS configurations
 	bool REST_KMS_ALLOW_NOT_SECURE_CONNECTION;
+	int SIM_KMS_VAULT_MAX_KEYS;
 
 	ClientKnobs(Randomize randomize);
 	void initialize(Randomize randomize);

@@ -187,18 +187,20 @@ public:
 	}
 
 	// Delete all files of oldest manifest
-	static void deleteOldest(const std::vector<BlobManifestFile>& allFiles,
-	                         Reference<BackupContainerFileSystem> container) {
+	ACTOR static Future<Void> deleteOldest(std::vector<BlobManifestFile> allFiles,
+	                                       Reference<BackupContainerFileSystem> container) {
 		if (allFiles.empty()) {
-			return;
+			return Void();
 		}
-		int64_t epoch = allFiles.back().epoch;
-		int64_t seqNo = allFiles.back().seqNo;
+		state int64_t epoch = allFiles.back().epoch;
+		state int64_t seqNo = allFiles.back().seqNo;
 		for (auto& f : allFiles) {
 			if (f.epoch == epoch && f.seqNo == seqNo) {
-				container->deleteFile(f.fileName);
+				wait(container->deleteFile(f.fileName));
 			}
 		}
+		TraceEvent("BlobManfiestDelete").detail("Epoch", epoch).detail("SeqNo", seqNo);
+		return Void();
 	}
 
 	// Count how many manifests
@@ -400,11 +402,7 @@ private:
 						if (!result.more) {
 							break;
 						}
-						if (result.readThrough.present()) {
-							begin = firstGreaterOrEqual(result.readThrough.get());
-						} else {
-							begin = firstGreaterThan(result.back().key);
-						}
+						begin = result.nextBeginKeySelector();
 					}
 				}
 
@@ -415,6 +413,7 @@ private:
 
 				// last flush for in-memory data
 				wait(BlobManifestFileSplitter::close(splitter));
+				TraceEvent("BlobManfiestDump").detail("Size", splitter->totalBytes());
 				return splitter->totalBytes();
 			} catch (Error& e) {
 				TraceEvent("BlobManfiestDumpError").error(e).log();
@@ -433,11 +432,12 @@ private:
 
 		loop {
 			state std::vector<BlobManifestFile> allFiles = wait(BlobManifestFile::listAll(writer));
+			TraceEvent("BlobManfiestCleanup").detail("FileCount", allFiles.size());
 			int count = BlobManifest::count(allFiles);
 			if (count <= SERVER_KNOBS->BLOB_RESTORE_MANIFEST_RETENTION_MAX) {
 				return Void();
 			}
-			BlobManifest::deleteOldest(allFiles, writer);
+			wait(BlobManifest::deleteOldest(allFiles, writer));
 		}
 	}
 
@@ -497,11 +497,7 @@ public:
 					if (!rows.more) {
 						break;
 					}
-					if (rows.readThrough.present()) {
-						begin = firstGreaterOrEqual(rows.readThrough.get());
-					} else {
-						begin = firstGreaterThan(rows.end()[-1].key);
-					}
+					begin = rows.nextBeginKeySelector();
 				}
 
 				// check each granule range
@@ -779,11 +775,7 @@ private:
 			if (!results.more) {
 				break;
 			}
-			if (results.readThrough.present()) {
-				begin = firstGreaterOrEqual(results.readThrough.get());
-			} else {
-				begin = firstGreaterThan(results.end()[-1].key);
-			}
+			begin = results.nextBeginKeySelector();
 		}
 		return files;
 	}

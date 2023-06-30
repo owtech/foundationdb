@@ -1887,7 +1887,6 @@ Future<T> forwardError(Future<T> f, Promise<Void> target) {
 		if (e.code() != error_code_actor_cancelled && target.canBeSet()) {
 			target.sendError(e);
 		}
-
 		throw;
 	}
 }
@@ -3673,8 +3672,9 @@ public:
 			}
 		}
 
-		self->closedPromise.send(Void());
+		Promise<Void> closedPromise = self->closedPromise;
 		delete self;
+		closedPromise.send(Void());
 	}
 
 	void dispose() override { shutdown(this, true); }
@@ -4993,15 +4993,14 @@ public:
 
 	void clear(KeyRangeRef clearedRange) {
 		++m_mutationCount;
+		ASSERT(!clearedRange.empty());
 		// Optimization for single key clears to create just one mutation boundary instead of two
-		if (clearedRange.begin.size() == clearedRange.end.size() - 1 &&
-		    clearedRange.end[clearedRange.end.size() - 1] == 0 && clearedRange.end.startsWith(clearedRange.begin)) {
+		if (clearedRange.singleKeyRange()) {
 			++g_redwoodMetrics.metric.opClear;
 			++g_redwoodMetrics.metric.opClearKey;
 			m_pBuffer->insert(clearedRange.begin).mutation().clearBoundary();
 			return;
 		}
-
 		++g_redwoodMetrics.metric.opClear;
 		MutationBuffer::iterator iBegin = m_pBuffer->insert(clearedRange.begin);
 		MutationBuffer::iterator iEnd = m_pBuffer->insert(clearedRange.end);
@@ -5363,8 +5362,9 @@ public:
 		// This probably shouldn't be called directly (meaning deleting an instance directly) but it should be safe,
 		// it will cancel init and commit and leave the pager alive but with potentially an incomplete set of
 		// uncommitted writes so it should not be committed.
-		m_init.cancel();
 		m_latestCommit.cancel();
+		m_lazyClearActor.cancel();
+		m_init.cancel();
 	}
 
 	Future<Void> commit(Version v) {
@@ -8055,7 +8055,7 @@ public:
 			// Only proceed if the last commit is a success, but don't throw if it's not because shutdown
 			// should not throw.
 			wait(ready(self->m_lastCommit));
-			if (!self->m_lastCommit.isError()) {
+			if (!self->getErrorNoDelay().isReady()) {
 				// Run the destructive sanity check, but don't throw.
 				ErrorOr<Void> err = wait(errorOr(self->m_tree->clearAllAndCheckSanity()));
 				// If the test threw an error, it must be an injected fault or something has gone wrong.
@@ -8077,9 +8077,11 @@ public:
 		else
 			self->m_tree->close();
 		wait(closedFuture);
-		self->m_closed.send(Void());
+
+		Promise<Void> closedPromise = self->m_closed;
 		TraceEvent(SevInfo, "RedwoodShutdownComplete").detail("Filename", self->m_filename).detail("Dispose", dispose);
 		delete self;
+		closedPromise.send(Void());
 	}
 
 	void close() override { shutdown(this, false); }
@@ -8100,7 +8102,9 @@ public:
 
 	StorageBytes getStorageBytes() const override { return m_tree->getStorageBytes(); }
 
-	Future<Void> getError() const override { return delayed(m_errorPromise.getFuture() || m_tree->getError()); };
+	Future<Void> getError() const override { return delayed(getErrorNoDelay()); }
+
+	Future<Void> getErrorNoDelay() const { return m_errorPromise.getFuture() || m_tree->getError(); };
 
 	void clear(KeyRangeRef range, const Arena* arena = 0) override {
 		debug_printf("CLEAR %s\n", printable(range).c_str());
@@ -8257,10 +8261,6 @@ public:
 		}
 
 		result.more = rowLimit == 0 || accumulatedBytes >= byteLimit;
-		if (result.more) {
-			ASSERT(result.size() > 0);
-			result.readThrough = result[result.size() - 1].key;
-		}
 		g_redwoodMetrics.kvSizeReadByGetRange->sample(accumulatedBytes);
 		return result;
 	}
@@ -8846,6 +8846,9 @@ void RedwoodMetrics::getFields(TraceEvent* e, std::string* s, bool skipZeroes) {
 		                                               { "", 0 } };
 
 	double elapsed = now() - startTime;
+	if (elapsed == 0) {
+		return;
+	}
 
 	if (e != nullptr) {
 		for (auto& m : metrics) {
