@@ -114,8 +114,8 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( TLOG_POPPED_VER_LAG_THRESHOLD_FOR_TLOGPOP_TRACE,     250e6 );
 	init( BLOCKING_PEEK_TIMEOUT,                                 0.4 );
 	init( ENABLE_DETAILED_TLOG_POP_TRACE,                      false ); if ( randomize && BUGGIFY ) ENABLE_DETAILED_TLOG_POP_TRACE = true;
-	init( PEEK_BATCHING_EMPTY_MSG,                             false ); if ( randomize && BUGGIFY ) PEEK_BATCHING_EMPTY_MSG = true;
-	init( PEEK_BATCHING_EMPTY_MSG_INTERVAL,                    0.001 ); if ( randomize && BUGGIFY ) PEEK_BATCHING_EMPTY_MSG_INTERVAL = 0.01;
+	init( PEEK_BATCHING_EMPTY_MSG,                              true ); if ( randomize && BUGGIFY ) PEEK_BATCHING_EMPTY_MSG = false;
+	init( PEEK_BATCHING_EMPTY_MSG_INTERVAL,                    0.005 ); if ( randomize && BUGGIFY ) PEEK_BATCHING_EMPTY_MSG_INTERVAL = 0.01;
 	init( POP_FROM_LOG_DELAY,                                      1 ); if ( randomize && BUGGIFY ) POP_FROM_LOG_DELAY = 0;
 	init( TLOG_PULL_ASYNC_DATA_WARNING_TIMEOUT_SECS,             120 );
 
@@ -329,6 +329,8 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( CP_FETCH_TENANTS_OVER_STORAGE_QUOTA_INTERVAL,            5 ); if( randomize && BUGGIFY ) CP_FETCH_TENANTS_OVER_STORAGE_QUOTA_INTERVAL = deterministicRandom()->randomInt(1, 10);
 	init( DD_BUILD_EXTRA_TEAMS_OVERRIDE,                          10 ); if( randomize && BUGGIFY ) DD_BUILD_EXTRA_TEAMS_OVERRIDE = 2;
 	init( DD_SHARD_TRACKING_LOG_SEVERITY,                           1);
+	init( ENFORCE_SHARD_COUNT_PER_TEAM,                        false ); if( randomize && BUGGIFY ) ENFORCE_SHARD_COUNT_PER_TEAM = true;
+	init( DESIRED_MAX_SHARDS_PER_TEAM,                          1000 ); if( randomize && BUGGIFY ) DESIRED_MAX_SHARDS_PER_TEAM = 10;
 
 	// Large teams are disabled when SHARD_ENCODE_LOCATION_METADATA is enabled
 	init( DD_MAX_SHARDS_ON_LARGE_TEAMS,                          100 ); if( randomize && BUGGIFY ) DD_MAX_SHARDS_ON_LARGE_TEAMS = deterministicRandom()->randomInt(0, 3);
@@ -532,6 +534,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init (ROCKSDB_SKIP_FILE_SIZE_CHECK_ON_OPEN,                 false ); if (isSimulated) ROCKSDB_SKIP_FILE_SIZE_CHECK_ON_OPEN = deterministicRandom()->coinflip();
 	init (SHARDED_ROCKSDB_VALIDATE_MAPPING_RATIO,                 0.01 ); if (isSimulated) SHARDED_ROCKSDB_VALIDATE_MAPPING_RATIO = deterministicRandom()->random01(); 
 	init (SHARD_METADATA_SCAN_BYTES_LIMIT,                    10485760 ); // 10MB
+	init (ROCKSDB_MAX_MANIFEST_FILE_SIZE,                    100 << 20 ); // 100MB
 
 	// Leader election
 	bool longLeaderElection = randomize && BUGGIFY;
@@ -879,6 +882,9 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( PERSIST_FINISH_AUDIT_COUNT,                             10 ); if ( isSimulated ) PERSIST_FINISH_AUDIT_COUNT = deterministicRandom()->randomInt(1, PERSIST_FINISH_AUDIT_COUNT+1);
 	init( AUDIT_RETRY_COUNT_MAX,                                1000 ); if ( isSimulated ) AUDIT_RETRY_COUNT_MAX = 10;
 	init( CONCURRENT_AUDIT_TASK_COUNT_MAX,                        10 ); if ( isSimulated ) CONCURRENT_AUDIT_TASK_COUNT_MAX = deterministicRandom()->randomInt(1, CONCURRENT_AUDIT_TASK_COUNT_MAX+1);
+	init( AUDIT_DATAMOVE_PRE_CHECK,                            false ); if ( isSimulated ) AUDIT_DATAMOVE_PRE_CHECK = true;
+	init( AUDIT_DATAMOVE_POST_CHECK,                           false ); if ( isSimulated ) AUDIT_DATAMOVE_POST_CHECK = true;
+	init( AUDIT_DATAMOVE_POST_CHECK_RETRY_COUNT_MAX,              50 );
 	init( BUGGIFY_BLOCK_BYTES,                                 10000 );
 	init( STORAGE_RECOVERY_VERSION_LAG_LIMIT,				2 * MAX_READ_TRANSACTION_LIFE_VERSIONS );
 	init( STORAGE_COMMIT_BYTES,                             10000000 ); if( randomize && BUGGIFY ) STORAGE_COMMIT_BYTES = 2000000;
@@ -965,7 +971,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( MIN_DELAY_CC_WORST_FIT_CANDIDACY_SECONDS,             10.0 );
 	init( MAX_DELAY_CC_WORST_FIT_CANDIDACY_SECONDS,             30.0 );
 	init( DBINFO_FAILED_DELAY,                                   1.0 );
-	init( ENABLE_WORKER_HEALTH_MONITOR,                        false );
+	init( ENABLE_WORKER_HEALTH_MONITOR,                        false ); if ( randomize && BUGGIFY ) ENABLE_WORKER_HEALTH_MONITOR = true;
 	init( WORKER_HEALTH_MONITOR_INTERVAL,                       60.0 );
 	init( PEER_LATENCY_CHECK_MIN_POPULATION,                      30 );
 	init( PEER_LATENCY_DEGRADATION_PERCENTILE,                  0.50 );

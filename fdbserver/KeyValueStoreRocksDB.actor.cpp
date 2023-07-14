@@ -1564,7 +1564,7 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 
 			rocksdb::PinnableSlice value;
 			rocksdb::ReadOptions readOptions = sharedState->getReadOptions();
-			if (SERVER_KNOBS->ROCKSDB_SET_READ_TIMEOUT) {
+			if (shouldThrottle(a.type, a.key) && SERVER_KNOBS->ROCKSDB_SET_READ_TIMEOUT) {
 				uint64_t deadlineMircos =
 				    db->GetEnv()->NowMicros() + (readValueTimeout - (readBeginTime - a.startTime)) * 1000000;
 				std::chrono::seconds deadlineSeconds(deadlineMircos / 1000000);
@@ -1655,7 +1655,7 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 
 			rocksdb::PinnableSlice value;
 			rocksdb::ReadOptions readOptions = sharedState->getReadOptions();
-			if (SERVER_KNOBS->ROCKSDB_SET_READ_TIMEOUT) {
+			if (shouldThrottle(a.type, a.key) && SERVER_KNOBS->ROCKSDB_SET_READ_TIMEOUT) {
 				uint64_t deadlineMircos =
 				    db->GetEnv()->NowMicros() + (readValuePrefixTimeout - (readBeginTime - a.startTime)) * 1000000;
 				std::chrono::seconds deadlineSeconds(deadlineMircos / 1000000);
