@@ -67,7 +67,7 @@ extern const char* getSourceVersion();
 
 using namespace std::literals;
 
-bool isSimulatorProcessReliable() {
+bool isSimulatorProcessUnreliable() {
 	return g_network->isSimulated() && !g_simulator->getCurrentProcess()->isReliable();
 }
 
@@ -2840,6 +2840,9 @@ ACTOR void setupAndRun(std::string dataFolder,
 				}
 			}
 		}
+
+		wait(HTTP::registerAlwaysFailHTTPHandler());
+
 		TraceEvent("SimulatedClusterTenantMode")
 		    .detail("UsingTenant", defaultTenant)
 		    .detail("TenantMode", tenantMode.get().toString())

@@ -484,6 +484,8 @@ public:
 	bool ROCKSDB_SKIP_FILE_SIZE_CHECK_ON_OPEN;
 	double SHARDED_ROCKSDB_VALIDATE_MAPPING_RATIO;
 	int SHARD_METADATA_SCAN_BYTES_LIMIT;
+	int ROCKSDB_MAX_MANIFEST_FILE_SIZE;
+	int ROCKSDB_MAX_WRITE_BUFFER_NUMBER;
 
 	// Leader election
 	int MAX_NOTIFICATIONS;
@@ -495,7 +497,7 @@ public:
 	double POLLING_FREQUENCY;
 	double HEARTBEAT_FREQUENCY;
 
-	// Commit CommitProxy
+	// Commit Proxy and GRV Proxy
 	double START_TRANSACTION_BATCH_INTERVAL_MIN;
 	double START_TRANSACTION_BATCH_INTERVAL_MAX;
 	double START_TRANSACTION_BATCH_INTERVAL_LATENCY_FRACTION;
@@ -504,7 +506,9 @@ public:
 	double START_TRANSACTION_MAX_TRANSACTIONS_TO_START;
 	int START_TRANSACTION_MAX_REQUESTS_TO_START;
 	double START_TRANSACTION_RATE_WINDOW;
+	double TAG_THROTTLE_RATE_WINDOW;
 	double START_TRANSACTION_MAX_EMPTY_QUEUE_BUDGET;
+	double TAG_THROTTLE_MAX_EMPTY_QUEUE_BUDGET;
 	int START_TRANSACTION_MAX_QUEUE_SIZE;
 	int KEY_LOCATION_MAX_QUEUE_SIZE;
 	int TENANT_ID_REQUEST_MAX_QUEUE_SIZE;
@@ -784,6 +788,13 @@ public:
 	// compute rates, but these rates won't be sent to GRV proxies for
 	// enforcement.
 	bool GLOBAL_TAG_THROTTLING_REPORT_ONLY;
+	// Below this throughput threshold (in bytes/second), ratekeeper will forget about the
+	// throughput of a particular tag on a particular storage server
+	int64_t GLOBAL_TAG_THROTTLING_FORGET_SS_THRESHOLD;
+	// If a tag's throughput on a particular storage server exceeds this threshold,
+	// this storage server's throttling ratio will contribute the calculation of the
+	// throttlingId's limiting transaction rate
+	double GLOBAL_TAG_THROTTLING_LIMITING_THRESHOLD;
 
 	double GLOBAL_TAG_THROTTLING_TARGET_RATE_FOLDING_TIME;
 	double GLOBAL_TAG_THROTTLING_TRANSACTION_COUNT_FOLDING_TIME;
@@ -1190,6 +1201,7 @@ public:
 	int BLOB_RESTORE_MLOGS_RETENTION_SECS;
 	int BLOB_RESTORE_LOAD_KEY_VERSION_MAP_STEP_SIZE;
 	int BLOB_GRANULES_FLUSH_BATCH_SIZE;
+	bool BLOB_RESTORE_SKIP_EMPTY_RANGES;
 
 	// Blob metadata
 	int64_t BLOB_METADATA_CACHE_TTL;
@@ -1212,6 +1224,8 @@ public:
 	int REST_KMS_MAX_BLOB_METADATA_REQUEST_VERSION;
 	int REST_KMS_CURRENT_CIPHER_REQUEST_VERSION;
 	int REST_KMS_MAX_CIPHER_REQUEST_VERSION;
+	std::string REST_SIM_KMS_VAULT_DIR;
+	double REST_KMS_STABILITY_CHECK_INTERVAL;
 
 	double CONSISTENCY_SCAN_ACTIVE_THROTTLE_RATIO;
 

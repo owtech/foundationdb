@@ -949,7 +949,7 @@ ACTOR Future<BlobFileIndex> writeSnapshot(Reference<BlobWorkerData> bwData,
 
 	loop {
 		try {
-			if (initialSnapshot && snapshot.size() > 1 && canStopEarly &&
+			if (initialSnapshot && snapshot.size() > 3 && canStopEarly &&
 			    (injectTooBig || bytesRead >= 3 * SERVER_KNOBS->BG_SNAPSHOT_FILE_TARGET_BYTES)) {
 				// throw transaction too old either on injection for simulation, or if snapshot would be too large now
 				throw transaction_too_old();
@@ -964,7 +964,7 @@ ACTOR Future<BlobFileIndex> writeSnapshot(Reference<BlobWorkerData> bwData,
 				break;
 			}
 			// if we got transaction_too_old naturally, have lower threshold for re-evaluating (2xlimit)
-			if (initialSnapshot && snapshot.size() > 1 && e.code() == error_code_transaction_too_old &&
+			if (initialSnapshot && snapshot.size() > 3 && e.code() == error_code_transaction_too_old &&
 			    (injectTooBig || bytesRead >= 2 * SERVER_KNOBS->BG_SNAPSHOT_FILE_TARGET_BYTES)) {
 				// idle this actor, while we tell the manager this is too big and to re-evaluate granules and revoke us
 				if (BW_DEBUG) {
@@ -1817,6 +1817,7 @@ Version doGranuleRollback(Reference<GranuleMetadata> metadata,
 		int toPop = 0;
 		// keep bytes in delta files pending here, then add back already durable delta files at end
 		metadata->bytesInNewDeltaFiles = 0;
+		metadata->newDeltaFileCount = 0;
 
 		for (auto& f : inFlightFiles) {
 			if (f.snapshot) {
@@ -1833,6 +1834,7 @@ Version doGranuleRollback(Reference<GranuleMetadata> metadata,
 				} else {
 					metadata->pendingSnapshotVersion = f.version;
 					metadata->bytesInNewDeltaFiles = 0;
+					metadata->newDeltaFileCount = 0;
 				}
 			} else {
 				if (f.version > rollbackVersion) {
@@ -1849,6 +1851,7 @@ Version doGranuleRollback(Reference<GranuleMetadata> metadata,
 					ASSERT(f.version > cfRollbackVersion);
 					cfRollbackVersion = f.version;
 					metadata->bytesInNewDeltaFiles += f.bytes;
+					metadata->newDeltaFileCount++;
 				}
 			}
 		}
@@ -1880,6 +1883,7 @@ Version doGranuleRollback(Reference<GranuleMetadata> metadata,
 		     i >= 0 && metadata->files.deltaFiles[i].version > metadata->pendingSnapshotVersion;
 		     i--) {
 			metadata->bytesInNewDeltaFiles += metadata->files.deltaFiles[i].logicalSize;
+			metadata->newDeltaFileCount++;
 		}
 
 		// Track that this rollback happened, since we have to re-read mutations up to the rollback
@@ -2144,6 +2148,26 @@ struct WriteAmpTarget {
 	int getBytesBeforeCompact() { return bytesBeforeCompact; }
 };
 
+ACTOR Future<Key> getTenantPrefix(Reference<BlobWorkerData> bwData, KeyRange keyRange) {
+	state int retryCount = 0;
+	if (SERVER_KNOBS->BG_METADATA_SOURCE != "tenant") {
+		return Key();
+	}
+	loop {
+		state Reference<GranuleTenantData> data;
+		wait(store(data, bwData->tenantData.getDataForGranule(keyRange)));
+		if (data.isValid()) {
+			return data->entry.prefix;
+		} else {
+			CODE_PROBE(true, "Get prefix for unknown tenant");
+			retryCount++;
+			TraceEvent(retryCount <= 10 ? SevDebug : SevWarn, "BlobWorkerUnknownTenantPrefix", bwData->id)
+			    .detail("KeyRange", keyRange);
+			wait(delay(0.1));
+		}
+	}
+}
+
 // updater for a single granule
 // TODO: this is getting kind of large. Should try to split out this actor if it continues to grow?
 ACTOR Future<Void> blobGranuleUpdateFiles(Reference<BlobWorkerData> bwData,
@@ -2207,7 +2231,7 @@ ACTOR Future<Void> blobGranuleUpdateFiles(Reference<BlobWorkerData> bwData,
 			fmt::print("  blobFilesToSnapshot={}\n", startState.blobFilesToSnapshot.size());
 		}
 
-		state Version startVersion;
+		state Version startVersion = invalidVersion;
 		state BlobFileIndex newSnapshotFile;
 
 		// if this is a reassign, calculate how close to a snapshot the previous owner was
@@ -2218,6 +2242,7 @@ ACTOR Future<Void> blobGranuleUpdateFiles(Reference<BlobWorkerData> bwData,
 				for (int i = files.deltaFiles.size() - 1; i >= 0; i--) {
 					if (files.deltaFiles[i].version > snapshotVersion) {
 						metadata->bytesInNewDeltaFiles += files.deltaFiles[i].logicalSize;
+						metadata->newDeltaFileCount++;
 					}
 				}
 			}
@@ -2252,16 +2277,20 @@ ACTOR Future<Void> blobGranuleUpdateFiles(Reference<BlobWorkerData> bwData,
 
 				metadata->durableSnapshotVersion.set(minDurableSnapshotV);
 			} else {
-				ASSERT(startState.previousDurableVersion == invalidVersion);
-				BlobFileIndex fromFDB = wait(
-				    dumpInitialSnapshotFromFDB(bwData, bstore, metadata, startState.granuleID, cfKey, &inFlightPops));
-				newSnapshotFile = fromFDB;
-				ASSERT(startState.changeFeedStartVersion <= fromFDB.version);
-				startVersion = newSnapshotFile.version;
-				metadata->files.snapshotFiles.push_back(newSnapshotFile);
-				metadata->durableSnapshotVersion.set(startVersion);
+				// In restore mode, we couldn't dump snapshot because storage server doesn't have
+				// data yet
+				if (!bwData->isFullRestoreMode) {
+					ASSERT(startState.previousDurableVersion == invalidVersion);
+					BlobFileIndex fromFDB = wait(dumpInitialSnapshotFromFDB(
+					    bwData, bstore, metadata, startState.granuleID, cfKey, &inFlightPops));
+					newSnapshotFile = fromFDB;
+					ASSERT(startState.changeFeedStartVersion <= fromFDB.version);
+					startVersion = newSnapshotFile.version;
+					metadata->files.snapshotFiles.push_back(newSnapshotFile);
+					metadata->durableSnapshotVersion.set(startVersion);
 
-				wait(yield(TaskPriority::BlobWorkerUpdateStorage));
+					wait(yield(TaskPriority::BlobWorkerUpdateStorage));
+				}
 			}
 			metadata->initialSnapshotVersion = startVersion;
 			metadata->pendingSnapshotVersion = startVersion;
@@ -2325,7 +2354,9 @@ ACTOR Future<Void> blobGranuleUpdateFiles(Reference<BlobWorkerData> bwData,
 			                                                      metadata->keyRange,
 			                                                      bwData->changeFeedStreamReplyBufferSize,
 			                                                      false,
-			                                                      { ReadType::NORMAL, CacheResult::True });
+			                                                      { ReadType::NORMAL, CacheResult::True },
+			                                                      false,
+			                                                      getTenantPrefix(bwData, metadata->keyRange));
 
 		} else {
 			readOldChangeFeed = false;
@@ -2335,7 +2366,10 @@ ACTOR Future<Void> blobGranuleUpdateFiles(Reference<BlobWorkerData> bwData,
 			                                                   MAX_VERSION,
 			                                                   metadata->keyRange,
 			                                                   bwData->changeFeedStreamReplyBufferSize,
-			                                                   false);
+			                                                   false,
+			                                                   { ReadType::NORMAL, CacheResult::False },
+			                                                   false,
+			                                                   getTenantPrefix(bwData, metadata->keyRange));
 			// in case previous worker died before popping the latest version, start another pop
 			if (startState.previousDurableVersion != invalidVersion) {
 				ASSERT(startState.previousDurableVersion + 1 >= startState.changeFeedStartVersion);
@@ -2501,7 +2535,10 @@ ACTOR Future<Void> blobGranuleUpdateFiles(Reference<BlobWorkerData> bwData,
 				                                                   MAX_VERSION,
 				                                                   metadata->keyRange,
 				                                                   bwData->changeFeedStreamReplyBufferSize,
-				                                                   false);
+				                                                   false,
+				                                                   { ReadType::NORMAL, CacheResult::False },
+				                                                   false,
+				                                                   getTenantPrefix(bwData, metadata->keyRange));
 
 				// Start actors BEFORE setting new change feed data to ensure the change feed data is properly
 				// initialized by the client
@@ -2639,15 +2676,17 @@ ACTOR Future<Void> blobGranuleUpdateFiles(Reference<BlobWorkerData> bwData,
 										ASSERT(oldCFKey.present());
 										// because several feeds will be reading the same version range of this change
 										// feed at the same time, set cache result to true
-										oldChangeFeedFuture =
-										    bwData->db->getChangeFeedStream(cfData,
-										                                    oldCFKey.get(),
-										                                    cfRollbackVersion + 1,
-										                                    startState.changeFeedStartVersion,
-										                                    metadata->keyRange,
-										                                    bwData->changeFeedStreamReplyBufferSize,
-										                                    false,
-										                                    { ReadType::NORMAL, CacheResult::True });
+										oldChangeFeedFuture = bwData->db->getChangeFeedStream(
+										    cfData,
+										    oldCFKey.get(),
+										    cfRollbackVersion + 1,
+										    startState.changeFeedStartVersion,
+										    metadata->keyRange,
+										    bwData->changeFeedStreamReplyBufferSize,
+										    false,
+										    { ReadType::NORMAL, CacheResult::True },
+										    false,
+										    getTenantPrefix(bwData, metadata->keyRange));
 
 									} else {
 										if (cfRollbackVersion + 1 < startState.changeFeedStartVersion) {
@@ -2657,14 +2696,17 @@ ACTOR Future<Void> blobGranuleUpdateFiles(Reference<BlobWorkerData> bwData,
 										}
 										ASSERT(cfRollbackVersion + 1 >= startState.changeFeedStartVersion);
 
-										changeFeedFuture =
-										    bwData->db->getChangeFeedStream(cfData,
-										                                    cfKey,
-										                                    cfRollbackVersion + 1,
-										                                    MAX_VERSION,
-										                                    metadata->keyRange,
-										                                    bwData->changeFeedStreamReplyBufferSize,
-										                                    false);
+										changeFeedFuture = bwData->db->getChangeFeedStream(
+										    cfData,
+										    cfKey,
+										    cfRollbackVersion + 1,
+										    MAX_VERSION,
+										    metadata->keyRange,
+										    bwData->changeFeedStreamReplyBufferSize,
+										    false,
+										    { ReadType::NORMAL, CacheResult::False },
+										    false,
+										    getTenantPrefix(bwData, metadata->keyRange));
 									}
 
 									// Start actors BEFORE setting new change feed data to ensure the change
@@ -2823,6 +2865,7 @@ ACTOR Future<Void> blobGranuleUpdateFiles(Reference<BlobWorkerData> bwData,
 				ASSERT(metadata->bufferedDeltaVersion <= lastDeltaVersion);
 				metadata->bufferedDeltaVersion = lastDeltaVersion; // In case flush was forced at non-mutation version
 				metadata->bytesInNewDeltaFiles += metadata->bufferedDeltaBytes;
+				metadata->newDeltaFileCount++;
 
 				bwData->stats.mutationBytesBuffered -= metadata->bufferedDeltaBytes;
 
@@ -2858,10 +2901,10 @@ ACTOR Future<Void> blobGranuleUpdateFiles(Reference<BlobWorkerData> bwData,
 			// making a bunch of extra delta files at some point, even if we don't consider it for a split
 			// yet
 
-			// If we have enough delta files, try to re-snapshot
-			// FIXME: have max file count in addition to bytes count
+			// If we have enough delta file data, try to re-snapshot
 			if (snapshotEligible && (metadata->doEarlyReSnapshot() ||
-			                         metadata->bytesInNewDeltaFiles >= writeAmpTarget.getBytesBeforeCompact())) {
+			                         metadata->bytesInNewDeltaFiles >= writeAmpTarget.getBytesBeforeCompact() ||
+			                         metadata->newDeltaFileCount >= 20)) {
 				if (BW_DEBUG && !inFlightFiles.empty()) {
 					fmt::print("Granule [{0} - {1}) ready to re-snapshot at {2} after {3} > {4} bytes, "
 					           "waiting for outstanding {5} files to finish\n",
@@ -2872,6 +2915,9 @@ ACTOR Future<Void> blobGranuleUpdateFiles(Reference<BlobWorkerData> bwData,
 					           writeAmpTarget.getBytesBeforeCompact(),
 					           inFlightFiles.size());
 				}
+
+				CODE_PROBE(metadata->doEarlyReSnapshot(), "granule snapshotting early");
+				CODE_PROBE(metadata->newDeltaFileCount >= 20, "granule snapshotting due to many small delta files");
 
 				// cancel previous candidate checker
 				checkMergeCandidate.cancel();
@@ -2910,6 +2956,7 @@ ACTOR Future<Void> blobGranuleUpdateFiles(Reference<BlobWorkerData> bwData,
 
 				// reset metadata
 				metadata->bytesInNewDeltaFiles = 0;
+				metadata->newDeltaFileCount = 0;
 				metadata->resetReadStats();
 
 				// If we have more than one snapshot file and that file is unblocked (committedVersion >=
@@ -3941,6 +3988,17 @@ ACTOR Future<Void> doBlobGranuleFileRequest(Reference<BlobWorkerData> bwData, Bl
 					chunk.tenantPrefix = Optional<StringRef>(tenantPrefix.get());
 				}
 
+				if (bwData->isFullRestoreMode && item.second.snapshotFiles.empty()) {
+					CODE_PROBE(true, "empty snapshot file during restore");
+					chunk.includedVersion = req.readVersion;
+					rep.chunks.push_back(rep.arena, chunk);
+					readThrough = chunk.keyRange.end;
+					TraceEvent(SevDebug, "EmptyGranuleSnapshotFile", bwData->id)
+					    .detail("Chunk", chunk.keyRange)
+					    .detail("Version", req.readVersion);
+					continue;
+				}
+
 				int64_t deltaBytes = 0;
 				item.second.getFiles(granuleBeginVersion,
 				                     req.readVersion,
@@ -4171,6 +4229,11 @@ ACTOR Future<GranuleStartState> openGranule(Reference<BlobWorkerData> bwData, As
 		           req.managerEpoch,
 		           req.managerSeqno);
 	}
+
+	TraceEvent("GranuleOpenStart", bwData->id)
+	    .detail("Granule", req.keyRange)
+	    .detail("Epoch", req.managerEpoch)
+	    .detail("Seqno", req.managerSeqno);
 
 	loop {
 		try {
@@ -5575,6 +5638,7 @@ ACTOR Future<Void> blobWorker(BlobWorkerInterface bwInterf,
 			wait(self->storage->init());
 			self->storage->set(KeyValueRef(persistID, BinaryWriter::toValue(self->id, Unversioned())));
 			wait(self->storage->commit());
+			cx->setStorage(self->storage);
 			TraceEvent("BlobWorkerStorageInitComplete", self->id).log();
 		}
 
@@ -5661,6 +5725,7 @@ ACTOR Future<Void> blobWorker(BlobWorkerInterface bwInterf,
 	try {
 		wait(self->storage->init());
 		wait(self->storage->commit());
+		cx->setStorage(self->storage);
 		state UID previous = wait(restorePersistentState(self));
 
 		if (recovered.canBeSet()) {
