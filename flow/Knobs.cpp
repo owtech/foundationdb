@@ -319,15 +319,14 @@ void FlowKnobs::initialize(Randomize randomize, IsSimulated isSimulated) {
 	// Refer to EncryptUtil::EncryptAuthTokenAlgo for more details
 	init( ENCRYPT_HEADER_AUTH_TOKEN_ENABLED,                 false ); if ( randomize && BUGGIFY ) { ENCRYPT_HEADER_AUTH_TOKEN_ENABLED = !ENCRYPT_HEADER_AUTH_TOKEN_ENABLED; }
 	init( ENCRYPT_HEADER_AUTH_TOKEN_ALGO,                        0 ); if ( randomize && ENCRYPT_HEADER_AUTH_TOKEN_ENABLED ) { ENCRYPT_HEADER_AUTH_TOKEN_ALGO = getRandomAuthTokenAlgo(); }
-	init( ENCRYPT_INPLACE_ENABLED,                           false ); if ( randomize && BUGGIFY ) { ENCRYPT_INPLACE_ENABLED = true; }
 
 	// REST Client
 	init( RESTCLIENT_MAX_CONNECTIONPOOL_SIZE,                   10 );
 	init( RESTCLIENT_CONNECT_TRIES,                             10 );
-	init( RESTCLIENT_CONNECT_TIMEOUT,                           10 );
+	init( RESTCLIENT_CONNECT_TIMEOUT,                            1 );
 	init( RESTCLIENT_MAX_CONNECTION_LIFE,                      120 );
 	init( RESTCLIENT_REQUEST_TRIES,                             10 );
-	init( RESTCLIENT_REQUEST_TIMEOUT_SEC,                      120 );
+	init( RESTCLIENT_REQUEST_TIMEOUT_SEC,                        6 );
 	init( REST_LOG_LEVEL,                                        3 );
 }
 // clang-format on

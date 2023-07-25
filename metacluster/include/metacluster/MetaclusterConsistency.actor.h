@@ -214,7 +214,8 @@ private:
 			ASSERT_EQ(data.metaclusterRegistration.get().version, managementData.metaclusterRegistration.get().version);
 
 			if (data.tenantData.lastTenantId >= 0) {
-				ASSERT_EQ(TenantAPI::getTenantIdPrefix(data.tenantData.lastTenantId), managementData.tenantIdPrefix.get());
+				ASSERT_EQ(TenantAPI::getTenantIdPrefix(data.tenantData.lastTenantId),
+				          managementData.tenantIdPrefix.get());
 				ASSERT_LE(data.tenantData.lastTenantId, managementData.tenantData.lastTenantId);
 			} else {
 				CODE_PROBE(true, "Data cluster has no tenants with current tenant ID prefix");

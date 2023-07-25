@@ -164,7 +164,7 @@ Future<std::unordered_map<EncryptCipherDomainId, Reference<BlobCipherKey>>> _get
 		when(wait(_onEncryptKeyProxyChange(db))) {}
 	}
 	double elapsed = now() - startTime;
-	BlobCipherMetrics::counters(usageType).getLatestCipherKeysLatency.addMeasurement(elapsed);
+	BlobCipherMetrics::getInstance()->getLatestCipherKeysLatency.addMeasurement(elapsed);
 	return cipherKeys;
 }
 
@@ -301,7 +301,7 @@ Future<std::unordered_map<BlobCipherDetails, Reference<BlobCipherKey>>> _getEncr
 		when(wait(_onEncryptKeyProxyChange(db))) {}
 	}
 	double elapsed = now() - startTime;
-	BlobCipherMetrics::counters(usageType).getCipherKeysLatency.addMeasurement(elapsed);
+	BlobCipherMetrics::getInstance()->getCipherKeysLatency.addMeasurement(elapsed);
 	return cipherKeys;
 }
 
@@ -365,8 +365,6 @@ ACTOR template <class T>
 Future<TextAndHeaderCipherKeys> _getEncryptCipherKeys(Reference<AsyncVar<T> const> db,
                                                       BlobCipherEncryptHeaderRef header,
                                                       BlobCipherMetrics::UsageType usageType) {
-	ASSERT(CLIENT_KNOBS->ENABLE_CONFIGURABLE_ENCRYPTION);
-
 	state bool authenticatedEncryption = header.getAuthTokenMode() != ENCRYPT_HEADER_AUTH_TOKEN_MODE_NONE;
 	state EncryptHeaderCipherDetails details = header.getCipherDetails();
 
