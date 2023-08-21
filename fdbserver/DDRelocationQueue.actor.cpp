@@ -1039,7 +1039,7 @@ void DDQueue::launchQueuedWork(std::set<RelocateData, std::greater<RelocateData>
 						rrs.dataMoveId = UID();
 					} else {
 						const bool enabled =
-						    deterministicRandom()->random01() < SERVER_KNOBS->DD_PHYSICAL_SHARD_MOVE_PROBABILITY;
+						    deterministicRandom()->random01() <= SERVER_KNOBS->DD_PHYSICAL_SHARD_MOVE_PROBABILITY;
 						rrs.dataMoveId = newDataMoveId(deterministicRandom()->randomUInt64(),
 						                               AssignEmptyRange::False,
 						                               EnablePhysicalShardMove(enabled));
@@ -1583,7 +1583,7 @@ ACTOR Future<Void> dataDistributionRelocator(DDQueue* self,
 						self->moveCreateNewPhysicalShard++;
 					}
 					const bool enabled =
-					    deterministicRandom()->random01() < SERVER_KNOBS->DD_PHYSICAL_SHARD_MOVE_PROBABILITY;
+					    deterministicRandom()->random01() <= SERVER_KNOBS->DD_PHYSICAL_SHARD_MOVE_PROBABILITY;
 					rd.dataMoveId = newDataMoveId(
 					    physicalShardIDCandidate, AssignEmptyRange::False, EnablePhysicalShardMove(enabled));
 					TraceEvent(SevInfo, "NewDataMoveWithPhysicalShard")
@@ -1925,9 +1925,10 @@ ACTOR Future<Void> dataDistributionRelocator(DDQueue* self,
 
 		if (err.code() == error_code_data_move_dest_team_not_found) {
 			wait(cancelDataMove(self, rd.keys, ddEnabledState));
-		}
-
-		if (err.code() != error_code_actor_cancelled && err.code() != error_code_data_move_cancelled) {
+			TraceEvent(SevWarnAlways, "RelocateShardCancelDataMoveTeamNotFound")
+			    .detail("Src", describe(rd.src))
+			    .detail("DataMoveMetaData", rd.dataMove != nullptr ? rd.dataMove->meta.toString() : "Empty");
+		} else if (err.code() != error_code_actor_cancelled && err.code() != error_code_data_move_cancelled) {
 			if (errorOut.canBeSet()) {
 				errorOut.sendError(err);
 			}

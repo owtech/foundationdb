@@ -1097,62 +1097,33 @@ TEST_CASE("/fdbserver/worker/addressIsRemoteLogRouter") {
 
 } // namespace
 
-// Returns true if the `peer` has enough measurement samples that should be checked by the health monitor.
-bool shouldCheckPeer(Reference<Peer> peer) {
-	if (peer->connectFailedCount != 0) {
-		return true;
-	}
-
-	if (peer->pingLatencies.getPopulationSize() >= SERVER_KNOBS->PEER_LATENCY_CHECK_MIN_POPULATION) {
-		// Ignore peers that don't have enough samples.
-		// TODO(zhewu): Currently, FlowTransport latency monitor clears ping latency samples on a
-		// regular basis, which may affect the measurement count. Currently,
-		// WORKER_HEALTH_MONITOR_INTERVAL is much smaller than the ping clearance interval, so it may be
-		// ok. If this ends to be a problem, we need to consider keep track of last ping latencies
-		// logged.
-		return true;
-	}
-
-	return false;
-}
-
-// Returns true if `address` is a degraded/disconnected peer in `lastReq` sent to CC.
-bool isDegradedPeer(const UpdateWorkerHealthRequest& lastReq, const NetworkAddress& address) {
-	if (std::find(lastReq.degradedPeers.begin(), lastReq.degradedPeers.end(), address) != lastReq.degradedPeers.end()) {
-		return true;
-	}
-
-	if (std::find(lastReq.disconnectedPeers.begin(), lastReq.disconnectedPeers.end(), address) !=
-	    lastReq.disconnectedPeers.end()) {
-		return true;
-	}
-
-	return false;
-}
-
-// Check if the current worker is a transaction worker, and is experiencing degraded or disconnected peers.
-UpdateWorkerHealthRequest doPeerHealthCheck(const WorkerInterface& interf,
-                                            const LocalityData& locality,
-                                            Reference<AsyncVar<ServerDBInfo> const> dbInfo,
-                                            const UpdateWorkerHealthRequest& lastReq) {
-			const auto& allPeers = FlowTransport::transport().getAllPeers();
+// Check if the current worker is a transaction worker, and is experiencing degraded or disconnected peers. If so,
+// report degraded and disconnected peers to the cluster controller.
+void doPeerHealthCheck(Reference<AsyncVar<Optional<ClusterControllerFullInterface>> const> ccInterface,
+                       const WorkerInterface& interf,
+                       const LocalityData& locality,
+                       Reference<AsyncVar<ServerDBInfo> const> dbInfo) {
+	const auto& allPeers = FlowTransport::transport().getAllPeers();
 
 			// Check remote log router connectivity only when remote TLogs are recruited and in use.
 			bool checkRemoteLogRouterConnectivity = dbInfo->get().recoveryState == RecoveryState::ALL_LOGS_RECRUITED ||
 			                                        dbInfo->get().recoveryState == RecoveryState::FULLY_RECOVERED;
 			UpdateWorkerHealthRequest req;
 
-			enum WorkerLocation { None, Primary, Satellite, Remote };
-			WorkerLocation workerLocation = None;
-			if (addressesInDbAndPrimaryDc(interf.addresses(), dbInfo)) {
-				workerLocation = Primary;
-			} else if (addressesInDbAndRemoteDc(interf.addresses(), dbInfo)) {
-				workerLocation = Remote;
-			} else if (addressesInDbAndPrimarySatelliteDc(interf.addresses(), dbInfo)) {
-				workerLocation = Satellite;
-			}
+	enum WorkerLocation { None, Primary, Satellite, Remote };
+	WorkerLocation workerLocation = None;
+	if (addressesInDbAndPrimaryDc(interf.addresses(), dbInfo)) {
+		workerLocation = Primary;
+	} else if (addressesInDbAndRemoteDc(interf.addresses(), dbInfo)) {
+		workerLocation = Remote;
+	} else if (addressesInDbAndPrimarySatelliteDc(interf.addresses(), dbInfo)) {
+		workerLocation = Satellite;
+	}
 
-			if (workerLocation != None) {
+	if (workerLocation == None) {
+		// This worker doesn't need to monitor anything if it is in remote satellite.
+		return;
+	}
 				for (const auto& [address, peer] : allPeers) {
 					if (peer->connectFailedCount == 0 &&
 					    peer->pingLatencies.getPopulationSize() < SERVER_KNOBS->PEER_LATENCY_CHECK_MIN_POPULATION) {
@@ -1287,25 +1258,11 @@ UpdateWorkerHealthRequest doPeerHealthCheck(const WorkerInterface& interf,
 		}
 	}
 
-	if (g_network->isSimulated()) {
-		// Invariant check in simulation: for any peers that shouldn't be checked, we won't include it in the
-		// UpdateWorkerHealthRequest sent to CC.
-		for (const auto& [address, peer] : allPeers) {
-			if (!shouldCheckPeer(peer)) {
-				for (const auto& disconnectedPeer : req.disconnectedPeers) {
-					ASSERT(address != disconnectedPeer);
-				}
-				for (const auto& degradedPeer : req.degradedPeers) {
-					ASSERT(address != degradedPeer);
-				}
-				for (const auto& recoveredPeer : req.recoveredPeers) {
-					ASSERT(address != recoveredPeer);
-				}
-			}
-		}
+	if (!req.disconnectedPeers.empty() || !req.degradedPeers.empty()) {
+		// Disconnected or degraded peers are reported to the cluster controller.
+		req.address = FlowTransport::transport().getLocalAddress();
+		ccInterface->get().get().updateWorkerHealth.send(req);
 	}
-
-	return req;
 }
 
 // The actor that actively monitors the health of local and peer servers, and reports anomaly to the cluster controller.
@@ -1318,26 +1275,7 @@ ACTOR Future<Void> healthMonitor(Reference<AsyncVar<Optional<ClusterControllerFu
 		Future<Void> nextHealthCheckDelay = Never();
 		if (dbInfo->get().recoveryState >= RecoveryState::ACCEPTING_COMMITS && ccInterface->get().present()) {
 			nextHealthCheckDelay = delay(SERVER_KNOBS->WORKER_HEALTH_MONITOR_INTERVAL);
-			req = doPeerHealthCheck(interf, locality, dbInfo, req);
-
-			if (!req.disconnectedPeers.empty() || !req.degradedPeers.empty() || !req.recoveredPeers.empty()) {
-				if (g_network->isSimulated()) {
-					// Do invarant check only in simulation.
-					// Any recovered peer shouldn't appear as disconnected or degraded peer.
-					for (const auto& recoveredPeer : req.recoveredPeers) {
-						for (const auto& disconnectedPeer : req.disconnectedPeers) {
-							ASSERT(recoveredPeer != disconnectedPeer);
-						}
-						for (const auto& degradedPeer : req.degradedPeers) {
-							ASSERT(recoveredPeer != degradedPeer);
-						}
-					}
-				}
-
-				// Disconnected or degraded peers are reported to the cluster controller.
-				req.address = FlowTransport::transport().getLocalAddress();
-				ccInterface->get().get().updateWorkerHealth.send(req);
-			}
+			doPeerHealthCheck(ccInterface, interf, locality, dbInfo);
 		}
 		choose {
 			when(wait(nextHealthCheckDelay)) {}
@@ -1751,7 +1689,7 @@ void endRole(const Role& role, UID id, std::string reason, bool ok, Error e) {
 
 ACTOR Future<Void> traceRole(Role role, UID roleId) {
 	loop {
-		wait(delay(SERVER_KNOBS->WORKER_LOGGING_INTERVAL));
+		wait(delay(SERVER_KNOBS->ROLE_REFRESH_LOGGING_INTERVAL));
 		TraceEvent("Role", roleId).detail("Transition", "Refresh").detail("As", role.roleName);
 	}
 }

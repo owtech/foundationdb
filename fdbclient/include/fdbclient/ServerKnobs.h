@@ -227,6 +227,9 @@ public:
 	    SHARD_SPLIT_BYTES_PER_KSEC; // When splitting a shard, it is split into pieces with less than this bandwidth
 	int64_t SHARD_MAX_READ_OPS_PER_KSEC; // When the read operations count is larger than this threshold, a range will
 	                                     // be considered hot
+	// When the sampled read operations changes more than this threshold, the
+	// shard metrics will update immediately
+	int64_t SHARD_READ_OPS_CHANGE_THRESHOLD;
 
 	double SHARD_MAX_READ_DENSITY_RATIO;
 	int64_t SHARD_READ_HOT_BANDWIDTH_MIN_PER_KSECONDS;
@@ -248,6 +251,8 @@ public:
 	int BEST_TEAM_OPTION_COUNT;
 	int BEST_OF_AMT;
 	double SERVER_LIST_DELAY;
+	double RATEKEEPER_MONITOR_SS_DELAY;
+	int RATEKEEPER_MONITOR_SS_THRESHOLD;
 	double RECRUITMENT_IDLE_DELAY;
 	double STORAGE_RECRUITMENT_DELAY;
 	bool TSS_HACK_IDENTITY_MAPPING;
@@ -480,6 +485,7 @@ public:
 	double SHARDED_ROCKSDB_VALIDATE_MAPPING_RATIO;
 	int SHARD_METADATA_SCAN_BYTES_LIMIT;
 	int ROCKSDB_MAX_MANIFEST_FILE_SIZE;
+	int ROCKSDB_MAX_WRITE_BUFFER_NUMBER;
 
 	// Leader election
 	int MAX_NOTIFICATIONS;
@@ -714,6 +720,7 @@ public:
 	int64_t TARGET_BYTES_PER_STORAGE_SERVER;
 	int64_t SPRING_BYTES_STORAGE_SERVER;
 	int64_t AUTO_TAG_THROTTLE_STORAGE_QUEUE_BYTES;
+	int64_t AUTO_TAG_THROTTLE_SPRING_BYTES_STORAGE_SERVER;
 	int64_t TARGET_BYTES_PER_STORAGE_SERVER_BATCH;
 	int64_t SPRING_BYTES_STORAGE_SERVER_BATCH;
 	int64_t STORAGE_HARD_LIMIT_BYTES;
@@ -759,10 +766,12 @@ public:
 	bool GLOBAL_TAG_THROTTLING;
 	// Enforce tag throttling on proxies rather than on clients
 	bool ENFORCE_TAG_THROTTLING_ON_PROXIES;
-	// Minimum number of transactions per second that the global tag throttler must allow for each tag
+	// Minimum number of transactions per second that the global tag throttler must allow for each tag.
+	// When the measured tps for a tag gets too low, the denominator in the
+	// average cost calculation gets small, resulting in an unstable calculation.
+	// To protect against this, we do not compute the average cost when the
+	// measured tps drops below this threshold
 	double GLOBAL_TAG_THROTTLING_MIN_RATE;
-	// Used by global tag throttling counters
-	double GLOBAL_TAG_THROTTLING_FOLDING_TIME;
 	// Maximum number of tags tracked by global tag throttler. Additional tags will be ignored
 	// until some existing tags expire
 	int64_t GLOBAL_TAG_THROTTLING_MAX_TAGS_TRACKED;
@@ -771,17 +780,17 @@ public:
 	int64_t GLOBAL_TAG_THROTTLING_TAG_EXPIRE_AFTER;
 	// Interval at which latency bands are logged for each tag on grv proxy
 	double GLOBAL_TAG_THROTTLING_PROXY_LOGGING_INTERVAL;
-	// When the measured tps for a tag gets too low, the denominator in the
-	// average cost calculation gets small, resulting in an unstable calculation.
-	// To protect against this, we do not compute the average cost when the
-	// measured tps drops below a certain threshold
-	double GLOBAL_TAG_THROTTLING_MIN_TPS;
 	// Interval at which ratekeeper logs statistics for each tag:
 	double GLOBAL_TAG_THROTTLING_TRACE_INTERVAL;
 	// If this knob is set to true, the global tag throttler will still
 	// compute rates, but these rates won't be sent to GRV proxies for
 	// enforcement.
 	bool GLOBAL_TAG_THROTTLING_REPORT_ONLY;
+
+	double GLOBAL_TAG_THROTTLING_TARGET_RATE_FOLDING_TIME;
+	double GLOBAL_TAG_THROTTLING_TRANSACTION_COUNT_FOLDING_TIME;
+	double GLOBAL_TAG_THROTTLING_TRANSACTION_RATE_FOLDING_TIME;
+	double GLOBAL_TAG_THROTTLING_COST_FOLDING_TIME;
 
 	double MAX_TRANSACTIONS_PER_BYTE;
 
@@ -873,6 +882,12 @@ public:
 	bool AUDIT_DATAMOVE_PRE_CHECK;
 	bool AUDIT_DATAMOVE_POST_CHECK;
 	int AUDIT_DATAMOVE_POST_CHECK_RETRY_COUNT_MAX;
+	bool LOGGING_STORAGE_COMMIT_WHEN_IO_TIMEOUT;
+	double LOGGING_COMPLETE_STORAGE_COMMIT_PROBABILITY;
+	int LOGGING_RECENT_STORAGE_COMMIT_SIZE;
+	bool LOGGING_ROCKSDB_BG_WORK_WHEN_IO_TIMEOUT;
+	double LOGGING_ROCKSDB_BG_WORK_PROBABILITY;
+	double LOGGING_ROCKSDB_BG_WORK_PERIOD_SEC;
 	int BUGGIFY_BLOCK_BYTES;
 	int64_t STORAGE_RECOVERY_VERSION_LAG_LIMIT;
 	double STORAGE_DURABILITY_LAG_REJECT_THRESHOLD;
@@ -930,6 +945,7 @@ public:
 
 	// Worker
 	double WORKER_LOGGING_INTERVAL;
+	double ROLE_REFRESH_LOGGING_INTERVAL;
 	double HEAP_PROFILER_INTERVAL;
 	double UNKNOWN_CC_TIMEOUT;
 	double DEGRADED_RESET_INTERVAL;
