@@ -206,6 +206,8 @@ else()
   if(TRACE_PC_GUARD_INSTRUMENTATION_LIB)
       add_compile_options($<${is_cxx_compile}:-fsanitize-coverage=trace-pc-guard>)
       link_libraries("$<${is_cxx_link}:${TRACE_PC_GUARD_INSTRUMENTATION_LIB}>")
+      list(APPEND BOOST_CXX_OPTIONS -fsanitize-coverage=trace-pc-guard)
+      list(APPEND BOOST_LINK_OPTIONS ${TRACE_PC_GUARD_INSTRUMENTATION_LIB})
   endif()
   if(USE_ASAN)
     list(APPEND SANITIZER_COMPILE_OPTIONS
@@ -214,6 +216,14 @@ else()
       -DBOOST_USE_ASAN
       -DBOOST_USE_UCONTEXT)
     list(APPEND SANITIZER_LINK_OPTIONS -fsanitize=address)
+
+    list(APPEND BOOST_CXX_OPTIONS
+      -fsanitize=address
+      -DADDRESS_SANITIZER
+      -DBOOST_USE_ASAN
+      -DBOOST_USE_UCONTEXT
+    )
+    list(APPEND BOOST_LINK_OPTIONS -fsanitize=address)
   endif()
 
   if(USE_MSAN)
@@ -225,11 +235,20 @@ else()
       -fsanitize-memory-track-origins=2
       -DBOOST_USE_UCONTEXT)
     list(APPEND SANITIZER_LINK_OPTIONS -fsanitize=memory)
+    list(APPEND BOOST_CXX_OPTIONS
+      -fsanitize=memory
+      -fsanitize-memory-track-origins=2
+      -DBOOST_USE_UCONTEXT
+    )
+    list(APPEND BOOST_LINK_OPTIONS -fsanitize=memory)
   endif()
 
   if(USE_GCOV)
     add_compile_options($<${is_cxx_compile}:--coverage>)
     add_link_options($<${is_cxx_link}:--coverage>)
+
+    list(APPEND BOOST_CXX_OPTIONS --coverage)
+    list(APPEND BOOST_LINK_OPTIONS --coverage)
   endif()
 
   if(USE_UBSAN)
@@ -241,6 +260,16 @@ else()
       $<${is_cxx_compile}:-fno-sanitize=function>
       $<${is_cxx_compile}:-DBOOST_USE_UCONTEXT>)
     list(APPEND SANITIZER_LINK_OPTIONS $<${is_cxx_link}:-fsanitize=undefined>)
+
+    list(APPEND BOOST_COMPILER_FLAGS
+      -fsanitize=undefined
+      # TODO(atn34) Re-enable -fsanitize=alignment once https://github.com/apple/foundationdb/issues/1434 is resolved
+      -fno-sanitize=alignment
+      # https://github.com/apple/foundationdb/issues/7955
+      -fno-sanitize=function
+      -DBOOST_USE_UCONTEXT
+    )
+    list(APPEND BOOST_LINK_OPTIONS -fsanitize=undefined)
   endif()
 
   if(USE_TSAN)
@@ -249,10 +278,18 @@ else()
       $<${is_cxx_compile}:-DBOOST_USE_UCONTEXT>
     )
     list(APPEND SANITIZER_LINK_OPTIONS $<${is_cxx_link}:-fsanitize=thread>)
+
+    list(APPEND BOOST_CXX_OPTIONS
+      -fsanitize=thread
+      -DBOOST_USE_UCONTEXT
+    )
+    list(APPEND BOOST_LINK_OPTIONS -fsanitize=thread)
   endif()
 
   if(USE_VALGRIND)
-    list(APPEND SANITIZER_COMPILE_OPTIONS $<${is_cxx_compile}:-DBOOST_USE_VALGRIND})
+    list(APPEND SANITIZER_COMPILE_OPTIONS $<${is_cxx_compile}:-DBOOST_USE_VALGRIND>)
+
+    list(APPEND BOOST_CXX_OPTIONS -DBOOST_USE_VALGRIND)
   endif()
 
   if(SANITIZER_COMPILE_OPTIONS)
@@ -481,6 +518,7 @@ else()
       $<${is_cxx_compile}:-DNO_WARN_X86_INTRINSICS>
     )
   endif()
+
   # Check whether we can use dtrace probes
   include(CheckSymbolExists)
   check_symbol_exists(DTRACE_PROBE sys/sdt.h SUPPORT_DTRACE)
@@ -488,6 +526,7 @@ else()
   message(STATUS "Has aligned_alloc: ${HAS_ALIGNED_ALLOC}")
   if((SUPPORT_DTRACE) AND (USE_DTRACE))
     set(DTRACE_PROBES 1)
+	message(STATUS "DTrace probes installed")
   endif()
 
   set(USE_LTO OFF CACHE BOOL "Do link time optimization")
