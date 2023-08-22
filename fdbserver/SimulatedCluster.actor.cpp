@@ -2839,15 +2839,15 @@ ACTOR void setupAndRun(std::string dataFolder,
 	}
 
 	if (std::string_view(testFile).find("Encrypt") != std::string_view::npos) {
-		testConfig.storageEngineExcludeTypes.push_back(5);
+		testConfig.storageEngineExcludeTypes.insert(SimulationStorageEngine::SHARDED_ROCKSDB);
 	}
 
 	if (std::string_view(testFile).find("BlobGranule") != std::string_view::npos) {
-		testConfig.storageEngineExcludeTypes.push_back(5);
+		testConfig.storageEngineExcludeTypes.insert(SimulationStorageEngine::SHARDED_ROCKSDB);
 	}
 
 	if (std::string_view(testFile).find("ChangeFeed") != std::string_view::npos) {
-		testConfig.storageEngineExcludeTypes.push_back(5);
+		testConfig.storageEngineExcludeTypes.insert(SimulationStorageEngine::SHARDED_ROCKSDB);
 	}
 
 	state ProtocolVersion protocolVersion = currentProtocolVersion();
