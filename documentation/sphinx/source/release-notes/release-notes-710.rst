@@ -26,6 +26,7 @@ Release Notes
 * Fixed backup to work with s3 compatible service.  `(PR #10369) <https://github.com/apple/foundationdb/pull/10369>`_
 * Fixed data loss during multiple range restores. `(PR #10424) <https://github.com/apple/foundationdb/pull/10424>`_
 * Updated RocksDB to version 8.1.1. `(PR #10268) <https://github.com/apple/foundationdb/pull/10268>`_
+
 7.1.33
 ======
 * Same as 7.1.32 release with AVX enabled.
