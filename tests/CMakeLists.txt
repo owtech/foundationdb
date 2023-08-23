@@ -276,6 +276,7 @@ if(WITH_PYTHON)
   add_fdb_test(TEST_FILES rare/RYWDisable.toml)
   add_fdb_test(TEST_FILES rare/RandomReadWriteTest.toml)
   add_fdb_test(TEST_FILES rare/ReadSkewReadWrite.toml)
+  add_fdb_test(TEST_FILES rare/RestoreMultiRanges.toml)
   add_fdb_test(TEST_FILES rare/SpecificUnitTests.toml)
   add_fdb_test(TEST_FILES rare/StorageQuotaTest.toml)
   add_fdb_test(TEST_FILES rare/SwizzledLargeApiCorrectness.toml)
@@ -390,11 +391,11 @@ if(WITH_PYTHON)
     TEST_FILES restarting/from_7.3.0/SnapTestRestart-1.txt
     restarting/from_7.3.0/SnapTestRestart-2.txt)
   add_fdb_test(
-    TEST_FILES restarting/to_7.1.0_until_7.2.0/ConfigureStorageMigrationTestRestart-1.toml
-    restarting/to_7.1.0_until_7.2.0/ConfigureStorageMigrationTestRestart-2.toml IGNORE)
+    TEST_FILES restarting/to_7.1.33_until_7.2.0/ConfigureStorageMigrationTestRestart-1.toml
+    restarting/to_7.1.33_until_7.2.0/ConfigureStorageMigrationTestRestart-2.toml)
   add_fdb_test(
-    TEST_FILES restarting/to_7.1.0_until_7.2.0/CycleTestRestart-1.toml
-    restarting/to_7.1.0_until_7.2.0/CycleTestRestart-2.toml IGNORE)
+    TEST_FILES restarting/to_7.1.33_until_7.2.0/CycleTestRestart-1.toml
+    restarting/to_7.1.33_until_7.2.0/CycleTestRestart-2.toml)
   add_fdb_test(
     TEST_FILES restarting/to_7.2.0_until_7.3.0/ConfigureStorageMigrationTestRestart-1.toml
     restarting/to_7.2.0_until_7.3.0/ConfigureStorageMigrationTestRestart-2.toml IGNORE)
@@ -428,6 +429,7 @@ if(WITH_PYTHON)
   add_fdb_test(TEST_FILES slow/DDBalanceAndRemoveStatus.toml)
   add_fdb_test(TEST_FILES slow/DifferentClustersSameRV.toml)
   add_fdb_test(TEST_FILES slow/DiskFailureCycle.toml)
+  add_fdb_test(TEST_FILES slow/ExcludeIncludeStorageServers.toml)
   add_fdb_test(TEST_FILES slow/FastTriggeredWatches.toml)
   add_fdb_test(TEST_FILES slow/GcGenerations.toml)
   add_fdb_test(TEST_FILES slow/LongRunning.toml LONG_RUNNING)

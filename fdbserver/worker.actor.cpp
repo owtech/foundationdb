@@ -1097,33 +1097,33 @@ TEST_CASE("/fdbserver/worker/addressIsRemoteLogRouter") {
 
 } // namespace
 
-// The actor that actively monitors the health of local and peer servers, and reports anomaly to the cluster controller.
-ACTOR Future<Void> healthMonitor(Reference<AsyncVar<Optional<ClusterControllerFullInterface>> const> ccInterface,
-                                 WorkerInterface interf,
-                                 LocalityData locality,
-                                 Reference<AsyncVar<ServerDBInfo> const> dbInfo) {
-	loop {
-		Future<Void> nextHealthCheckDelay = Never();
-		if (dbInfo->get().recoveryState >= RecoveryState::ACCEPTING_COMMITS && ccInterface->get().present()) {
-			nextHealthCheckDelay = delay(SERVER_KNOBS->WORKER_HEALTH_MONITOR_INTERVAL);
-			const auto& allPeers = FlowTransport::transport().getAllPeers();
+// Check if the current worker is a transaction worker, and is experiencing degraded or disconnected peers. If so,
+// report degraded and disconnected peers to the cluster controller.
+void doPeerHealthCheck(Reference<AsyncVar<Optional<ClusterControllerFullInterface>> const> ccInterface,
+                       const WorkerInterface& interf,
+                       const LocalityData& locality,
+                       Reference<AsyncVar<ServerDBInfo> const> dbInfo) {
+	const auto& allPeers = FlowTransport::transport().getAllPeers();
 
 			// Check remote log router connectivity only when remote TLogs are recruited and in use.
 			bool checkRemoteLogRouterConnectivity = dbInfo->get().recoveryState == RecoveryState::ALL_LOGS_RECRUITED ||
 			                                        dbInfo->get().recoveryState == RecoveryState::FULLY_RECOVERED;
 			UpdateWorkerHealthRequest req;
 
-			enum WorkerLocation { None, Primary, Satellite, Remote };
-			WorkerLocation workerLocation = None;
-			if (addressesInDbAndPrimaryDc(interf.addresses(), dbInfo)) {
-				workerLocation = Primary;
-			} else if (addressesInDbAndRemoteDc(interf.addresses(), dbInfo)) {
-				workerLocation = Remote;
-			} else if (addressesInDbAndPrimarySatelliteDc(interf.addresses(), dbInfo)) {
-				workerLocation = Satellite;
-			}
+	enum WorkerLocation { None, Primary, Satellite, Remote };
+	WorkerLocation workerLocation = None;
+	if (addressesInDbAndPrimaryDc(interf.addresses(), dbInfo)) {
+		workerLocation = Primary;
+	} else if (addressesInDbAndRemoteDc(interf.addresses(), dbInfo)) {
+		workerLocation = Remote;
+	} else if (addressesInDbAndPrimarySatelliteDc(interf.addresses(), dbInfo)) {
+		workerLocation = Satellite;
+	}
 
-			if (workerLocation != None) {
+	if (workerLocation == None) {
+		// This worker doesn't need to monitor anything if it is in remote satellite.
+		return;
+	}
 				for (const auto& [address, peer] : allPeers) {
 					if (peer->connectFailedCount == 0 &&
 					    peer->pingLatencies.getPopulationSize() < SERVER_KNOBS->PEER_LATENCY_CHECK_MIN_POPULATION) {
@@ -1254,15 +1254,28 @@ ACTOR Future<Void> healthMonitor(Reference<AsyncVar<Optional<ClusterControllerFu
 						     addressIsRemoteLogRouter(address, dbInfo))) {
 							TraceEvent("HealthMonitorDetectRecentClosedPeer").suppressFor(30).detail("Peer", address);
 							req.disconnectedPeers.push_back(address);
-						}
-					}
-				}
 			}
+		}
+	}
 
-			if (!req.disconnectedPeers.empty() || !req.degradedPeers.empty()) {
-				req.address = FlowTransport::transport().getLocalAddress();
-				ccInterface->get().get().updateWorkerHealth.send(req);
-			}
+	if (!req.disconnectedPeers.empty() || !req.degradedPeers.empty()) {
+		// Disconnected or degraded peers are reported to the cluster controller.
+		req.address = FlowTransport::transport().getLocalAddress();
+		ccInterface->get().get().updateWorkerHealth.send(req);
+	}
+}
+
+// The actor that actively monitors the health of local and peer servers, and reports anomaly to the cluster controller.
+ACTOR Future<Void> healthMonitor(Reference<AsyncVar<Optional<ClusterControllerFullInterface>> const> ccInterface,
+                                 WorkerInterface interf,
+                                 LocalityData locality,
+                                 Reference<AsyncVar<ServerDBInfo> const> dbInfo) {
+	state UpdateWorkerHealthRequest req;
+	loop {
+		Future<Void> nextHealthCheckDelay = Never();
+		if (dbInfo->get().recoveryState >= RecoveryState::ACCEPTING_COMMITS && ccInterface->get().present()) {
+			nextHealthCheckDelay = delay(SERVER_KNOBS->WORKER_HEALTH_MONITOR_INTERVAL);
+			doPeerHealthCheck(ccInterface, interf, locality, dbInfo);
 		}
 		choose {
 			when(wait(nextHealthCheckDelay)) {}
@@ -1676,7 +1689,7 @@ void endRole(const Role& role, UID id, std::string reason, bool ok, Error e) {
 
 ACTOR Future<Void> traceRole(Role role, UID roleId) {
 	loop {
-		wait(delay(SERVER_KNOBS->WORKER_LOGGING_INTERVAL));
+		wait(delay(SERVER_KNOBS->ROLE_REFRESH_LOGGING_INTERVAL));
 		TraceEvent("Role", roleId).detail("Transition", "Refresh").detail("As", role.roleName);
 	}
 }
