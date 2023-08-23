@@ -341,6 +341,9 @@ public:
 	int ROCKSDB_CAN_COMMIT_DELAY_ON_OVERLOAD;
 	int ROCKSDB_CAN_COMMIT_DELAY_TIMES_ON_OVERLOAD;
 	bool ROCKSDB_DISABLE_WAL_EXPERIMENTAL;
+	int64_t ROCKSDB_WAL_TTL_SECONDS;
+	int64_t ROCKSDB_WAL_SIZE_LIMIT_MB;
+	bool ROCKSDB_LOG_LEVEL_DEBUG;
 	bool ROCKSDB_SINGLEKEY_DELETES_ON_CLEARRANGE;
 	int ROCKSDB_SINGLEKEY_DELETES_MAX;
 	bool ROCKSDB_ENABLE_CLEAR_RANGE_EAGER_READS;
@@ -352,6 +355,7 @@ public:
 	int ROCKSDB_STATS_LEVEL;
 	int64_t ROCKSDB_COMPACTION_READAHEAD_SIZE;
 	int64_t ROCKSDB_BLOCK_SIZE;
+	bool SS_BACKUP_KEYS_OP_LOGS;
 
 	// Leader election
 	int MAX_NOTIFICATIONS;
@@ -736,6 +740,13 @@ public:
 	                                          // Enabling this can reduce toil of manually restarting the SS.
 	                                          // Enable with caution: If io_timeout is caused by disk failure, we won't
 	                                          // want to restart the SS, which increases risk of data corruption.
+	bool CONSISTENCY_CHECK_ROCKSDB_ENGINE; // When set, consistency check only check data corruption for a
+	                                       // shard which is in at least one SS with the rocksdb engine.
+	bool CONSISTENCY_CHECK_SQLITE_ENGINE; // When set, consistency check only check data corruption for a
+	                                      // shard which is in at least one SS with the sqlite engine.
+	                                      // When both CONSISTENCY_CHECK_ROCKSDB_ENGINE and
+	                                      // CONSISTENCY_CHECK_SQLITE_ENGINE are set, consistency check only checks for
+	                                      // the rocksdb engine.
 
 	// Test harness
 	double WORKER_POLL_DELAY;

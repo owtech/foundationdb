@@ -2298,6 +2298,9 @@ struct BackupLogsDispatchTask : BackupTaskFuncBase {
 
 		tr->setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
 		tr->setOption(FDBTransactionOptions::LOCK_AWARE);
+		if (CLIENT_KNOBS->BACKUP_AGENT_VERBOSE_LOGGING) {
+			tr->debugTransaction(deterministicRandom()->randomUniqueID());
+		}
 
 		state Reference<TaskFuture> onDone = task->getDoneFuture(futureBucket);
 		state Version prevBeginVersion = Params.prevBeginVersion().get(task);
@@ -3045,12 +3048,13 @@ struct RestoreRangeTaskFunc : RestoreFileTaskFuncBase {
 		state Standalone<VectorRef<KeyValueRef>> blockData = wait(decodeRangeFileBlock(inFile, readOffset, readLen));
 
 		// First and last key are the range for this file
-		state KeyRange fileRange = KeyRangeRef(blockData.front().key, blockData.back().key);
+		state KeyRange fileRange;
 		state std::vector<KeyRange> originalFileRanges;
 		// If fileRange doesn't intersect restore range then we're done.
 		state int index;
 		for (index = 0; index < restoreRanges.get().size(); index++) {
 			auto& restoreRange = restoreRanges.get()[index];
+			fileRange = KeyRangeRef(blockData.front().key, blockData.back().key);
 			if (!fileRange.intersects(restoreRange))
 				continue;
 
