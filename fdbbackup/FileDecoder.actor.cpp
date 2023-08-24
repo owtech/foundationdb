@@ -777,8 +777,7 @@ ACTOR Future<Void> process_range_file(Reference<IBackupContainer> container,
 				    .detail("Version", file.version)
 				    .setMaxFieldLength(1000)
 				    .detail("KV", kv);
-				std::cout << file.version << " key: " << hexStringRef(kv.key) << "  value: " << hexStringRef(kv.value)
-				          << std::endl;
+				std::cout << file.version << " key: " << kv.key.toHex() << "  value: " << kv.value.toHex() << std::endl;
 			}
 		}
 	}
@@ -823,7 +822,7 @@ ACTOR Future<Void> process_file(Reference<IBackupContainer> container,
 				    .setMaxFieldLength(1000)
 				    .detail("M", m.toString());
 				std::cout << vms.version << "." << sub << " " << typeString[(int)m.type]
-				          << " param1: " << hexStringRef(m.param1) << " param2: " << hexStringRef(m.param2) << "\n";
+				          << " param1: " << m.param1.toHex() << " param2: " << m.param2.toHex() << "\n";
 			}
 		}
 	}

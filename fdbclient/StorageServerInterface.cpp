@@ -168,11 +168,15 @@ static void traceKeyValuesDiff(TraceEvent& event,
 			event.detail("MismatchIndex", i);
 			if (i >= ssKV.size() || i >= tssKV.size() || ssKV[i].key != tssKV[i].key) {
 				event.detail("MismatchSSKey", i < ssKV.size() ? ssKV[i].key : "missing"_sr);
+				event.detail("MismatchSSKeyHex", i < ssKV.size() ? ssKV[i].key.toHex() : "missing"_sr);
 				event.detail("MismatchTSSKey", i < tssKV.size() ? tssKV[i].key : "missing"_sr);
+				event.detail("MismatchTSSKeyHex", i < tssKV.size() ? tssKV[i].key.toHex() : "missing"_sr)
+				    .setMaxFieldLength(-1);
 			} else {
 				event.detail("MismatchKey", ssKV[i].key);
+				event.detail("MismatchSSKeyHex", ssKV[i].key.toHex());
 				event.detail("MismatchSSValue", traceChecksumValue(ssKV[i].value));
-				event.detail("MismatchTSSValue", traceChecksumValue(tssKV[i].value));
+				event.detail("MismatchTSSValue", traceChecksumValue(tssKV[i].value)).setMaxFieldLength(-1);
 			}
 			mismatchFound = true;
 			break;

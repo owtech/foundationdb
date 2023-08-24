@@ -43,6 +43,7 @@ set(FDBSERVER_SRCS
   EncryptKeyProxyInterface.h
   FDBExecHelper.actor.cpp
   FDBExecHelper.actor.h
+  FDBRocksDBVersion.h
   fdbserver.actor.cpp
   GrvProxyServer.actor.cpp
   IConfigConsumer.cpp
@@ -265,6 +266,7 @@ set(FDBSERVER_SRCS
   workloads/ReportConflictingKeys.actor.cpp
   workloads/RestoreBackup.actor.cpp
   workloads/RestoreFromBlob.actor.cpp
+  workloads/RestoreMultiRanges.actor.cpp
   workloads/Rollback.actor.cpp
   workloads/RyowCorrectness.actor.cpp
   workloads/RYWDisable.actor.cpp
