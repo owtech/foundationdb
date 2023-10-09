@@ -95,7 +95,7 @@ flow/coveragetool/obj
 /.cache
 
 # Openway fork build
-/bld/
+/bld*/
 /ide-projects/*/nbproject/private/
 /Testing/Temporary/
 
