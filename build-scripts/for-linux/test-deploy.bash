@@ -32,9 +32,35 @@ if ! ls "$DISTR_DIR"/foundationdb-*$FULL_VERSION*.{rpm,deb}; then
   return 1 2>/dev/null || exit 1
 fi
 
+# foundationdb writes to files with 2600 mode
+# but podman under kernel 6.1 or 6.2 does not respect this
+# so test if the writing works and choose an appropriate container engine
+CONTAINER_TEST_IMAGE=debian:10
+CONTAINER_TEST_RUNNABLE='bash -c "touch /tmp/file01.tst; chgrp users /tmp/file01.tst; chmod 2600 /tmp/file01.tst; echo test >/tmp/file01.tst"'
+
+test_container_engine() {
+  eval "$1 run --rm $CONTAINER_TEST_IMAGE $CONTAINER_TEST_RUNNABLE"
+}
+
+#choose an appropriate CONTAINER_ENGINE
+if [[ -n "$CONTAINER_ENGINE" ]]; then
+  if ! test_container_engine $CONTAINER_ENGINE; then
+    echo >&2 "Fatal: The specified CONTAINER_ENGINE ($CONTAINER_ENGINE) does not pass the test."
+    return 1 2>/dev/null || exit 1
+  fi
+elif test_container_engine podman; then
+  CONTAINER_ENGINE=podman
+elif test_container_engine docker; then
+  CONTAINER_ENGINE=docker
+else
+  echo >&2 "Fatal: Neigther podman nor docker passes the test"
+  return 1 2>/dev/null || exit 1
+fi
+echo "Using $CONTAINER_ENGINE as a container image"
+
 # check images
-podman pull $RPM_IMAGE
-podman pull $DEB_IMAGE
+$CONTAINER_ENGINE pull $RPM_IMAGE
+$CONTAINER_ENGINE pull $DEB_IMAGE
 
 MY_ARCH_RPM=`uname -m`
 MY_ARCH_DEB=`dpkg-architecture -q DEB_HOST_ARCH`
@@ -60,7 +86,7 @@ test_deploy_pkgs() {
 
   echo "Trying to install the client package only..."
   set -x
-  if ! podman run --rm -v "$DISTR_DIR:/mnt/distr:Z,ro" $IMAGE \
+  if ! $CONTAINER_ENGINE run --rm -v "$DISTR_DIR:/mnt/distr:Z,ro" $IMAGE \
     /bin/bash -c "$INSTALL_CMD /mnt/distr/$CLIENT_FILE && $CLIENT_CHECK_WITH getent passwd foundationdb"; then
     echo >&2 "Installation of $CLIENT_FILE failed or the foundationdb user was $ERRMSG_CLIENT."
     return 3
@@ -71,7 +97,7 @@ test_deploy_pkgs() {
 
   echo "Trying to install the both client and server package packages..."
   set -x
-  if ! podman run --rm -v "$DISTR_DIR:/mnt/distr:Z,ro" $IMAGE \
+  if ! $CONTAINER_ENGINE run --rm -v "$DISTR_DIR:/mnt/distr:Z,ro" $IMAGE \
     /bin/bash -c "$INSTALL_CMD /mnt/distr/$SERVER_FILE /mnt/distr/$CLIENT_FILE && getent passwd foundationdb"
   then
     echo >&2 "Installation $SERVER_FILE and $CLIENT_FILE failed or the foundationdb user was not created."
@@ -83,7 +109,7 @@ test_deploy_pkgs() {
 
   echo "Trying to install the server package only..."
   set -x
-  if podman run --rm -v "$DISTR_DIR:/mnt/distr:Z,ro" $IMAGE \
+  if $CONTAINER_ENGINE run --rm -v "$DISTR_DIR:/mnt/distr:Z,ro" $IMAGE \
     /bin/bash -c "$INSTALL_CMD /mnt/distr/$SERVER_FILE"; then
     echo >&2 "Installation $SERVER_FILE without a client must fail."
     return 1
@@ -128,4 +154,3 @@ test_deploy_pkgs \
   "foundationdb-$FULL_VERSION-server-versioned-$FULL_VERSION.$MY_ARCH_RPM.rpm" \
   "foundationdb-$FULL_VERSION-clients-versioned-$FULL_VERSION.$MY_ARCH_RPM.rpm" \
   N
-
