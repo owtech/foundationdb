@@ -83,7 +83,10 @@ void ClientKnobs::initialize(Randomize randomize) {
 	init( CHANGE_FEED_POP_TIMEOUT,                10.0 );
 	init( CHANGE_FEED_STREAM_MIN_BYTES,            1e4 ); if( randomize && BUGGIFY ) CHANGE_FEED_STREAM_MIN_BYTES = 1;
 	init( CHANGE_FEED_START_INTERVAL,             20.0 ); if( randomize && BUGGIFY ) CHANGE_FEED_START_INTERVAL = 10.0;
-	init( CHANGE_FEED_COALESCE_LOCATIONS,        false ); if( randomize && BUGGIFY ) CHANGE_FEED_COALESCE_LOCATIONS = false;
+	init( CHANGE_FEED_COALESCE_LOCATIONS,         true ); if( randomize && BUGGIFY ) CHANGE_FEED_COALESCE_LOCATIONS = false;
+	init( CHANGE_FEED_CACHE_FLUSH_BYTES,          10e6 ); if( randomize && BUGGIFY ) CHANGE_FEED_CACHE_FLUSH_BYTES = deterministicRandom()->randomInt64(1, 1e6);
+	init( CHANGE_FEED_CACHE_EXPIRE_TIME,          60.0 ); if( randomize && BUGGIFY ) CHANGE_FEED_CACHE_EXPIRE_TIME = 1.0;
+	init( CHANGE_FEED_CACHE_LIMIT_BYTES,        500000 ); if( randomize && BUGGIFY ) CHANGE_FEED_CACHE_LIMIT_BYTES = 50000;
 
 	init( MAX_BATCH_SIZE,                         1000 ); if( randomize && BUGGIFY ) MAX_BATCH_SIZE = 1;
 	init( GRV_BATCH_TIMEOUT,                     0.005 ); if( randomize && BUGGIFY ) GRV_BATCH_TIMEOUT = 0.1;
@@ -97,7 +100,7 @@ void ClientKnobs::initialize(Randomize randomize) {
 
 	init( GET_RANGE_SHARD_LIMIT,                     2 );
 	init( WARM_RANGE_SHARD_LIMIT,                  100 );
-	init( STORAGE_METRICS_SHARD_LIMIT,             100 ); if( randomize && BUGGIFY ) STORAGE_METRICS_SHARD_LIMIT = 3;
+	init( STORAGE_METRICS_SHARD_LIMIT,             100 ); if( randomize && BUGGIFY ) STORAGE_METRICS_SHARD_LIMIT = 10;
 	init( SHARD_COUNT_LIMIT,                        80 ); if( randomize && BUGGIFY ) SHARD_COUNT_LIMIT = 3;
 	init( STORAGE_METRICS_UNFAIR_SPLIT_LIMIT,  2.0/3.0 );
 	init( STORAGE_METRICS_TOO_MANY_SHARDS_DELAY,  15.0 );
@@ -190,6 +193,9 @@ void ClientKnobs::initialize(Randomize randomize) {
 	init( BACKUP_STATUS_JITTER,                   0.05 );
 	init( MIN_CLEANUP_SECONDS,                  3600.0 );
 	init( FASTRESTORE_ATOMICOP_WEIGHT,               1 ); if( randomize && BUGGIFY ) { FASTRESTORE_ATOMICOP_WEIGHT = deterministicRandom()->random01() * 200 + 1; }
+	init( RESTORE_RANGES_READ_BATCH,             10000 );
+	init( BLOB_GRANULE_RESTORE_CHECK_INTERVAL,      10 );
+	init( BACKUP_CONTAINER_LOCAL_ALLOW_RELATIVE_PATH, false );
 
 	// Configuration
 	init( DEFAULT_AUTO_COMMIT_PROXIES,               3 );
@@ -225,7 +231,7 @@ void ClientKnobs::initialize(Randomize randomize) {
 	init( BLOBSTORE_READ_CACHE_BLOCKS_PER_FILE,      2 );
 	init( BLOBSTORE_MULTIPART_MAX_PART_SIZE,  20000000 );
 	init( BLOBSTORE_MULTIPART_MIN_PART_SIZE,   5242880 );
-	init( BLOBSTORE_GLOBAL_CONNECTION_POOL,       true );
+	init( BLOBSTORE_GLOBAL_CONNECTION_POOL,      false );
 	init( BLOBSTORE_ENABLE_LOGGING,               true );
 	init( BLOBSTORE_STATS_LOGGING_INTERVAL,       10.0 );
 	init( BLOBSTORE_LATENCY_LOGGING_INTERVAL,    120.0 );
@@ -275,8 +281,8 @@ void ClientKnobs::initialize(Randomize randomize) {
 	init( TAG_THROTTLE_SMOOTHING_WINDOW,            2.0 );
 	init( TAG_THROTTLE_RECHECK_INTERVAL,            5.0 ); if( randomize && BUGGIFY ) TAG_THROTTLE_RECHECK_INTERVAL = 0.0;
 	init( TAG_THROTTLE_EXPIRATION_INTERVAL,        60.0 ); if( randomize && BUGGIFY ) TAG_THROTTLE_EXPIRATION_INTERVAL = 1.0;
-	init( TAG_THROTTLING_PAGE_SIZE,               16384 ); if( randomize && BUGGIFY ) TAG_THROTTLING_PAGE_SIZE = 4096;
-	init( GLOBAL_TAG_THROTTLING_RW_FUNGIBILITY_RATIO,            5.0 );
+	init( TAG_THROTTLING_PAGE_SIZE,                4096 ); if( randomize && BUGGIFY ) TAG_THROTTLING_PAGE_SIZE = 4096;
+	init( GLOBAL_TAG_THROTTLING_RW_FUNGIBILITY_RATIO,            4.0 );
 	init( PROXY_MAX_TAG_THROTTLE_DURATION,          5.0 ); if( randomize && BUGGIFY ) PROXY_MAX_TAG_THROTTLE_DURATION = 0.5;
 
 	// busyness reporting
@@ -287,6 +293,7 @@ void ClientKnobs::initialize(Randomize randomize) {
 	init( BG_MAX_GRANULE_PARALLELISM,                10 );
 	init( BG_TOO_MANY_GRANULES,                   20000 );
 	init( BLOB_METADATA_REFRESH_INTERVAL,          3600 ); if ( randomize && BUGGIFY ) { BLOB_METADATA_REFRESH_INTERVAL = deterministicRandom()->randomInt(5, 120); }
+	init( DETERMINISTIC_BLOB_METADATA,            false ); if( randomize && BUGGIFY_WITH_PROB(0.01) ) DETERMINISTIC_BLOB_METADATA = true;
 	init( ENABLE_BLOB_GRANULE_FILE_LOGICAL_SIZE,  false ); if ( randomize && BUGGIFY ) { ENABLE_BLOB_GRANULE_FILE_LOGICAL_SIZE = true; }
 
 	init( CHANGE_QUORUM_BAD_STATE_RETRY_TIMES,        3 );
@@ -304,15 +311,15 @@ void ClientKnobs::initialize(Randomize randomize) {
 	init( TENANT_ENTRY_CACHE_LIST_REFRESH_INTERVAL,   2 ); if( randomize && BUGGIFY ) TENANT_ENTRY_CACHE_LIST_REFRESH_INTERVAL = deterministicRandom()->randomInt(1, 10);
 	init( CLIENT_ENABLE_USING_CLUSTER_ID_KEY,     false );
 
-	init( ENABLE_ENCRYPTION_CPU_TIME_LOGGING,       false );
+	init( ENABLE_ENCRYPTION_CPU_TIME_LOGGING,        true );
 	init( SIMULATION_EKP_TENANT_IDS_TO_DROP,         "-1" );
-	init( ENABLE_CONFIGURABLE_ENCRYPTION,            true );
 	init( ENCRYPT_HEADER_FLAGS_VERSION,                 1 );
 	init( ENCRYPT_HEADER_AES_CTR_NO_AUTH_VERSION,       1 );
 	init( ENCRYPT_HEADER_AES_CTR_AES_CMAC_AUTH_VERSION, 1 );
 	init( ENCRYPT_HEADER_AES_CTR_HMAC_SHA_AUTH_VERSION, 1 );
 
 	init( REST_KMS_ALLOW_NOT_SECURE_CONNECTION,     false ); if ( randomize && BUGGIFY ) REST_KMS_ALLOW_NOT_SECURE_CONNECTION = !REST_KMS_ALLOW_NOT_SECURE_CONNECTION;
+	init( SIM_KMS_VAULT_MAX_KEYS,                    4096 );
 
 	// clang-format on
 }

@@ -52,6 +52,9 @@
 #include "crc32/crc32c.h"
 #include "fdbrpc/TraceFileIO.h"
 #include "flow/flow.h"
+#include "flow/swift.h"
+#include "flow/swift_concurrency_hooks.h"
+#include "flow/swift/ABI/Task.h"
 #include "flow/genericactors.actor.h"
 #include "flow/network.h"
 #include "flow/TLSConfig.actor.h"
@@ -111,6 +114,29 @@ bool simulator_should_inject_fault(const char* context, const char* file, int li
 			}
 			return true;
 		}
+	}
+
+	return false;
+}
+
+bool simulator_should_inject_blob_fault(const char* context, const char* file, int line, int error_code) {
+	if (!g_network->isSimulated() || !faultInjectionActivated)
+		return false;
+
+	auto p = g_simulator->getCurrentProcess();
+
+	if (!g_simulator->speedUpSimulation && deterministicRandom()->random01() < p->blob_inject_failure_rate) {
+		CODE_PROBE(true, "A blob fault was injected", probe::assert::simOnly, probe::context::sim2);
+		CODE_PROBE(error_code == error_code_http_request_failed,
+		           "A failed http request was injected",
+		           probe::assert::simOnly,
+		           probe::context::sim2);
+		TraceEvent("BlobFaultInjected")
+		    .detail("Context", context)
+		    .detail("File", file)
+		    .detail("Line", line)
+		    .detail("ErrorCode", error_code);
+		return true;
 	}
 
 	return false;
@@ -228,6 +254,16 @@ struct SimClogging {
 		return t - tnow;
 	}
 
+	bool disconnected(const IPAddress& from, const IPAddress& to) {
+		auto pair = std::make_pair(from, to);
+		if (g_simulator->speedUpSimulation || disconnectPairUntil.find(pair) == disconnectPairUntil.end()) {
+			return false;
+		}
+
+		double disconnectUntil = disconnectPairUntil[pair];
+		return now() < disconnectUntil;
+	}
+
 	void clogPairFor(const IPAddress& from, const IPAddress& to, double t) {
 		auto& u = clogPairUntil[std::make_pair(from, to)];
 		u = std::max(u, now() + t);
@@ -261,11 +297,22 @@ struct SimClogging {
 		return i->second;
 	}
 
+	void disconnectPairFor(const IPAddress& from, const IPAddress& to, double t) {
+		auto& u = disconnectPairUntil[std::make_pair(from, to)];
+		u = std::max(u, now() + t);
+	}
+
+	void reconnectPair(const IPAddress& from, const IPAddress& to) {
+		disconnectPairUntil.erase(std::make_pair(from, to));
+	}
+
 private:
 	std::map<IPAddress, double> clogSendUntil, clogRecvUntil;
 	std::map<std::pair<IPAddress, IPAddress>, double> clogPairUntil;
 	std::map<std::pair<IPAddress, IPAddress>, double> clogPairLatency;
 	std::map<std::pair<NetworkAddress, NetworkAddress>, double> clogProcessPairUntil;
+	std::map<std::pair<IPAddress, IPAddress>, double> disconnectPairUntil;
+
 	double halfLatency() const {
 		double a = deterministicRandom()->random01();
 		const double pFast = 0.999;
@@ -312,6 +359,14 @@ struct Sim2Conn final : IConnection, ReferenceCounted<Sim2Conn> {
 		                   std::any_of(peerProcess->childs.begin(),
 		                               peerProcess->childs.end(),
 		                               [&](ISimulator::ProcessInfo* child) { return child && child == process; });
+
+		if (g_clogging.disconnected(process->address.ip, peerProcess->address.ip)) {
+			TraceEvent("SimulatedDisconnection")
+			    .detail("Phase", "Connect")
+			    .detail("Address", process->address)
+			    .detail("Peer", peerProcess->address);
+			throw connection_failed();
+		}
 
 		TraceEvent("Sim2Connection")
 		    .detail("SendBufSize", sendBufSize)
@@ -452,16 +507,26 @@ private:
 			while (self->sentBytes.get() == self->receivedBytes.get())
 				wait(self->sentBytes.onChange());
 			ASSERT(g_simulator->getCurrentProcess() == self->peerProcess);
+
+			// Simulated network disconnection. Make sure to only throw connection_failed() on the sender process.
+			if (g_clogging.disconnected(self->peerProcess->address.ip, self->process->address.ip)) {
+				TraceEvent("SimulatedDisconnection")
+				    .detail("Phase", "DataTransfer")
+				    .detail("Sender", self->peerProcess->address)
+				    .detail("Receiver", self->process->address);
+				throw connection_failed();
+			}
+
 			state int64_t pos =
 			    deterministicRandom()->random01() < .5
 			        ? self->sentBytes.get()
 			        : deterministicRandom()->randomInt64(self->receivedBytes.get(), self->sentBytes.get() + 1);
 			wait(delay(g_clogging.getSendDelay(
-			    self->process->address, self->peerProcess->address, self->isStableConnection())));
+			    self->peerProcess->address, self->process->address, self->isStableConnection())));
 			wait(g_simulator->onProcess(self->process));
 			ASSERT(g_simulator->getCurrentProcess() == self->process);
 			wait(delay(g_clogging.getRecvDelay(
-			    self->process->address, self->peerProcess->address, self->isStableConnection())));
+			    self->peerProcess->address, self->process->address, self->isStableConnection())));
 			ASSERT(g_simulator->getCurrentProcess() == self->process);
 			if (self->stopReceive.isReady()) {
 				wait(Future<Void>(Never()));
@@ -537,7 +602,12 @@ private:
 	}
 
 	ACTOR static Future<Void> trackLeakedConnection(Sim2Conn* self) {
+		// FIXME: we could also just implement connection idle closing for sim http server instead
+		if (g_simulator->httpServerIps.count(self->process->address.ip)) {
+			return Void();
+		}
 		wait(g_simulator->onProcess(self->process));
+
 		if (self->process->address.isPublic()) {
 			wait(delay(FLOW_KNOBS->CONNECTION_MONITOR_IDLE_TIMEOUT * FLOW_KNOBS->CONNECTION_MONITOR_IDLE_TIMEOUT * 1.5 +
 			           FLOW_KNOBS->CONNECTION_MONITOR_LOOP_TIME * 2.1 + FLOW_KNOBS->CONNECTION_MONITOR_TIMEOUT));
@@ -995,6 +1065,21 @@ public:
 		ASSERT(taskID >= TaskPriority::Min && taskID <= TaskPriority::Max);
 		return delay(seconds, taskID, currentProcess, true);
 	}
+
+	void _swiftEnqueue(void* _job) override {
+#ifdef WITH_SWIFT
+		ASSERT(getCurrentProcess());
+		swift::Job* job = (swift::Job*)_job;
+		TaskPriority priority = swift_priority_to_net2(job->getPriority());
+		ASSERT(priority >= TaskPriority::Min && priority <= TaskPriority::Max);
+
+		ISimulator::ProcessInfo* machine = currentProcess;
+
+		auto t = new PromiseTask(machine, job);
+		taskQueue.addReady(priority, t);
+#endif /* WITH_SWIFT */
+	}
+
 	Future<class Void> delay(double seconds, TaskPriority taskID, ProcessInfo* machine, bool ordered = false) {
 		ASSERT(seconds >= -0.0001);
 
@@ -1076,6 +1161,10 @@ public:
 	}
 
 	Future<Reference<IConnection>> connectExternal(NetworkAddress toAddr) override {
+		// If sim http connection, do connect instead of external connect
+		if (httpServerIps.count(toAddr.ip)) {
+			return connect(toAddr);
+		}
 		return SimExternalConnection::connect(toAddr);
 	}
 
@@ -1492,6 +1581,7 @@ public:
 	// The following function will determine if a machine can be remove in case when it has a blob worker
 	bool canKillMachineWithBlobWorkers(Optional<Standalone<StringRef>> machineId, KillType kt, KillType* ktFinal) {
 		// Allow if no blob workers, or it's a reboot(without removing the machine)
+		// FIXME: this should be ||
 		if (!blobGranulesEnabled && kt >= KillType::RebootAndDelete) {
 			return true;
 		}
@@ -1554,7 +1644,7 @@ public:
 			std::vector<LocalityData> badCombo;
 			std::set<Optional<Standalone<StringRef>>> uniqueMachines;
 
-			if (!primaryDcId.present()) {
+			if (!primaryDcId.present() || usableRegions == 1) {
 				for (auto processInfo : availableProcesses) {
 					primaryProcessesLeft.add(processInfo->locality);
 					primaryLocalitiesLeft.push_back(processInfo->locality);
@@ -1947,8 +2037,10 @@ public:
 		KillType originalKt = kt;
 		// Reboot if any of the processes are protected and count the number of processes not rebooting
 		for (auto& process : machines[machineId].processes) {
-			if (protectedAddresses.count(process->address))
+			if (protectedAddresses.count(process->address) && kt != KillType::RebootProcessAndSwitch) {
 				kt = KillType::Reboot;
+			}
+
 			if (!process->rebooting)
 				processesOnMachine++;
 			if (process->drProcess) {
@@ -2337,6 +2429,28 @@ public:
 		g_clogging.unclogPair(from, to);
 	}
 
+	void disconnectPair(const IPAddress& from, const IPAddress& to, double seconds) override {
+		TraceEvent("DisconnectPair").detail("From", from).detail("To", to).detail("Seconds", seconds);
+		g_clogging.disconnectPairFor(from, to, seconds);
+	}
+
+	void reconnectPair(const IPAddress& from, const IPAddress& to) override {
+		TraceEvent("ReconnectPair").detail("From", from).detail("To", to);
+		g_clogging.reconnectPair(from, to);
+	}
+
+	void processInjectBlobFault(ProcessInfo* machine, double failureRate) override {
+		CODE_PROBE(true, "Simulated process beginning blob fault", probe::context::sim2, probe::assert::simOnly);
+		should_inject_blob_fault = simulator_should_inject_blob_fault;
+		ASSERT(machine->blob_inject_failure_rate == 0.0);
+		machine->blob_inject_failure_rate = failureRate;
+	}
+
+	void processStopInjectBlobFault(ProcessInfo* machine) override {
+		CODE_PROBE(true, "Simulated process stopping blob fault", probe::context::sim2, probe::assert::simOnly);
+		machine->blob_inject_failure_rate = 0.0;
+	}
+
 	std::vector<ProcessInfo*> getAllProcesses() const override {
 		std::vector<ProcessInfo*> processes;
 		for (auto& c : machines) {
@@ -2373,6 +2487,108 @@ public:
 		machines.erase(machineId);
 	}
 
+	// Assumes the simulator is already onProcess for proc
+	void startRequestHandlerOnProcess(ProcessInfo* process,
+	                                  Reference<HTTP::SimServerContext> serverContext,
+	                                  Reference<HTTP::SimRegisteredHandlerContext> handlerContext) {
+		try {
+			NetworkAddress addr = NetworkAddress(g_simulator->getCurrentProcess()->address.ip,
+			                                     handlerContext->port,
+			                                     true /* isPublic*/,
+			                                     false /*isTLS*/);
+			process->listenerMap[addr] = Reference<IListener>(new Sim2Listener(process, addr));
+			addressMap[addr] = process;
+			handlerContext->addAddress(addr);
+			serverContext->registerNewServer(addr, handlerContext->requestHandler->clone());
+		} catch (Error& e) {
+			// this should never happen, but would cause weird behavior if it did like unintentionally switching
+			// processes, so just fail
+			TraceEvent(SevError, "UnexpectedErrorRegisteringHTTPServer").errorUnsuppressed(e);
+			ASSERT(false);
+		}
+	}
+
+	// add a simulated http server process. New http servers called by registerHTTPServer will run on this process
+	void addSimHTTPProcess(Reference<HTTP::SimServerContext> context) override {
+		ProcessInfo* p = getCurrentProcess();
+
+		if (!g_simulator->httpProtected) {
+			// always protect one http server process so that if others are killed permanently, one will always be
+			// rebooted
+			fmt::print("SimHTTPServer protecting {0}\n", p->address.toString());
+			TraceEvent(SevDebug, "HTTPProcessProtected").detail("Address", p->address);
+			g_simulator->httpProtected = true;
+			protectedAddresses.insert(p->address);
+		}
+		// make sure this process isn't already added
+		for (int i = 0; i < httpServerProcesses.size(); i++) {
+			ASSERT(p != httpServerProcesses[i].first);
+		}
+		httpServerProcesses.push_back({ p, context });
+		httpServerIps.insert(p->address.ip);
+
+		for (auto& it : httpHandlers) {
+			startRequestHandlerOnProcess(p, context, it.second);
+		}
+	}
+
+	void removeSimHTTPProcess() override {
+		ProcessInfo* p = getCurrentProcess();
+
+		bool found = false;
+		for (int i = 0; i < httpServerProcesses.size(); i++) {
+			if (p == httpServerProcesses[i].first) {
+				swapAndPop(&httpServerProcesses, i);
+				found = true;
+				break;
+			}
+		}
+		ASSERT(found);
+
+		// FIXME: potentially instead delay removing from DNS for a bit so we still briefly try to talk to dead server
+		for (auto& it : httpHandlers) {
+			it.second->removeIp(p->address.ip);
+		}
+	}
+
+	ACTOR static Future<Void> registerSimHTTPServerActor(Sim2* self,
+	                                                     std::string hostname,
+	                                                     std::string service,
+	                                                     Reference<HTTP::IRequestHandler> requestHandler) {
+		std::string id = hostname + ":" + service;
+		ASSERT(!self->httpHandlers.count(id));
+
+		// check not too many servers
+		ASSERT(self->httpHandlers.size() < 1000);
+		state Reference<HTTP::SimRegisteredHandlerContext> handlerContext =
+		    makeReference<HTTP::SimRegisteredHandlerContext>(hostname, service, self->nextHTTPPort++, requestHandler);
+		self->httpHandlers.insert({ id, handlerContext });
+
+		// start process on all running HTTP servers
+		state ProcessInfo* callingProcess = self->getCurrentProcess();
+		state int i = 0;
+
+		// copy the processes before waits just to ensure no races with addSimHTTPProcess
+		state std::vector<std::pair<ProcessInfo*, Reference<HTTP::SimServerContext>>> procsCopy =
+		    self->httpServerProcesses;
+		for (; i < procsCopy.size(); i++) {
+			state ProcessInfo* serverProcess = procsCopy[i].first;
+			wait(self->onProcess(serverProcess, TaskPriority::DefaultYield));
+			self->startRequestHandlerOnProcess(serverProcess, procsCopy[i].second, handlerContext);
+		}
+
+		wait(self->onProcess(callingProcess, TaskPriority::DefaultYield));
+
+		return Void();
+	}
+
+	// starts a numAddresses http servers with the dns alias hostname:service with the provided server callback
+	Future<Void> registerSimHTTPServer(std::string hostname,
+	                                   std::string service,
+	                                   Reference<HTTP::IRequestHandler> requestHandler) override {
+		return registerSimHTTPServerActor(this, hostname, service, requestHandler);
+	}
+
 	Sim2(bool printSimTime)
 	  : time(0.0), timerTime(0.0), currentTaskID(TaskPriority::Zero), yielded(false), yield_limit(0),
 	    printSimTime(printSimTime) {
@@ -2388,7 +2604,7 @@ public:
 		// create a key pair for AuthZ testing
 		auto key = mkcert::makeEcP256();
 		authKeys.insert(std::make_pair(Standalone<StringRef>("DefaultKey"_sr), key));
-		g_network = net2 = newNet2(TLSConfig(), false, true);
+		g_network = net2 = newNet2(TLSConfig(), /*useThreadPool=*/false, true);
 		g_network->addStopCallback(Net2FileSystem::stop);
 		Net2FileSystem::newFileSystem();
 		check_yield(TaskPriority::Zero);
@@ -2398,8 +2614,12 @@ public:
 	struct PromiseTask final : public FastAllocated<PromiseTask> {
 		Promise<Void> promise;
 		ProcessInfo* machine;
-		explicit PromiseTask(ProcessInfo* machine) : machine(machine) {}
-		PromiseTask(ProcessInfo* machine, Promise<Void>&& promise) : machine(machine), promise(std::move(promise)) {}
+		swift::Job* _Nullable swiftJob = nullptr;
+
+		explicit PromiseTask(ProcessInfo* machine) : machine(machine), swiftJob(nullptr) {}
+		explicit PromiseTask(ProcessInfo* machine, swift::Job* swiftJob) : machine(machine), swiftJob(swiftJob) {}
+		PromiseTask(ProcessInfo* machine, Promise<Void>&& promise)
+		  : machine(machine), promise(std::move(promise)), swiftJob(nullptr) {}
 	};
 
 	void execTask(struct PromiseTask& t) {
@@ -2408,7 +2628,15 @@ public:
 		} else {
 			this->currentProcess = t.machine;
 			try {
+#ifdef WITH_SWIFT
+				if (t.swiftJob) {
+					swift_job_run(t.swiftJob, ExecutorRef::generic());
+				} else {
+					t.promise.send(Void());
+				}
+#else
 				t.promise.send(Void());
+#endif
 				ASSERT(this->currentProcess == t.machine);
 			} catch (Error& e) {
 				TraceEvent(SevError, "UnhandledSimulationEventError").errorUnsuppressed(e);
@@ -2844,10 +3072,6 @@ Future<Reference<class IAsyncFile>> Sim2FileSystem::open(const std::string& file
 			auto partFile = machineCache.find(actualFilename);
 			if (partFile != machineCache.end()) {
 				Future<Reference<IAsyncFile>> f = AsyncFileDetachable::open(partFile->second.get());
-				if (FLOW_KNOBS->PAGE_WRITE_CHECKSUM_HISTORY > 0)
-					f = map(f, [=](Reference<IAsyncFile> r) {
-						return Reference<IAsyncFile>(new AsyncFileWriteChecker(r));
-					});
 				return f;
 			}
 		}
@@ -2859,11 +3083,15 @@ Future<Reference<class IAsyncFile>> Sim2FileSystem::open(const std::string& file
 			// This way, they can both keep up with the time to start the next operation
 			auto diskParameters =
 			    makeReference<DiskParameters>(FLOW_KNOBS->SIM_DISK_IOPS, FLOW_KNOBS->SIM_DISK_BANDWIDTH);
-			f = AsyncFileNonDurable::open(filename,
-			                              actualFilename,
-			                              SimpleFile::open(filename, flags, mode, diskParameters, false),
-			                              diskParameters,
-			                              (flags & IAsyncFile::OPEN_NO_AIO) == 0);
+
+			f = SimpleFile::open(filename, flags, mode, diskParameters, false);
+			if (FLOW_KNOBS->PAGE_WRITE_CHECKSUM_HISTORY > 0) {
+				f = map(f,
+				        [=](Reference<IAsyncFile> r) { return Reference<IAsyncFile>(new AsyncFileWriteChecker(r)); });
+			}
+
+			f = AsyncFileNonDurable::open(
+			    filename, actualFilename, f, diskParameters, (flags & IAsyncFile::OPEN_NO_AIO) == 0);
 
 			machineCache[actualFilename] = UnsafeWeakFutureReference<IAsyncFile>(f);
 		} else {
@@ -2871,8 +3099,6 @@ Future<Reference<class IAsyncFile>> Sim2FileSystem::open(const std::string& file
 		}
 
 		f = AsyncFileDetachable::open(f);
-		if (FLOW_KNOBS->PAGE_WRITE_CHECKSUM_HISTORY > 0)
-			f = map(f, [=](Reference<IAsyncFile> r) { return Reference<IAsyncFile>(new AsyncFileWriteChecker(r)); });
 		if (FLOW_KNOBS->ENABLE_CHAOS_FEATURES)
 			f = map(f, [=](Reference<IAsyncFile> r) { return Reference<IAsyncFile>(new AsyncFileChaos(r)); });
 		if (flags & IAsyncFile::OPEN_ENCRYPTED)

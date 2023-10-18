@@ -32,6 +32,19 @@ find_package(OpenSSL REQUIRED)
 add_compile_options(-DHAVE_OPENSSL)
 
 ################################################################################
+# Swift Support
+################################################################################
+
+if (WITH_SWIFT)
+  message(DEBUG "Building with Swift")
+  add_definitions(-DWITH_SWIFT)
+  set(WITH_SWIFT ON)
+else()
+  message(DEBUG "Not building with Swift")
+  set(WITH_SWIFT OFF)
+endif()
+
+################################################################################
 # Python Bindings
 ################################################################################
 
@@ -152,19 +165,13 @@ endif()
 # RocksDB
 ################################################################################
 
-set(SSD_ROCKSDB_EXPERIMENTAL ON CACHE BOOL "Build with experimental RocksDB support")
+set(WITH_ROCKSDB ON CACHE BOOL "Build with experimental RocksDB support")
 set(PORTABLE_ROCKSDB ON CACHE BOOL "Compile RocksDB in portable mode") # Set this to OFF to compile RocksDB with `-march=native`
 set(ROCKSDB_SSE42 OFF CACHE BOOL "Compile RocksDB with SSE42 enabled")
 set(ROCKSDB_AVX ${USE_AVX} CACHE BOOL "Compile RocksDB with AVX enabled")
 set(ROCKSDB_AVX2 OFF CACHE BOOL "Compile RocksDB with AVX2 enabled")
+set(ROCKSDB_TOOLS OFF CACHE BOOL "Compile RocksDB tools")
 set(WITH_LIBURING OFF CACHE BOOL "Build with liburing enabled") # Set this to ON to include liburing
-# RocksDB is currently enabled by default for GCC but does not build with the latest
-# Clang.
-if (SSD_ROCKSDB_EXPERIMENTAL AND NOT WIN32)
-  set(WITH_ROCKSDB_EXPERIMENTAL ON)
-else()
-  set(WITH_ROCKSDB_EXPERIMENTAL OFF)
-endif()
 
 ################################################################################
 # TOML11
@@ -234,10 +241,11 @@ function(print_components)
   message(STATUS "Build Java Bindings:                  ${WITH_JAVA_BINDING}")
   message(STATUS "Build Go bindings:                    ${WITH_GO_BINDING}")
   message(STATUS "Build Ruby bindings:                  ${WITH_RUBY_BINDING}")
+  message(STATUS "Build Swift (depends on Swift):       ${WITH_SWIFT}")
   message(STATUS "Build Documentation (make html):      ${WITH_DOCUMENTATION}")
   message(STATUS "Build Python sdist (make package):    ${WITH_PYTHON_BINDING}")
   message(STATUS "Configure CTest (depends on Python):  ${WITH_PYTHON}")
-  message(STATUS "Build with RocksDB:                   ${WITH_ROCKSDB_EXPERIMENTAL}")
+  message(STATUS "Build with RocksDB:                   ${WITH_ROCKSDB}")
   message(STATUS "Build with AWS SDK:                   ${WITH_AWS_BACKUP}")
   message(STATUS "=========================================")
 endfunction()

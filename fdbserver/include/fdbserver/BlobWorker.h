@@ -59,6 +59,7 @@ struct GranuleMetadata : NonCopyable, ReferenceCounted<GranuleMetadata> {
 
 	uint64_t bytesInNewDeltaFiles = 0;
 	uint64_t bufferedDeltaBytes = 0;
+	uint16_t newDeltaFileCount = 0;
 
 	// for client to know when it is safe to read a certain version and from where (check waitForVersion)
 	Version bufferedDeltaVersion; // largest delta version in currentDeltas (including empty versions)
@@ -186,6 +187,7 @@ struct BlobWorkerData : NonCopyable, ReferenceCounted<BlobWorkerData> {
 	// FIXME: have cap on this independent of delta file size for larger granules
 	int changeFeedStreamReplyBufferSize = SERVER_KNOBS->BG_DELTA_FILE_TARGET_BYTES / 4;
 
+	Optional<EncryptionAtRestMode> persistedEncryptMode;
 	EncryptionAtRestMode encryptMode;
 	bool buggifyFull = false;
 

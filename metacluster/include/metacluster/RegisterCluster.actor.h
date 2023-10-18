@@ -48,6 +48,9 @@ struct RegisterClusterImpl {
 	ClusterConnectionString connectionString;
 	DataClusterEntry clusterEntry;
 
+	// Loaded from the management cluster
+	int64_t tenantIdPrefix;
+
 	RegisterClusterImpl(Reference<DB> managementDb,
 	                    ClusterName clusterName,
 	                    ClusterConnectionString connectionString,
@@ -57,8 +60,10 @@ struct RegisterClusterImpl {
 	// Store the cluster entry for the new cluster in a registering state
 	ACTOR static Future<Void> registerInManagementCluster(RegisterClusterImpl* self,
 	                                                      Reference<typename DB::TransactionT> tr) {
+		state Future<Optional<int64_t>> tenantIdPrefixFuture = TenantMetadata::tenantIdPrefix().get(tr);
 		state Optional<DataClusterMetadata> dataClusterMetadata = wait(tryGetClusterTransaction(tr, self->clusterName));
 		if (!dataClusterMetadata.present()) {
+			CODE_PROBE(true, "Register new cluster");
 			self->clusterEntry.clusterState = DataClusterState::REGISTERING;
 			self->clusterEntry.allocated = ClusterUsage();
 			self->clusterEntry.id = deterministicRandom()->randomUniqueID();
@@ -70,20 +75,30 @@ struct RegisterClusterImpl {
 			metadata::management::dataClusters().set(tr, self->clusterName, self->clusterEntry);
 			metadata::management::dataClusterConnectionRecords().set(tr, self->clusterName, self->connectionString);
 		} else if (dataClusterMetadata.get().entry.clusterState == DataClusterState::REMOVING) {
+			CODE_PROBE(true, "Registering cluster being removed");
 			throw cluster_removed();
 		} else if (!dataClusterMetadata.get().matchesConfiguration(
 		               DataClusterMetadata(self->clusterEntry, self->connectionString)) ||
 		           dataClusterMetadata.get().entry.clusterState != DataClusterState::REGISTERING) {
+			CODE_PROBE(true, "Cluster already exists");
 			throw cluster_already_exists();
 		} else {
+			CODE_PROBE(true, "Retrying cluster registration");
 			self->clusterEntry = dataClusterMetadata.get().entry;
 		}
+
+		Optional<int64_t> tenantIdPrefix = wait(tenantIdPrefixFuture);
+		ASSERT(tenantIdPrefix.present());
+
+		self->tenantIdPrefix = tenantIdPrefix.get();
 
 		TraceEvent("RegisteringDataCluster")
 		    .detail("ClusterName", self->clusterName)
 		    .detail("ClusterID", self->clusterEntry.id)
 		    .detail("Capacity", self->clusterEntry.capacity)
-		    .detail("ConnectionString", self->connectionString.toString());
+		    .detail("ConnectionString", self->connectionString.toString())
+		    .detail("AutoTenantAssignment",
+		            DataClusterEntry::autoTenantAssignmentToString(self->clusterEntry.autoTenantAssignment));
 
 		return Void();
 	}
@@ -109,10 +124,12 @@ struct RegisterClusterImpl {
 					    existingRegistration.get().name != self->clusterName ||
 					    !existingRegistration.get().matches(self->ctx.metaclusterRegistration.get()) ||
 					    existingRegistration.get().id != self->clusterEntry.id) {
+						CODE_PROBE(true, "Cluster already registered during data cluster configuration");
 						throw cluster_already_registered();
 					} else {
 						// We already successfully registered the cluster with these details, so there's nothing to
 						// do
+						CODE_PROBE(true, "Cluster registration already done on data cluster");
 						return Void();
 					}
 				}
@@ -120,6 +137,7 @@ struct RegisterClusterImpl {
 				// Check if the cluster was removed concurrently
 				bool tombstone = wait(tombstoneFuture);
 				if (tombstone) {
+					CODE_PROBE(true, "Registering cluster removed");
 					throw cluster_removed();
 				}
 
@@ -127,12 +145,14 @@ struct RegisterClusterImpl {
 				std::vector<std::pair<TenantName, int64_t>> existingTenants =
 				    wait(safeThreadFutureToFuture(existingTenantsFuture));
 				if (!existingTenants.empty()) {
+					CODE_PROBE(true, "Registering cluster with tenants");
 					TraceEvent(SevWarn, "CannotRegisterClusterWithTenants").detail("ClusterName", self->clusterName);
 					throw cluster_not_empty();
 				}
 
 				RangeResult existingData = wait(safeThreadFutureToFuture(existingDataFuture));
 				if (!existingData.empty()) {
+					CODE_PROBE(true, "Registering cluster with data", probe::decoration::rare);
 					TraceEvent(SevWarn, "CannotRegisterClusterWithData").detail("ClusterName", self->clusterName);
 					throw cluster_not_empty();
 				}
@@ -141,6 +161,8 @@ struct RegisterClusterImpl {
 				    tr,
 				    self->ctx.metaclusterRegistration.get().toDataClusterRegistration(self->clusterName,
 				                                                                      self->clusterEntry.id));
+
+				TenantMetadata::tenantIdPrefix().set(tr, self->tenantIdPrefix);
 
 				// The data cluster will track the last ID it allocated in this metacluster, so erase any prior tenant
 				// ID state
@@ -171,18 +193,23 @@ struct RegisterClusterImpl {
 		state Optional<DataClusterMetadata> dataClusterMetadata = wait(tryGetClusterTransaction(tr, self->clusterName));
 		if (!dataClusterMetadata.present() ||
 		    dataClusterMetadata.get().entry.clusterState == DataClusterState::REMOVING) {
+			CODE_PROBE(true, "Registering cluster removed");
 			throw cluster_removed();
 		} else if (dataClusterMetadata.get().entry.id != self->clusterEntry.id) {
+			CODE_PROBE(true, "Registering cluster exists with different ID");
 			throw cluster_already_exists();
 		} else if (dataClusterMetadata.get().entry.clusterState == DataClusterState::READY) {
+			CODE_PROBE(true, "Registering cluster already ready");
 			return Void();
 		} else if (dataClusterMetadata.get().entry.clusterState == DataClusterState::RESTORING) {
+			CODE_PROBE(true, "Registering cluster restoring");
 			throw cluster_restoring();
 		} else {
 			ASSERT(dataClusterMetadata.get().entry.clusterState == DataClusterState::REGISTERING);
 			dataClusterMetadata.get().entry.clusterState = DataClusterState::READY;
 
-			if (dataClusterMetadata.get().entry.hasCapacity()) {
+			if (dataClusterMetadata.get().entry.hasCapacity() &&
+			    dataClusterMetadata.get().entry.autoTenantAssignment == AutoTenantAssignment::ENABLED) {
 				metadata::management::clusterCapacityIndex().insert(
 				    tr, Tuple::makeTuple(dataClusterMetadata.get().entry.allocated.numTenantGroups, self->clusterName));
 			}
@@ -194,7 +221,9 @@ struct RegisterClusterImpl {
 		    .detail("ClusterName", self->clusterName)
 		    .detail("ClusterID", self->clusterEntry.id)
 		    .detail("Capacity", dataClusterMetadata.get().entry.capacity)
-		    .detail("ConnectionString", self->connectionString.toString());
+		    .detail("ConnectionString", self->connectionString.toString())
+		    .detail("AutoTenantAssignment",
+		            DataClusterEntry::autoTenantAssignmentToString(self->clusterEntry.autoTenantAssignment));
 
 		return Void();
 	}
@@ -208,6 +237,7 @@ struct RegisterClusterImpl {
 		                                                    5.0);
 
 		if (self->clusterName.startsWith("\xff"_sr)) {
+			CODE_PROBE(true, "Registering cluster with invalid name");
 			throw invalid_cluster_name();
 		}
 
@@ -224,6 +254,7 @@ struct RegisterClusterImpl {
 				// Attempt to unregister the cluster if we could not configure the data cluster. We should only do this
 				// if the data cluster state matches our ID and is in the REGISTERING in case somebody else has
 				// attempted to complete the registration or start a new one.
+				CODE_PROBE(true, "Rollback cluster registration");
 				removeCluster.clusterId = self->clusterEntry.id;
 				removeCluster.legalClusterStates.insert(DataClusterState::REGISTERING);
 				wait(removeCluster.run());

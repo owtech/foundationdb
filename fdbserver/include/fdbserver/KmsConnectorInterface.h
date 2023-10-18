@@ -37,6 +37,7 @@ struct KmsConnectorInterface {
 	RequestStream<struct KmsConnLookupEKsByKeyIdsReq> ekLookupByIds;
 	RequestStream<struct KmsConnLookupEKsByDomainIdsReq> ekLookupByDomainIds;
 	RequestStream<struct KmsConnBlobMetadataReq> blobMetadataReq;
+	RequestStream<struct KmsConnGetKMSStateReq> getKMSStateReq;
 
 	KmsConnectorInterface() {}
 
@@ -54,6 +55,8 @@ struct KmsConnectorInterface {
 			    RequestStream<struct KmsConnLookupEKsByDomainIdsReq>(waitFailure.getEndpoint().getAdjustedEndpoint(2));
 			blobMetadataReq =
 			    RequestStream<struct KmsConnBlobMetadataReq>(waitFailure.getEndpoint().getAdjustedEndpoint(3));
+			getKMSStateReq =
+			    RequestStream<struct KmsConnGetKMSStateReq>(waitFailure.getEndpoint().getAdjustedEndpoint(4));
 		}
 	}
 
@@ -63,6 +66,7 @@ struct KmsConnectorInterface {
 		streams.push_back(ekLookupByIds.getReceiver(TaskPriority::Worker));
 		streams.push_back(ekLookupByDomainIds.getReceiver(TaskPriority::Worker));
 		streams.push_back(blobMetadataReq.getReceiver(TaskPriority::Worker));
+		streams.push_back(getKMSStateReq.getReceiver(TaskPriority::Worker));
 		FlowTransport::transport().addEndpoints(streams);
 	}
 };
@@ -72,6 +76,7 @@ struct EncryptCipherKeyDetailsRef {
 	EncryptCipherDomainId encryptDomainId;
 	EncryptCipherBaseKeyId encryptKeyId;
 	StringRef encryptKey;
+	EncryptCipherKeyCheckValue encryptKCV;
 	Optional<int64_t> refreshAfterSec;
 	Optional<int64_t> expireAfterSec;
 
@@ -81,26 +86,28 @@ struct EncryptCipherKeyDetailsRef {
 	explicit EncryptCipherKeyDetailsRef(Arena& arena,
 	                                    EncryptCipherDomainId dId,
 	                                    EncryptCipherBaseKeyId keyId,
-	                                    StringRef key)
-	  : encryptDomainId(dId), encryptKeyId(keyId), encryptKey(StringRef(arena, key)),
+	                                    StringRef key,
+	                                    EncryptCipherKeyCheckValue keyKCV)
+	  : encryptDomainId(dId), encryptKeyId(keyId), encryptKey(StringRef(arena, key)), encryptKCV(keyKCV),
 	    refreshAfterSec(Optional<int64_t>()), expireAfterSec(Optional<int64_t>()) {}
 	explicit EncryptCipherKeyDetailsRef(Arena& arena,
 	                                    EncryptCipherDomainId dId,
 	                                    EncryptCipherBaseKeyId keyId,
 	                                    StringRef key,
+	                                    EncryptCipherKeyCheckValue keyKCV,
 	                                    Optional<int64_t> refAfterSec,
 	                                    Optional<int64_t> expAfterSec)
-	  : encryptDomainId(dId), encryptKeyId(keyId), encryptKey(StringRef(arena, key)), refreshAfterSec(refAfterSec),
-	    expireAfterSec(expAfterSec) {}
+	  : encryptDomainId(dId), encryptKeyId(keyId), encryptKey(StringRef(arena, key)), encryptKCV(keyKCV),
+	    refreshAfterSec(refAfterSec), expireAfterSec(expAfterSec) {}
 
 	bool operator==(const EncryptCipherKeyDetailsRef& toCompare) {
 		return encryptDomainId == toCompare.encryptDomainId && encryptKeyId == toCompare.encryptKeyId &&
-		       encryptKey.compare(toCompare.encryptKey) == 0;
+		       encryptKey.compare(toCompare.encryptKey) == 0 && encryptKCV == toCompare.encryptKCV;
 	}
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		serializer(ar, encryptDomainId, encryptKeyId, encryptKey, refreshAfterSec, expireAfterSec);
+		serializer(ar, encryptDomainId, encryptKeyId, encryptKey, encryptKCV, refreshAfterSec, expireAfterSec);
 	}
 };
 
@@ -215,6 +222,32 @@ struct KmsConnBlobMetadataReq {
 	template <class Ar>
 	void serialize(Ar& ar) {
 		serializer(ar, domainIds, debugId, reply, arena);
+	}
+};
+
+struct KmsConnGetKMSStateRep {
+	constexpr static FileIdentifier file_identifier = 111862;
+	Arena arena;
+	VectorRef<StringRef> restKMSUrls;
+	bool kmsStable;
+
+	KmsConnGetKMSStateRep() = default;
+
+	template <class Ar>
+	void serialize(Ar& ar) {
+		serializer(ar, restKMSUrls, kmsStable, arena);
+	}
+};
+
+struct KmsConnGetKMSStateReq {
+	constexpr static FileIdentifier file_identifier = 2349929;
+	ReplyPromise<KmsConnGetKMSStateRep> reply;
+
+	KmsConnGetKMSStateReq() = default;
+
+	template <class Ar>
+	void serialize(Ar& ar) {
+		serializer(ar, reply);
 	}
 };
 

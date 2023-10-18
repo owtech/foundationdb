@@ -236,7 +236,7 @@ std::map<std::string, std::string> configForToken(std::string const& mode) {
 			}
 		}
 
-		if (key == "storage_engine" || key == "log_engine") {
+		if (key == "storage_engine" || key == "log_engine" || key == "perpetual_storage_wiggle_engine") {
 			StringRef s = value;
 
 			// Parse as engine_name[:p=v]... to handle future storage engine params
@@ -673,7 +673,10 @@ TEST_CASE("/ManagementAPI/ChangeConfig/TenantAndEncryptMode") {
 	return Void();
 }
 
-ACTOR Future<DatabaseConfiguration> getDatabaseConfiguration(Transaction* tr) {
+ACTOR Future<DatabaseConfiguration> getDatabaseConfiguration(Transaction* tr, bool useSystemPriority) {
+	if (useSystemPriority) {
+		tr->setOption(FDBTransactionOptions::PRIORITY_SYSTEM_IMMEDIATE);
+	}
 	tr->setOption(FDBTransactionOptions::READ_LOCK_AWARE);
 	tr->setOption(FDBTransactionOptions::READ_SYSTEM_KEYS);
 	RangeResult res = wait(tr->getRange(configKeys, CLIENT_KNOBS->TOO_MANY));
@@ -683,11 +686,11 @@ ACTOR Future<DatabaseConfiguration> getDatabaseConfiguration(Transaction* tr) {
 	return config;
 }
 
-ACTOR Future<DatabaseConfiguration> getDatabaseConfiguration(Database cx) {
+ACTOR Future<DatabaseConfiguration> getDatabaseConfiguration(Database cx, bool useSystemPriority) {
 	state Transaction tr(cx);
 	loop {
 		try {
-			DatabaseConfiguration config = wait(getDatabaseConfiguration(&tr));
+			DatabaseConfiguration config = wait(getDatabaseConfiguration(&tr, useSystemPriority));
 			return config;
 		} catch (Error& e) {
 			wait(tr.onError(e));
@@ -1188,7 +1191,8 @@ ACTOR Future<Optional<CoordinatorsResult>> changeQuorumChecker(Transaction* tr,
 	if (g_network->isSimulated()) {
 		int i = 0;
 		int protectedCount = 0;
-		while ((protectedCount < ((desiredCoordinators.size() / 2) + 1)) && (i < desiredCoordinators.size())) {
+		int minimumCoordinators = (desiredCoordinators.size() / 2) + 1;
+		while (protectedCount < minimumCoordinators && i < desiredCoordinators.size()) {
 			auto process = g_simulator->getProcessByAddress(desiredCoordinators[i]);
 			auto addresses = process->addresses;
 
@@ -1204,6 +1208,15 @@ ACTOR Future<Optional<CoordinatorsResult>> changeQuorumChecker(Transaction* tr,
 			TraceEvent("ProtectCoordinator").detail("Address", desiredCoordinators[i]).backtrace();
 			protectedCount++;
 			i++;
+		}
+
+		if (protectedCount < minimumCoordinators) {
+			TraceEvent("NotEnoughReliableCoordinators")
+			    .detail("NumReliable", protectedCount)
+			    .detail("MinimumRequired", minimumCoordinators)
+			    .detail("ConnectionString", conn->toString());
+
+			return CoordinatorsResult::COORDINATOR_UNREACHABLE;
 		}
 	}
 
@@ -2202,6 +2215,7 @@ ACTOR Future<int> setDDMode(Database cx, int mode) {
 		try {
 			tr.setOption(FDBTransactionOptions::LOCK_AWARE);
 			tr.setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
+			tr.setOption(FDBTransactionOptions::PRIORITY_SYSTEM_IMMEDIATE);
 			Optional<Value> old = wait(tr.get(dataDistributionModeKey));
 			if (oldMode < 0) {
 				oldMode = 1;
@@ -2220,6 +2234,8 @@ ACTOR Future<int> setDDMode(Database cx, int mode) {
 			tr.set(dataDistributionModeKey, wr.toValue());
 			if (mode) {
 				// set DDMode to 1 will enable all disabled parts, for instance the SS failure monitors.
+				// set DDMode to 2 is a security mode which disables data moves but allows auditStorage part
+				// DDMode=2 is set when shard location metadata inconsistency is detected
 				Optional<Value> currentHealthyZoneValue = wait(tr.get(healthyZoneKey));
 				if (currentHealthyZoneValue.present() &&
 				    decodeHealthyZoneValue(currentHealthyZoneValue.get()).first == ignoreSSFailuresZoneString) {
@@ -2642,22 +2658,66 @@ ACTOR Future<Void> forceRecovery(Reference<IClusterConnectionRecord> clusterFile
 ACTOR Future<UID> auditStorage(Reference<IClusterConnectionRecord> clusterFile,
                                KeyRange range,
                                AuditType type,
-                               bool async) {
+                               double timeoutSeconds) {
 	state Reference<AsyncVar<Optional<ClusterInterface>>> clusterInterface(new AsyncVar<Optional<ClusterInterface>>);
 	state Future<Void> leaderMon = monitorLeader<ClusterInterface>(clusterFile, clusterInterface);
-	TraceEvent(SevDebug, "ManagementAPIAuditStorageBegin");
-
-	loop {
+	TraceEvent(SevVerbose, "ManagementAPIAuditStorageTrigger").detail("AuditType", type).detail("Range", range);
+	state UID auditId;
+	try {
 		while (!clusterInterface->get().present()) {
 			wait(clusterInterface->onChange());
 		}
-
+		TraceEvent(SevVerbose, "ManagementAPIAuditStorageBegin").detail("AuditType", type).detail("Range", range);
 		TriggerAuditRequest req(type, range);
-		req.async = async;
-		UID auditId = wait(clusterInterface->get().get().triggerAudit.getReply(req));
-		TraceEvent(SevDebug, "ManagementAPIAuditStorageEnd").detail("AuditID", auditId);
-		return auditId;
+		UID auditId_ = wait(timeoutError(clusterInterface->get().get().triggerAudit.getReply(req), timeoutSeconds));
+		auditId = auditId_;
+		TraceEvent(SevVerbose, "ManagementAPIAuditStorageEnd")
+		    .detail("AuditType", type)
+		    .detail("Range", range)
+		    .detail("AuditID", auditId);
+	} catch (Error& e) {
+		TraceEvent(SevInfo, "ManagementAPIAuditStorageError")
+		    .errorUnsuppressed(e)
+		    .detail("AuditType", type)
+		    .detail("Range", range)
+		    .detail("AuditID", auditId);
+		throw e;
 	}
+
+	return auditId;
+}
+
+ACTOR Future<UID> cancelAuditStorage(Reference<IClusterConnectionRecord> clusterFile,
+                                     AuditType type,
+                                     UID auditId,
+                                     double timeoutSeconds) {
+	state Reference<AsyncVar<Optional<ClusterInterface>>> clusterInterface(new AsyncVar<Optional<ClusterInterface>>);
+	state Future<Void> leaderMon = monitorLeader<ClusterInterface>(clusterFile, clusterInterface);
+	TraceEvent(SevVerbose, "ManagementAPICancelAuditStorageTrigger")
+	    .detail("AuditType", type)
+	    .detail("AuditId", auditId);
+	try {
+		while (!clusterInterface->get().present()) {
+			wait(clusterInterface->onChange());
+		}
+		TraceEvent(SevVerbose, "ManagementAPICancelAuditStorageBegin")
+		    .detail("AuditType", type)
+		    .detail("AuditId", auditId);
+		TriggerAuditRequest req(type, auditId);
+		UID auditId_ = wait(timeoutError(clusterInterface->get().get().triggerAudit.getReply(req), timeoutSeconds));
+		ASSERT(auditId_ == auditId);
+		TraceEvent(SevVerbose, "ManagementAPICancelAuditStorageEnd")
+		    .detail("AuditType", type)
+		    .detail("AuditID", auditId);
+	} catch (Error& e) {
+		TraceEvent(SevInfo, "ManagementAPICancelAuditStorageError")
+		    .errorUnsuppressed(e)
+		    .detail("AuditType", type)
+		    .detail("AuditID", auditId);
+		throw e;
+	}
+
+	return auditId;
 }
 
 ACTOR Future<Void> waitForPrimaryDC(Database cx, StringRef dcId) {

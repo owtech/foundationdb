@@ -26,7 +26,7 @@
 #include "fdbclient/CommitProxyInterface.h"
 #include "fdbclient/CommitTransaction.h"
 #include "fdbclient/FDBTypes.h"
-#include "fdbclient/GetEncryptCipherKeys.actor.h"
+#include "fdbclient/GetEncryptCipherKeys.h"
 #include "fdbclient/DatabaseContext.h"
 #include "fdbclient/ManagementAPI.actor.h"
 #include "fdbclient/MetaclusterRegistration.h"
@@ -34,6 +34,7 @@
 #include "fdbclient/TenantManagement.actor.h"
 #include "fdbrpc/simulator.h"
 #include "flow/ActorCollection.h"
+#include "flow/DeterministicRandom.h"
 #include "flow/network.h"
 
 #include "flow/actorcompiler.h" // has to be last include
@@ -223,8 +224,11 @@ Key getApplyKey(Version version, Key backupUid) {
 	return k2.withPrefix(applyLogKeys.begin);
 }
 
-Key getLogKey(Version version, Key backupUid) {
-	int64_t vblock = (version - 1) / CLIENT_KNOBS->LOG_RANGE_BLOCK_SIZE;
+// It's important to keep the hash value consistent with the one used in getLogRanges.
+// Otherwise, the same version will result in different keys.
+Key getLogKey(Version version, Key backupUid, int blockSize) {
+	int64_t vblock = version / blockSize;
+	vblock = vblock * blockSize / CLIENT_KNOBS->LOG_RANGE_BLOCK_SIZE;
 	uint64_t v = bigEndian64(version);
 	uint32_t data = vblock & 0xffffffff;
 	uint8_t hash = (uint8_t)hashlittle(&data, sizeof(uint32_t), 0);
@@ -232,6 +236,23 @@ Key getLogKey(Version version, Key backupUid) {
 	Key k2 = k1.withPrefix(backupUid);
 	return k2.withPrefix(backupLogKeys.begin);
 }
+
+namespace {
+TEST_CASE("/backup/logversion") {
+	std::vector<Version> versions = { 100, 841000000 };
+	for (int i = 0; i < 10; i++) {
+		versions.push_back(deterministicRandom()->randomInt64(0, std::numeric_limits<int32_t>::max()));
+	}
+	Key backupUid = "backupUid0"_sr;
+	int blockSize = deterministicRandom()->coinflip() ? CLIENT_KNOBS->LOG_RANGE_BLOCK_SIZE : 100'000;
+	for (const auto v : versions) {
+		Key k = getLogKey(v, backupUid, blockSize);
+		Standalone<VectorRef<KeyRangeRef>> ranges = getLogRanges(v, v + 1, backupUid, blockSize);
+		ASSERT(ranges[0].contains(k));
+	}
+	return Void();
+}
+} // namespace
 
 Version getLogKeyVersion(Key key) {
 	return bigEndian64(*(int64_t*)(key.begin() + backupLogPrefixBytes + sizeof(UID) + sizeof(uint8_t)));
@@ -371,21 +392,16 @@ ACTOR static Future<Void> decodeBackupLogValue(Arena* arena,
 				state EncryptCipherDomainId domainId = logValue.encryptDomainId();
 				Reference<AsyncVar<ClientDBInfo> const> dbInfo = cx->clientInfo;
 				try {
-					if (CLIENT_KNOBS->ENABLE_CONFIGURABLE_ENCRYPTION) {
-						TextAndHeaderCipherKeys cipherKeys = wait(getEncryptCipherKeys(
-						    dbInfo, logValue.configurableEncryptionHeader(), BlobCipherMetrics::RESTORE));
-						logValue = logValue.decrypt(cipherKeys, tempArena, BlobCipherMetrics::RESTORE);
-					} else {
-						TextAndHeaderCipherKeys cipherKeys = wait(
-						    getEncryptCipherKeys(dbInfo, *logValue.encryptionHeader(), BlobCipherMetrics::RESTORE));
-						logValue = logValue.decrypt(cipherKeys, tempArena, BlobCipherMetrics::RESTORE);
-					}
+					TextAndHeaderCipherKeys cipherKeys = wait(GetEncryptCipherKeys<ClientDBInfo>::getEncryptCipherKeys(
+					    dbInfo, logValue.configurableEncryptionHeader(), BlobCipherMetrics::RESTORE));
+					logValue = logValue.decrypt(cipherKeys, tempArena, BlobCipherMetrics::RESTORE);
 				} catch (Error& e) {
 					// It's possible a tenant was deleted and the encrypt key fetch failed
 					TraceEvent(SevWarnAlways, "MutationLogRestoreEncryptKeyFetchFailed")
 					    .detail("Version", version)
 					    .detail("TenantId", domainId);
-					if (e.code() == error_code_encrypt_keys_fetch_failed) {
+					if (e.code() == error_code_encrypt_keys_fetch_failed ||
+					    e.code() == error_code_encrypt_key_not_found) {
 						CODE_PROBE(true, "mutation log restore encrypt keys not found");
 						consumed += BackupAgentBase::logHeaderSize + len1 + len2;
 						continue;
@@ -625,8 +641,8 @@ ACTOR Future<Void> readCommitted(Database cx,
 				}
 				rangevalue = copy;
 				rangevalue.more = true;
-				// Half of the time wait for this tr to expire so that the next read is at a different version
-				if (deterministicRandom()->random01() < 0.5)
+				// Some of the time wait for this tr to expire so that the next read is at a different version
+				if (deterministicRandom()->random01() < 0.01)
 					wait(delay(6.0));
 			}
 
@@ -712,7 +728,8 @@ ACTOR Future<Void> sendCommitTransactionRequest(CommitTransactionRequest req,
                                                 int* mutationSize,
                                                 PromiseStream<Future<Void>> addActor,
                                                 FlowLock* commitLock,
-                                                PublicRequestStream<CommitTransactionRequest> commit) {
+                                                PublicRequestStream<CommitTransactionRequest> commit,
+                                                bool tenantMapChanging) {
 	Key applyBegin = uid.withPrefix(applyMutationsBeginRange.begin);
 	Key versionKey = BinaryWriter::toValue(newBeginVersion, Unversioned());
 	Key rangeEnd = getApplyKey(newBeginVersion, uid);
@@ -734,7 +751,14 @@ ACTOR Future<Void> sendCommitTransactionRequest(CommitTransactionRequest req,
 
 	*totalBytes += *mutationSize;
 	wait(commitLock->take(TaskPriority::DefaultYield, *mutationSize));
-	addActor.send(commitLock->releaseWhen(success(commit.getReply(req)), *mutationSize));
+	Future<Void> commitAndUnlock = commitLock->releaseWhen(success(commit.getReply(req)), *mutationSize);
+	if (tenantMapChanging) {
+		// If tenant map is changing, we need to wait until it's committed before processing next mutations.
+		// Next muations need the updated tenant map for filtering.
+		wait(commitAndUnlock);
+	} else {
+		addActor.send(commitAndUnlock);
+	}
 	return Void();
 }
 
@@ -811,7 +835,8 @@ ACTOR Future<int> kvMutationLogToTransactions(Database cx,
 					                                  &mutationSize,
 					                                  addActor,
 					                                  commitLock,
-					                                  commit));
+					                                  commit,
+					                                  false));
 					req = CommitTransactionRequest();
 					mutationSize = 0;
 				}
@@ -854,7 +879,8 @@ ACTOR Future<int> kvMutationLogToTransactions(Database cx,
 		                                  &mutationSize,
 		                                  addActor,
 		                                  commitLock,
-		                                  commit));
+		                                  commit,
+		                                  tenantMapChanging));
 		if (endOfStream) {
 			return totalBytes;
 		}
@@ -1373,6 +1399,7 @@ VectorRef<KeyRangeRef> const& getSystemBackupRanges() {
 		systemBackupRanges.push_back_deep(systemBackupRanges.arena(), prefixRange(TenantMetadata::subspace()));
 		systemBackupRanges.push_back_deep(systemBackupRanges.arena(),
 		                                  singleKeyRange(metacluster::metadata::metaclusterRegistration().key));
+		systemBackupRanges.push_back_deep(systemBackupRanges.arena(), blobRangeKeys);
 	}
 
 	return systemBackupRanges;

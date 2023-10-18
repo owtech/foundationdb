@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-"""rocksdb_logtool.py
+"""joshua_logtool.py
 
 Provides uploading/downloading FoundationDB log files to Joshua cluster.
 """
@@ -17,13 +17,13 @@ import tempfile
 import fdb
 import joshua.joshua_model as joshua
 
-from typing import List
+from typing import List, Union
 
 # Defined in SimulatedCluster.actor.cpp:SimulationConfig::setStorageEngine
 ROCKSDB_TRACEEVENT_STRING = ["RocksDBNonDeterminism", "ShardedRocksDBNonDeterminism"]
 
 # e.g. /var/joshua/ensembles/20230221-051349-xiaogesu-c9fc5b230dcd91cf
-ENSEMBLE_ID_REGEXP = re.compile(r"ensembles\/(?P<ensemble_id>[0-9A-Za-z\-_]+)$")
+ENSEMBLE_ID_REGEXP = re.compile(r"ensembles\/(?P<ensemble_id>[0-9A-Za-z\-_\.]+)$")
 
 # e.g. <Test TestUID="1ad90d42-824b-4693-aacf-53de3a6ccd27" Statistics="AAAA
 TEST_UID_REGEXP = re.compile(r"TestUID=\"(?P<uid>[0-9a-fA-F\-]+)\"")
@@ -44,7 +44,7 @@ def _is_rocksdb_test(log_files: List[pathlib.Path]) -> bool:
     return False
 
 
-def _extract_ensemble_id(work_directory: str) -> str:
+def _extract_ensemble_id(work_directory: str) -> Union[str, None]:
     match = ENSEMBLE_ID_REGEXP.search(work_directory)
     if not match:
         return None
@@ -129,10 +129,13 @@ def list_commands(ensemble_id: str):
 
 
 def _setup_args():
-    parser = argparse.ArgumentParser(prog="rocksdb_logtool.py")
+    parser = argparse.ArgumentParser(prog="joshua_logtool.py")
 
     parser.add_argument(
         "--cluster-file", type=str, default=None, help="Joshua FDB cluster file"
+    )
+    parser.add_argument(
+        "--debug", action="store_true", default=False, help="Add debug logging"
     )
 
     subparsers = parser.add_subparsers(help="Possible actions", dest="action")
@@ -181,7 +184,10 @@ def _setup_args():
 def _main():
     args = _setup_args()
 
-    logging.basicConfig(level=logging.INFO)
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
 
     logger.debug(f"Using cluster file {args.cluster_file}")
     joshua.open(args.cluster_file)

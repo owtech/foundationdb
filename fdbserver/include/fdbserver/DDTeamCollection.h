@@ -24,7 +24,7 @@
 #include <sstream>
 #include "fdbclient/FDBOptions.g.h"
 #include "fdbclient/FDBTypes.h"
-#include "fdbclient/KeyBackedTypes.h"
+#include "fdbclient/KeyBackedTypes.actor.h"
 #include "fdbclient/Knobs.h"
 #include "fdbclient/StorageServerInterface.h"
 #include "fdbclient/SystemData.h"
@@ -151,8 +151,8 @@ public:
 	  : isWiggling(isWiggling), isFailed(isFailed), isUndesired(isUndesired), isWrongConfiguration(false),
 	    initialized(true), locality(locality) {}
 	bool isUnhealthy() const { return isFailed || isUndesired; }
-	const char* toString() const {
-		return isFailed ? "Failed" : isUndesired ? "Undesired" : isWiggling ? "Wiggling" : "Healthy";
+	std::string toString() const {
+		return fmt::format("Failed: {}, Undesired: {}, Wiggling: {}", isFailed, isUndesired, isWiggling);
 	}
 
 	bool operator==(ServerStatus const& r) const {
@@ -270,7 +270,8 @@ protected:
 	Reference<AsyncVar<bool>> processingUnhealthy;
 	Future<Void> readyToStart;
 	Future<Void> checkTeamDelay;
-	Optional<double> firstLargeTeamFailure;
+	// A map of teamSize to first failure time
+	std::map<int, Optional<double>> firstLargeTeamFailure;
 	Promise<Void> addSubsetComplete;
 	Future<Void> badTeamRemover;
 	Future<Void> checkInvalidLocalities;
@@ -279,8 +280,15 @@ protected:
 
 	AsyncVar<Optional<Key>> healthyZone;
 	Future<bool> clearHealthyZoneFuture;
-	double pivotAvailableSpaceRatio;
-	double lastPivotAvailableSpaceUpdate;
+
+	// team pivot values
+	struct {
+		double lastPivotValuesUpdate = 0.0;
+
+		double pivotAvailableSpaceRatio = 0.0;
+		double pivotCPU = 100.0;
+		double minTeamAvgCPU = std::numeric_limits<double>::max();
+	} teamPivots;
 
 	int lowestUtilizationTeam;
 	int highestUtilizationTeam;
@@ -304,7 +312,7 @@ protected:
 
 	LocalityMap<UID> machineLocalityMap; // locality info of machines
 
-	Reference<KeyRangeMap<int>> customReplication;
+	Reference<DDConfiguration::RangeConfigMapSnapshot> userRangeConfig;
 	CoalescedKeyRangeMap<bool> underReplication;
 
 	// A mechanism to tell actors that reference a DDTeamCollection object through a direct
@@ -523,7 +531,7 @@ protected:
 
 	// Read storage metadata from database, get the server's storeType, and do necessary updates. Error is caught by the
 	// caller
-	Future<Void> updateStorageMetadata(TCServerInfo* server, bool isTss);
+	Future<Void> updateStorageMetadata(TCServerInfo* server);
 
 	Future<Void> serverGetTeamRequests(TeamCollectionInterface tci);
 
@@ -643,8 +651,14 @@ protected:
 
 	Reference<TCTeamInfo> buildLargeTeam(int size);
 
+	void updateTeamPivotValues();
+
 	// get the min available space ratio from every healthy team and update the pivot ratio `pivotAvailableSpaceRatio`
-	void updatePivotAvailableSpaceRatio();
+	void updateAvailableSpacePivots();
+
+	void updateCpuPivots();
+
+	void updateTeamEligibility();
 
 public:
 	Reference<IDDTxnProcessor> db;

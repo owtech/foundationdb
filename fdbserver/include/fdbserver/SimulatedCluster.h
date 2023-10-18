@@ -29,19 +29,40 @@ void setupAndRun(std::string const& dataFolder,
                  bool const& restoring,
                  std::string const& whitelistBinPath);
 
+enum class SimulationStorageEngine : uint8_t {
+	SSD = 0,
+	MEMORY = 1,
+	RADIX_TREE = 2,
+	REDWOOD = 3,
+	ROCKSDB = 4,
+	SHARDED_ROCKSDB = 5,
+	SIMULATION_STORAGE_ENGINE_INVALID_VALUE
+};
+
 class BasicTestConfig {
 public:
 	int minimumReplication = 0;
 	int logAntiQuorum = -1;
 	// Set true to simplify simulation configs for easier debugging
 	bool simpleConfig = false;
-	Optional<int> desiredTLogCount, commitProxyCount, grvProxyCount, resolverCount, storageEngineType, machineCount,
-	    coordinators;
+	// set to true to force a single region config
+	bool singleRegion = false;
+	Optional<int> desiredTLogCount, commitProxyCount, grvProxyCount, resolverCount, machineCount, coordinators;
+	Optional<SimulationStorageEngine> storageEngineType;
 	// ASAN uses more memory, so adding too many machines can cause OOMs. Tests can set this if they need to lower
 	// machineCount specifically for ASAN. Only has an effect if `machineCount` is set and this is an ASAN build.
 	Optional<int> asanMachineCount;
 };
 
-DatabaseConfiguration generateNormalDatabaseConfiguration(const BasicTestConfig& testConfig);
+struct BasicSimulationConfig {
+	// simulation machine layout
+	int datacenters;
+	int replication_type;
+	int machine_count; // Total, not per DC.
+	int processes_per_machine;
 
+	DatabaseConfiguration db;
+};
+
+BasicSimulationConfig generateBasicSimulationConfig(const BasicTestConfig& testConfig);
 #endif

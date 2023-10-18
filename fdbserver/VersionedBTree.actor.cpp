@@ -20,12 +20,14 @@
 
 #include "fdbclient/CommitTransaction.h"
 #include "fdbclient/FDBTypes.h"
+#include "fdbclient/RandomKeyValueUtils.h"
 #include "fdbclient/Tuple.h"
 #include "fdbrpc/DDSketch.h"
 #include "fdbrpc/simulator.h"
 #include "fdbserver/DeltaTree.h"
 #include "fdbserver/IKeyValueStore.h"
 #include "fdbserver/IPager.h"
+#include "fdbserver/IPageEncryptionKeyProvider.actor.h"
 #include "fdbserver/Knobs.h"
 #include "fdbserver/VersionedBTreeDebug.h"
 #include "fdbserver/WorkerInterface.actor.h"
@@ -40,6 +42,7 @@
 #include "flow/Knobs.h"
 #include "flow/ObjectSerializer.h"
 #include "flow/PriorityMultiLock.actor.h"
+#include "flow/network.h"
 #include "flow/serialize.h"
 #include "flow/Trace.h"
 #include "flow/UnitTest.h"
@@ -1457,6 +1460,7 @@ struct RedwoodMetrics {
 		unsigned int pagerEvictFail;
 		unsigned int btreeLeafPreload;
 		unsigned int btreeLeafPreloadExt;
+		unsigned int readRequestDecryptTimeNS;
 	};
 
 	RedwoodMetrics() {
@@ -1887,7 +1891,6 @@ Future<T> forwardError(Future<T> f, Promise<Void> target) {
 		if (e.code() != error_code_actor_cancelled && target.canBeSet()) {
 			target.sendError(e);
 		}
-
 		throw;
 	}
 }
@@ -2797,7 +2800,8 @@ public:
 	ACTOR static Future<Reference<ArenaPage>> readPhysicalPage(DWALPager* self,
 	                                                           PhysicalPageID pageID,
 	                                                           int priority,
-	                                                           bool header) {
+	                                                           bool header,
+	                                                           PagerEventReasons reason) {
 		ASSERT(!self->memoryOnly);
 
 		state Reference<ArenaPage> page =
@@ -2833,7 +2837,11 @@ public:
 				ArenaPage::EncryptionKey k = wait(self->keyProvider->getEncryptionKey(page->getEncodingHeader()));
 				page->encryptionKey = k;
 			}
-			page->postReadPayload(pageID);
+			double decryptTime = 0;
+			page->postReadPayload(pageID, &decryptTime);
+			if (isReadRequest(reason)) {
+				g_redwoodMetrics.metric.readRequestDecryptTimeNS += int64_t(decryptTime * 1e9);
+			}
 			debug_printf("DWALPager(%s) op=readPhysicalVerified %s ptr=%p\n",
 			             self->filename.c_str(),
 			             toString(pageID).c_str(),
@@ -2866,7 +2874,8 @@ public:
 
 	ACTOR static Future<Reference<ArenaPage>> readPhysicalMultiPage(DWALPager* self,
 	                                                                Standalone<VectorRef<PhysicalPageID>> pageIDs,
-	                                                                int priority) {
+	                                                                int priority,
+	                                                                Optional<PagerEventReasons> reason) {
 		ASSERT(!self->memoryOnly);
 
 		// if (g_network->getCurrentTask() > TaskPriority::DiskRead) {
@@ -2912,7 +2921,12 @@ public:
 				ArenaPage::EncryptionKey k = wait(self->keyProvider->getEncryptionKey(page->getEncodingHeader()));
 				page->encryptionKey = k;
 			}
-			page->postReadPayload(pageIDs.front());
+			double decryptTime = 0;
+			page->postReadPayload(pageIDs.front(), &decryptTime);
+			if (reason.present() && isReadRequest(reason.get())) {
+				g_redwoodMetrics.metric.readRequestDecryptTimeNS += int64_t(decryptTime * 1e9);
+			}
+
 			debug_printf("DWALPager(%s) op=readPhysicalVerified %s ptr=%p bytes=%d\n",
 			             self->filename.c_str(),
 			             toString(pageIDs).c_str(),
@@ -2939,7 +2953,12 @@ public:
 
 	Future<Reference<ArenaPage>> readHeaderPage(PhysicalPageID pageID) {
 		debug_printf("DWALPager(%s) readHeaderPage %s\n", filename.c_str(), toString(pageID).c_str());
-		return readPhysicalPage(this, pageID, ioMaxPriority, true);
+		return readPhysicalPage(this, pageID, ioMaxPriority, true, PagerEventReasons::MetaData);
+	}
+
+	static bool isReadRequest(PagerEventReasons reason) {
+		return reason == PagerEventReasons::PointRead || reason == PagerEventReasons::FetchRange ||
+		       reason == PagerEventReasons::RangeRead || reason == PagerEventReasons::RangePrefetch;
 	}
 
 	// Reads the most recent version of pageID, either previously committed or written using updatePage()
@@ -2969,7 +2988,7 @@ public:
 			}
 			++g_redwoodMetrics.metric.pagerProbeMiss;
 			debug_printf("DWALPager(%s) op=readUncachedMiss %s\n", filename.c_str(), toString(pageID).c_str());
-			return forwardError(readPhysicalPage(this, pageID, priority, false), errorPromise);
+			return forwardError(readPhysicalPage(this, pageID, priority, false, reason), errorPromise);
 		}
 		PageCacheEntry& cacheEntry = pageCache.get(pageID, physicalPageSize, noHit);
 		debug_printf("DWALPager(%s) op=read %s cached=%d reading=%d writing=%d noHit=%d\n",
@@ -2981,7 +3000,7 @@ public:
 		             noHit);
 		if (!cacheEntry.initialized()) {
 			debug_printf("DWALPager(%s) issuing actual read of %s\n", filename.c_str(), toString(pageID).c_str());
-			cacheEntry.readFuture = forwardError(readPhysicalPage(this, pageID, priority, false), errorPromise);
+			cacheEntry.readFuture = forwardError(readPhysicalPage(this, pageID, priority, false, reason), errorPromise);
 			cacheEntry.writeFuture = Void();
 
 			++g_redwoodMetrics.metric.pagerCacheMiss;
@@ -3018,7 +3037,7 @@ public:
 			}
 			++g_redwoodMetrics.metric.pagerProbeMiss;
 			debug_printf("DWALPager(%s) op=readUncachedMiss %s\n", filename.c_str(), toString(pageIDs).c_str());
-			return forwardError(readPhysicalMultiPage(this, pageIDs, priority), errorPromise);
+			return forwardError(readPhysicalMultiPage(this, pageIDs, priority, reason), errorPromise);
 		}
 
 		PageCacheEntry& cacheEntry = pageCache.get(pageIDs.front(), pageIDs.size() * physicalPageSize, noHit);
@@ -3031,7 +3050,7 @@ public:
 		             noHit);
 		if (!cacheEntry.initialized()) {
 			debug_printf("DWALPager(%s) issuing actual read of %s\n", filename.c_str(), toString(pageIDs).c_str());
-			cacheEntry.readFuture = forwardError(readPhysicalMultiPage(this, pageIDs, priority), errorPromise);
+			cacheEntry.readFuture = forwardError(readPhysicalMultiPage(this, pageIDs, priority, reason), errorPromise);
 			cacheEntry.writeFuture = Void();
 
 			++g_redwoodMetrics.metric.pagerCacheMiss;
@@ -3673,8 +3692,9 @@ public:
 			}
 		}
 
-		self->closedPromise.send(Void());
+		Promise<Void> closedPromise = self->closedPromise;
 		delete self;
+		closedPromise.send(Void());
 	}
 
 	void dispose() override { shutdown(this, true); }
@@ -4993,15 +5013,14 @@ public:
 
 	void clear(KeyRangeRef clearedRange) {
 		++m_mutationCount;
+		ASSERT(!clearedRange.empty());
 		// Optimization for single key clears to create just one mutation boundary instead of two
-		if (clearedRange.begin.size() == clearedRange.end.size() - 1 &&
-		    clearedRange.end[clearedRange.end.size() - 1] == 0 && clearedRange.end.startsWith(clearedRange.begin)) {
+		if (clearedRange.singleKeyRange()) {
 			++g_redwoodMetrics.metric.opClear;
 			++g_redwoodMetrics.metric.opClearKey;
 			m_pBuffer->insert(clearedRange.begin).mutation().clearBoundary();
 			return;
 		}
-
 		++g_redwoodMetrics.metric.opClear;
 		MutationBuffer::iterator iBegin = m_pBuffer->insert(clearedRange.begin);
 		MutationBuffer::iterator iEnd = m_pBuffer->insert(clearedRange.end);
@@ -5363,8 +5382,9 @@ public:
 		// This probably shouldn't be called directly (meaning deleting an instance directly) but it should be safe,
 		// it will cancel init and commit and leave the pager alive but with potentially an incomplete set of
 		// uncommitted writes so it should not be committed.
-		m_init.cancel();
 		m_latestCommit.cancel();
+		m_lazyClearActor.cancel();
+		m_init.cancel();
 	}
 
 	Future<Void> commit(Version v) {
@@ -7997,7 +8017,8 @@ public:
 	                     Reference<AsyncVar<ServerDBInfo> const> db,
 	                     Optional<EncryptionAtRestMode> encryptionMode,
 	                     EncodingType encodingType = EncodingType::MAX_ENCODING_TYPE,
-	                     Reference<IPageEncryptionKeyProvider> keyProvider = {})
+	                     Reference<IPageEncryptionKeyProvider> keyProvider = {},
+	                     int64_t pageCacheBytes = 0)
 	  : m_filename(filename), prefetch(SERVER_KNOBS->REDWOOD_KVSTORE_RANGE_PREFETCH) {
 		if (!encryptionMode.present() || encryptionMode.get().isEncryptionEnabled()) {
 			ASSERT(keyProvider.isValid() || db.isValid());
@@ -8006,11 +8027,13 @@ public:
 		int pageSize =
 		    BUGGIFY ? deterministicRandom()->randomInt(1000, 4096 * 4) : SERVER_KNOBS->REDWOOD_DEFAULT_PAGE_SIZE;
 		int extentSize = SERVER_KNOBS->REDWOOD_DEFAULT_EXTENT_SIZE;
-		int64_t pageCacheBytes =
-		    g_network->isSimulated()
-		        ? (BUGGIFY ? deterministicRandom()->randomInt(pageSize, FLOW_KNOBS->BUGGIFY_SIM_PAGE_CACHE_4K)
-		                   : FLOW_KNOBS->SIM_PAGE_CACHE_4K)
-		        : FLOW_KNOBS->PAGE_CACHE_4K;
+		if (pageCacheBytes <= 0) {
+			pageCacheBytes =
+			    g_network->isSimulated()
+			        ? (BUGGIFY ? deterministicRandom()->randomInt(pageSize, FLOW_KNOBS->BUGGIFY_SIM_PAGE_CACHE_4K)
+			                   : FLOW_KNOBS->SIM_PAGE_CACHE_4K)
+			        : FLOW_KNOBS->PAGE_CACHE_4K;
+		}
 		// Rough size of pages to keep in remap cleanup queue before being cleanup.
 		int64_t remapCleanupWindowBytes =
 		    g_network->isSimulated()
@@ -8055,7 +8078,7 @@ public:
 			// Only proceed if the last commit is a success, but don't throw if it's not because shutdown
 			// should not throw.
 			wait(ready(self->m_lastCommit));
-			if (!self->m_lastCommit.isError()) {
+			if (!self->getErrorNoDelay().isReady()) {
 				// Run the destructive sanity check, but don't throw.
 				ErrorOr<Void> err = wait(errorOr(self->m_tree->clearAllAndCheckSanity()));
 				// If the test threw an error, it must be an injected fault or something has gone wrong.
@@ -8077,9 +8100,11 @@ public:
 		else
 			self->m_tree->close();
 		wait(closedFuture);
-		self->m_closed.send(Void());
+
+		Promise<Void> closedPromise = self->m_closed;
 		TraceEvent(SevInfo, "RedwoodShutdownComplete").detail("Filename", self->m_filename).detail("Dispose", dispose);
 		delete self;
+		closedPromise.send(Void());
 	}
 
 	void close() override { shutdown(this, false); }
@@ -8100,7 +8125,9 @@ public:
 
 	StorageBytes getStorageBytes() const override { return m_tree->getStorageBytes(); }
 
-	Future<Void> getError() const override { return delayed(m_errorPromise.getFuture() || m_tree->getError()); };
+	Future<Void> getError() const override { return delayed(getErrorNoDelay()); }
+
+	Future<Void> getErrorNoDelay() const { return m_errorPromise.getFuture() || m_tree->getError(); };
 
 	void clear(KeyRangeRef range, const Arena* arena = 0) override {
 		debug_printf("CLEAR %s\n", printable(range).c_str());
@@ -8257,10 +8284,6 @@ public:
 		}
 
 		result.more = rowLimit == 0 || accumulatedBytes >= byteLimit;
-		if (result.more) {
-			ASSERT(result.size() > 0);
-			result.readThrough = result[result.size() - 1].key;
-		}
 		g_redwoodMetrics.kvSizeReadByGetRange->sample(accumulatedBytes);
 		return result;
 	}
@@ -8321,8 +8344,15 @@ private:
 IKeyValueStore* keyValueStoreRedwoodV1(std::string const& filename,
                                        UID logID,
                                        Reference<AsyncVar<ServerDBInfo> const> db,
-                                       Optional<EncryptionAtRestMode> encryptionMode) {
-	return new KeyValueStoreRedwood(filename, logID, db, encryptionMode);
+                                       Optional<EncryptionAtRestMode> encryptionMode,
+                                       int64_t pageCacheBytes) {
+	return new KeyValueStoreRedwood(filename,
+	                                logID,
+	                                db,
+	                                encryptionMode,
+	                                EncodingType::MAX_ENCODING_TYPE,
+	                                Reference<IPageEncryptionKeyProvider>(),
+	                                pageCacheBytes);
 }
 
 int randomSize(int max) {
@@ -8843,9 +8873,14 @@ void RedwoodMetrics::getFields(TraceEvent* e, std::string* s, bool skipZeroes) {
 		                                               { "PagerRemapFree", metric.pagerRemapFree },
 		                                               { "PagerRemapCopy", metric.pagerRemapCopy },
 		                                               { "PagerRemapSkip", metric.pagerRemapSkip },
+		                                               { "", 0 },
+		                                               { "ReadRequestDecryptTimeNS", metric.readRequestDecryptTimeNS },
 		                                               { "", 0 } };
 
 	double elapsed = now() - startTime;
+	if (elapsed == 0) {
+		return;
+	}
 
 	if (e != nullptr) {
 		for (auto& m : metrics) {
@@ -10063,6 +10098,46 @@ TEST_CASE(":/redwood/pager/ArenaPage") {
 	return Void();
 }
 
+namespace {
+
+RandomKeyGenerator getDefaultKeyGenerator(int maxKeySize) {
+	ASSERT(maxKeySize > 0);
+	RandomKeyGenerator keyGen;
+	const int maxTuples = 10;
+	const int tupleSetNum = deterministicRandom()->randomInt(0, maxTuples);
+	for (int i = 0; i < tupleSetNum && maxKeySize > 0; i++) {
+		int subStrKeySize = deterministicRandom()->randomInt(1, std::min(maxKeySize, 100) + 1);
+		maxKeySize -= subStrKeySize;
+		// setSize determines the RandomKeySet cardinality, it is lower at the beginning and higher at the end.
+		// Also make sure there's enough key for the test to finish.
+		int setSize = deterministicRandom()->randomInt(1, 10) * (maxTuples - tupleSetNum + i);
+		keyGen.addKeyGenerator(std::make_unique<RandomKeySetGenerator>(
+		    RandomIntGenerator(setSize),
+		    RandomStringGenerator(RandomIntGenerator(1, subStrKeySize), RandomIntGenerator(1, 254))));
+	}
+	if (tupleSetNum == 0 || (deterministicRandom()->coinflip() && maxKeySize > 0)) {
+		keyGen.addKeyGenerator(
+		    std::make_unique<RandomStringGenerator>(RandomIntGenerator(1, maxKeySize), RandomIntGenerator(1, 254)));
+	}
+
+	return keyGen;
+}
+
+double getExternalTimeoutThreshold(const UnitTestParameters& params) {
+#if defined(USE_SANITIZER)
+	double ret = params.getDouble("maxRunTimeSanitizerModeWallTime").orDefault(800);
+#else
+	double ret = params.getDouble("maxRunTimeWallTime").orDefault(250);
+#endif
+
+#if VALGRIND
+	ret *= 20;
+#endif
+	return ret;
+}
+
+} // namespace
+
 TEST_CASE("Lredwood/correctness/btree") {
 	g_redwoodMetricsActor = Void(); // Prevent trace event metrics from starting
 	g_redwoodMetrics.clear();
@@ -10087,13 +10162,7 @@ TEST_CASE("Lredwood/correctness/btree") {
 	                                                     : deterministicRandom()->randomInt(4096, 32768));
 	state bool pagerMemoryOnly =
 	    params.getInt("pagerMemoryOnly").orDefault(shortTest && (deterministicRandom()->random01() < .001));
-	state int maxKeySize = params.getInt("maxKeySize").orDefault(deterministicRandom()->randomInt(1, pageSize * 2));
-	state int maxValueSize = params.getInt("maxValueSize").orDefault(randomSize(pageSize * 25));
-	state int maxCommitSize =
-	    params.getInt("maxCommitSize")
-	        .orDefault(shortTest
-	                       ? 1000
-	                       : randomSize((int)std::min<int64_t>((maxKeySize + maxValueSize) * int64_t(20000), 10e6)));
+
 	state double setExistingKeyProbability =
 	    params.getDouble("setExistingKeyProbability").orDefault(deterministicRandom()->random01() * .5);
 	state double clearProbability =
@@ -10128,6 +10197,31 @@ TEST_CASE("Lredwood/correctness/btree") {
 	state int maxColdStarts = params.getInt("maxColdStarts").orDefault(300);
 	// Max number of records in the BTree or the versioned written map to visit
 	state int64_t maxRecordsRead = params.getInt("maxRecordsRead").orDefault(300e6);
+	// Max test runtime (in seconds). After the test runs for this amount of time, the next iteration of the test
+	// loop will terminate.
+	state double maxRunTimeWallTime = getExternalTimeoutThreshold(params);
+
+	state Optional<std::string> keyGenerator = params.get("keyGenerator");
+	state RandomKeyGenerator keyGen;
+	if (keyGenerator.present()) {
+		keyGen.addKeyGenerator(std::make_unique<RandomKeyTupleSetGenerator>(keyGenerator.get()));
+	} else {
+		keyGen = getDefaultKeyGenerator(2 * pageSize);
+	};
+
+	state Optional<std::string> valueGenerator = params.get("valueGenerator");
+	state RandomValueGenerator valGen;
+	if (valueGenerator.present()) {
+		valGen = RandomValueGenerator(valueGenerator.get());
+	} else {
+		valGen = RandomValueGenerator(RandomIntGenerator(0, randomSize(pageSize * 25)), "a..z");
+	}
+
+	state int maxCommitSize =
+	    params.getInt("maxCommitSize")
+	        .orDefault(shortTest ? 1000
+	                             : randomSize((int)std::min<int64_t>(
+	                                   (keyGen.getMaxKeyLen() + valGen.getMaxValLen()) * int64_t(20000), 10e6)));
 
 	state EncodingType encodingType = static_cast<EncodingType>(encoding);
 	state EncryptionAtRestMode encryptionMode =
@@ -10163,8 +10257,8 @@ TEST_CASE("Lredwood/correctness/btree") {
 	printf("domainMode: %d\n", encryptionDomainMode);
 	printf("pageSize: %d\n", pageSize);
 	printf("extentSize: %d\n", extentSize);
-	printf("maxKeySize: %d\n", maxKeySize);
-	printf("maxValueSize: %d\n", maxValueSize);
+	printf("keyGenerator: %s\n", keyGen.toString().c_str());
+	printf("valueGenerator: %s\n", valGen.toString().c_str());
 	printf("maxCommitSize: %d\n", maxCommitSize);
 	printf("setExistingKeyProbability: %f\n", setExistingKeyProbability);
 	printf("clearProbability: %f\n", clearProbability);
@@ -10223,10 +10317,17 @@ TEST_CASE("Lredwood/correctness/btree") {
 	state Future<Void> commit = Void();
 	state int64_t totalPageOps = 0;
 
-	// Check test op limits
+	state double testStartWallTime = timer();
+	state int64_t commitOps = 0;
+
+	// Check test op limits and wall time and commitOps
 	state std::function<bool()> testFinished = [=]() {
+		if (timer() - testStartWallTime >= maxRunTimeWallTime) {
+			noUnseed = true;
+		}
 		return !(totalPageOps < maxPageOps && written.size() < maxVerificationMapEntries &&
-		         totalRecordsRead < maxRecordsRead && coldStarts < maxColdStarts);
+		         totalRecordsRead < maxRecordsRead && coldStarts < maxColdStarts && !noUnseed) &&
+		       commitOps > 0;
 	};
 
 	while (!testFinished()) {
@@ -10237,8 +10338,8 @@ TEST_CASE("Lredwood/correctness/btree") {
 
 		// Sometimes do a clear range
 		if (deterministicRandom()->random01() < clearProbability) {
-			Key start = randomKV(maxKeySize, 1).key;
-			Key end = (deterministicRandom()->random01() < .01) ? keyAfter(start) : randomKV(maxKeySize, 1).key;
+			Key start = keyGen.next();
+			Key end = (deterministicRandom()->random01() < .01) ? keyAfter(start) : keyGen.next();
 
 			// Sometimes replace start and/or end with a close actual (previously used) value
 			if (deterministicRandom()->random01() < clearExistingBoundaryProbability) {
@@ -10315,14 +10416,17 @@ TEST_CASE("Lredwood/correctness/btree") {
 
 			// Sometimes set the range start after the clear
 			if (deterministicRandom()->random01() < clearPostSetProbability) {
-				KeyValue kv = randomKV(0, maxValueSize);
+				KeyValue kv;
 				kv.key = range.begin;
+				kv.value = valGen.next();
 				btree->set(kv);
 				written[std::make_pair(kv.key.toString(), version)] = kv.value.toString();
 			}
 		} else {
 			// Set a key
-			KeyValue kv = randomKV(maxKeySize, maxValueSize);
+			KeyValue kv;
+			kv.key = keyGen.next();
+			kv.value = valGen.next();
 			// Sometimes change key to a close previously used key
 			if (deterministicRandom()->random01() < setExistingKeyProbability) {
 				auto i = keys.upper_bound(kv.key);
@@ -10388,6 +10492,7 @@ TEST_CASE("Lredwood/correctness/btree") {
 				committedVersions.send(v);
 				return Void();
 			});
+			++commitOps;
 
 			if (serialTest) {
 				// Wait for commit, wait for verification, then start new verification

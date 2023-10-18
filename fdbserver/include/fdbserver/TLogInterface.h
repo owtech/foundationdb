@@ -344,7 +344,7 @@ struct TLogQueuingMetricsReply {
 	constexpr static FileIdentifier file_identifier = 12206626;
 	double localTime;
 	int64_t instanceID; // changes if bytesDurable and bytesInput reset
-	int64_t bytesDurable, bytesInput;
+	int64_t bytesDurable{ 0 }, bytesInput{ 0 };
 	StorageBytes storageBytes;
 	Version v; // committed version
 
@@ -432,15 +432,16 @@ struct TrackTLogRecoveryRequest {
 	constexpr static FileIdentifier file_identifier = 6876454;
 
 	// Reply when the TLog's oldest generation start version is higher than this version.
-	Version oldestGenStartVersion;
+	Version oldestGenRecoverAtVersion;
 	ReplyPromise<TrackTLogRecoveryReply> reply;
 
 	TrackTLogRecoveryRequest() {}
-	TrackTLogRecoveryRequest(Version oldestGenStartVersion) : oldestGenStartVersion(oldestGenStartVersion) {}
+	TrackTLogRecoveryRequest(Version oldestGenRecoverAtVersion)
+	  : oldestGenRecoverAtVersion(oldestGenRecoverAtVersion) {}
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		serializer(ar, oldestGenStartVersion, reply);
+		serializer(ar, oldestGenRecoverAtVersion, reply);
 	}
 };
 

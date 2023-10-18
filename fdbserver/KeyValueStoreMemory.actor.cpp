@@ -23,8 +23,9 @@
 #include "fdbclient/Knobs.h"
 #include "fdbclient/Notified.h"
 #include "fdbclient/SystemData.h"
+#include "fdbserver/ServerDBInfo.actor.h"
 #include "fdbserver/DeltaTree.h"
-#include "fdbclient/GetEncryptCipherKeys.actor.h"
+#include "fdbclient/GetEncryptCipherKeys.h"
 #include "fdbserver/IDiskQueue.h"
 #include "fdbserver/IKeyValueContainer.h"
 #include "fdbserver/IKeyValueStore.h"
@@ -276,10 +277,6 @@ public:
 		}
 
 		result.more = rowLimit == 0 || byteLimit <= 0;
-		if (result.more) {
-			ASSERT(result.size() > 0);
-			result.readThrough = result[result.size() - 1].key;
-		}
 		return result;
 	}
 
@@ -526,25 +523,14 @@ private:
 			uint16_t encryptHeaderSize;
 			// TODO: If possible we want to avoid memcpy to the disk log by using the same arena used by IDiskQueue
 			Arena arena;
-			if (CLIENT_KNOBS->ENABLE_CONFIGURABLE_ENCRYPTION) {
-				BlobCipherEncryptHeaderRef headerRef;
-				StringRef cipherText = cipher.encrypt(plaintext, v1.size() + v2.size(), &headerRef, arena);
-				Standalone<StringRef> headerRefStr = BlobCipherEncryptHeaderRef::toStringRef(headerRef);
-				encryptHeaderSize = headerRefStr.size();
-				ASSERT(encryptHeaderSize > 0);
-				log->push(StringRef((const uint8_t*)&encryptHeaderSize, sizeof(encryptHeaderSize)));
-				log->push(headerRefStr);
-				log->push(cipherText);
-			} else {
-				BlobCipherEncryptHeader cipherHeader;
-				StringRef ciphertext =
-				    cipher.encrypt(plaintext, v1.size() + v2.size(), &cipherHeader, arena)->toStringRef();
-				encryptHeaderSize = BlobCipherEncryptHeader::headerSize;
-				ASSERT(encryptHeaderSize > 0);
-				log->push(StringRef((const uint8_t*)&encryptHeaderSize, sizeof(encryptHeaderSize)));
-				log->push(StringRef((const uint8_t*)&cipherHeader, encryptHeaderSize));
-				log->push(ciphertext);
-			}
+			BlobCipherEncryptHeaderRef headerRef;
+			StringRef cipherText = cipher.encrypt(plaintext, v1.size() + v2.size(), &headerRef, arena);
+			Standalone<StringRef> headerRefStr = BlobCipherEncryptHeaderRef::toStringRef(headerRef);
+			encryptHeaderSize = headerRefStr.size();
+			ASSERT(encryptHeaderSize > 0);
+			log->push(StringRef((const uint8_t*)&encryptHeaderSize, sizeof(encryptHeaderSize)));
+			log->push(headerRefStr);
+			log->push(cipherText);
 		}
 		return log->push("\x01"_sr); // Changes here should be reflected in OP_DISK_OVERHEAD
 	}
@@ -596,25 +582,15 @@ private:
 		}
 		state Arena arena;
 		state StringRef plaintext;
-		if (CLIENT_KNOBS->ENABLE_CONFIGURABLE_ENCRYPTION) {
-			state BlobCipherEncryptHeaderRef cipherHeaderRef =
-			    BlobCipherEncryptHeaderRef::fromStringRef(StringRef(data.begin(), encryptHeaderSize));
-			TextAndHeaderCipherKeys cipherKeys =
-			    wait(getEncryptCipherKeys(self->db, cipherHeaderRef, BlobCipherMetrics::KV_MEMORY));
-			DecryptBlobCipherAes256Ctr cipher(cipherKeys.cipherTextKey,
-			                                  cipherKeys.cipherHeaderKey,
-			                                  cipherHeaderRef.getIV(),
-			                                  BlobCipherMetrics::KV_MEMORY);
-			plaintext = cipher.decrypt(data.begin() + encryptHeaderSize, h.len1 + h.len2, cipherHeaderRef, arena);
-		} else {
-			state BlobCipherEncryptHeader cipherHeader = *(BlobCipherEncryptHeader*)data.begin();
-			TextAndHeaderCipherKeys cipherKeys =
-			    wait(getEncryptCipherKeys(self->db, cipherHeader, BlobCipherMetrics::KV_MEMORY));
-			DecryptBlobCipherAes256Ctr cipher(
-			    cipherKeys.cipherTextKey, cipherKeys.cipherHeaderKey, cipherHeader.iv, BlobCipherMetrics::KV_MEMORY);
-			plaintext =
-			    cipher.decrypt(data.begin() + encryptHeaderSize, h.len1 + h.len2, cipherHeader, arena)->toStringRef();
-		}
+		state BlobCipherEncryptHeaderRef cipherHeaderRef =
+		    BlobCipherEncryptHeaderRef::fromStringRef(StringRef(data.begin(), encryptHeaderSize));
+		TextAndHeaderCipherKeys cipherKeys = wait(GetEncryptCipherKeys<ServerDBInfo>::getEncryptCipherKeys(
+		    self->db, cipherHeaderRef, BlobCipherMetrics::KV_MEMORY));
+		DecryptBlobCipherAes256Ctr cipher(cipherKeys.cipherTextKey,
+		                                  cipherKeys.cipherHeaderKey,
+		                                  cipherHeaderRef.getIV(),
+		                                  BlobCipherMetrics::KV_MEMORY);
+		plaintext = cipher.decrypt(data.begin() + encryptHeaderSize, h.len1 + h.len2, cipherHeaderRef, arena);
 		return Standalone<StringRef>(plaintext, arena);
 	}
 
@@ -1051,8 +1027,8 @@ private:
 	}
 
 	ACTOR static Future<Void> updateCipherKeys(KeyValueStoreMemory* self) {
-		TextAndHeaderCipherKeys cipherKeys =
-		    wait(getLatestSystemEncryptCipherKeys(self->db, BlobCipherMetrics::KV_MEMORY));
+		TextAndHeaderCipherKeys cipherKeys = wait(GetEncryptCipherKeys<ServerDBInfo>::getLatestSystemEncryptCipherKeys(
+		    self->db, BlobCipherMetrics::KV_MEMORY));
 		self->cipherKeys = cipherKeys;
 		return Void();
 	}

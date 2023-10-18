@@ -394,11 +394,13 @@ public:
 	                                     Version* end,
 	                                     Version targetVersion) {
 		auto i = logs.begin();
-		if (outLogs != nullptr)
+		if (outLogs != nullptr) {
 			outLogs->push_back(*i);
+			++i; // skip the first file
+		}
 
 		// Add logs to restorable logs set until continuity is broken OR we reach targetVersion
-		while (++i != logs.end()) {
+		while (i != logs.end()) {
 			if (i->beginVersion > *end || i->beginVersion > targetVersion)
 				break;
 
@@ -408,6 +410,7 @@ public:
 					outLogs->push_back(*i);
 				*end = i->endVersion;
 			}
+			++i;
 		}
 	}
 
@@ -1503,7 +1506,8 @@ Future<Void> BackupContainerFileSystem::createTestEncryptionKeyFile(std::string 
 Reference<BackupContainerFileSystem> BackupContainerFileSystem::openContainerFS(
     const std::string& url,
     const Optional<std::string>& proxy,
-    const Optional<std::string>& encryptionKeyFileName) {
+    const Optional<std::string>& encryptionKeyFileName,
+    bool isBackup) {
 	static std::map<std::string, Reference<BackupContainerFileSystem>> m_cache;
 
 	Reference<BackupContainerFileSystem>& r = m_cache[url];
@@ -1527,7 +1531,8 @@ Reference<BackupContainerFileSystem> BackupContainerFileSystem::openContainerFS(
 			for (auto c : resource)
 				if (!isalnum(c) && c != '_' && c != '-' && c != '.' && c != '/')
 					throw backup_invalid_url();
-			r = makeReference<BackupContainerS3BlobStore>(bstore, resource, backupParams, encryptionKeyFileName);
+			r = makeReference<BackupContainerS3BlobStore>(
+			    bstore, resource, backupParams, encryptionKeyFileName, isBackup);
 		}
 #ifdef BUILD_AZURE_BACKUP
 		else if (u.startsWith("azure://"_sr)) {

@@ -34,6 +34,53 @@
 
 #include <limits>
 
+#define DEBUG_ENCRYPT_KEY_PROXY false
+
+struct KMSHealthStatus {
+	constexpr static FileIdentifier file_identifier = 2378149;
+	bool canConnectToKms;
+	bool canConnectToEKP;
+	double lastUpdatedTS;
+	std::string kmsConnectorType;
+	std::vector<std::string> restKMSUrls;
+	bool kmsStable = true;
+
+	KMSHealthStatus() : canConnectToKms(false), canConnectToEKP(false), lastUpdatedTS(-1), kmsStable(true) {}
+
+	bool operator==(const KMSHealthStatus& other) {
+		return canConnectToKms == other.canConnectToKms && canConnectToEKP == other.canConnectToEKP;
+	}
+
+	bool healthnessChanged(const KMSHealthStatus& other) {
+		return canConnectToKms != other.canConnectToKms || canConnectToEKP != other.canConnectToEKP;
+	}
+
+	std::string toString() const {
+		std::stringstream ss;
+		ss << "CanConnectToKms(" << canConnectToKms << ")"
+		   << ", CanConnectToEKP(" << canConnectToEKP << ")"
+		   << ", LastUpdatedTS(" << lastUpdatedTS << ")"
+		   << ", KMSConnectorType(" << kmsConnectorType << ")"
+		   << ", RESTKmsUrls(";
+		bool firstUrl = true;
+		for (const auto& url : restKMSUrls) {
+			if (!firstUrl) {
+				ss << ", ";
+			}
+			ss << url;
+			firstUrl = false;
+		}
+
+		ss << "), KmsStable(" << kmsStable << ")";
+		return ss.str();
+	}
+
+	template <class Ar>
+	void serialize(Ar& ar) {
+		serializer(ar, canConnectToKms, canConnectToEKP, lastUpdatedTS, kmsConnectorType, restKMSUrls, kmsStable);
+	}
+};
+
 struct EncryptKeyProxyInterface {
 	constexpr static FileIdentifier file_identifier = 1303419;
 	struct LocalityData locality;
@@ -43,6 +90,7 @@ struct EncryptKeyProxyInterface {
 	RequestStream<struct EKPGetBaseCipherKeysByIdsRequest> getBaseCipherKeysByIds;
 	RequestStream<struct EKPGetLatestBaseCipherKeysRequest> getLatestBaseCipherKeys;
 	RequestStream<struct EKPGetLatestBlobMetadataRequest> getLatestBlobMetadata;
+	RequestStream<struct EncryptKeyProxyHealthStatusRequest> getHealthStatus;
 
 	EncryptKeyProxyInterface() {}
 	explicit EncryptKeyProxyInterface(const struct LocalityData& loc, UID id) : locality(loc), myId(id) {}
@@ -70,6 +118,8 @@ struct EncryptKeyProxyInterface {
 			    waitFailure.getEndpoint().getAdjustedEndpoint(3));
 			getLatestBlobMetadata =
 			    RequestStream<struct EKPGetLatestBlobMetadataRequest>(waitFailure.getEndpoint().getAdjustedEndpoint(4));
+			getHealthStatus = RequestStream<struct EncryptKeyProxyHealthStatusRequest>(
+			    waitFailure.getEndpoint().getAdjustedEndpoint(5));
 		}
 	}
 
@@ -80,6 +130,7 @@ struct EncryptKeyProxyInterface {
 		streams.push_back(getBaseCipherKeysByIds.getReceiver(TaskPriority::Worker));
 		streams.push_back(getLatestBaseCipherKeys.getReceiver(TaskPriority::Worker));
 		streams.push_back(getLatestBlobMetadata.getReceiver(TaskPriority::Worker));
+		streams.push_back(getHealthStatus.getReceiver(TaskPriority::Worker));
 		FlowTransport::transport().addEndpoints(streams);
 	}
 };
@@ -98,25 +149,53 @@ struct HaltEncryptKeyProxyRequest {
 	}
 };
 
+struct EncryptKeyProxyHealthStatusRequest {
+	constexpr static FileIdentifier file_identifier = 2378139;
+	ReplyPromise<KMSHealthStatus> reply;
+
+	EncryptKeyProxyHealthStatusRequest() {}
+
+	template <class Ar>
+	void serialize(Ar& ar) {
+		serializer(ar, reply);
+	}
+};
+
 struct EKPBaseCipherDetails {
 	constexpr static FileIdentifier file_identifier = 2149615;
 	int64_t encryptDomainId;
 	uint64_t baseCipherId;
 	Standalone<StringRef> baseCipherKey;
+	EncryptCipherKeyCheckValue baseCipherKCV;
 	int64_t refreshAt;
 	int64_t expireAt;
 
 	EKPBaseCipherDetails()
-	  : encryptDomainId(0), baseCipherId(0), baseCipherKey(Standalone<StringRef>()), refreshAt(0), expireAt(-1) {}
-	explicit EKPBaseCipherDetails(int64_t dId, uint64_t id, Standalone<StringRef> key)
-	  : encryptDomainId(dId), baseCipherId(id), baseCipherKey(key), refreshAt(std::numeric_limits<int64_t>::max()),
-	    expireAt(std::numeric_limits<int64_t>::max()) {}
-	explicit EKPBaseCipherDetails(int64_t dId, uint64_t id, Standalone<StringRef> key, int64_t refAt, int64_t expAt)
-	  : encryptDomainId(dId), baseCipherId(id), baseCipherKey(key), refreshAt(refAt), expireAt(expAt) {}
+	  : encryptDomainId(0), baseCipherId(0), baseCipherKey(Standalone<StringRef>()), baseCipherKCV(0), refreshAt(0),
+	    expireAt(-1) {}
+	explicit EKPBaseCipherDetails(int64_t dId,
+	                              uint64_t id,
+	                              Standalone<StringRef> key,
+	                              EncryptCipherKeyCheckValue cipherKCV)
+	  : encryptDomainId(dId), baseCipherId(id), baseCipherKey(key), baseCipherKCV(cipherKCV),
+	    refreshAt(std::numeric_limits<int64_t>::max()), expireAt(std::numeric_limits<int64_t>::max()) {}
+	explicit EKPBaseCipherDetails(int64_t dId,
+	                              uint64_t id,
+	                              Standalone<StringRef> key,
+	                              EncryptCipherKeyCheckValue cipherKCV,
+	                              int64_t refAt,
+	                              int64_t expAt)
+	  : encryptDomainId(dId), baseCipherId(id), baseCipherKey(key), baseCipherKCV(cipherKCV), refreshAt(refAt),
+	    expireAt(expAt) {}
+
+	bool operator==(const EKPBaseCipherDetails& r) const {
+		return encryptDomainId == r.encryptDomainId && baseCipherId == r.baseCipherId && refreshAt == r.refreshAt &&
+		       expireAt == r.expireAt && baseCipherKey.toString() == r.baseCipherKey.toString();
+	}
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		serializer(ar, encryptDomainId, baseCipherId, baseCipherKey, refreshAt, expireAt);
+		serializer(ar, encryptDomainId, baseCipherId, baseCipherKey, baseCipherKCV, refreshAt, expireAt);
 	}
 };
 

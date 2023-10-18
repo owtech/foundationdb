@@ -26,8 +26,8 @@
 #include "fdbclient/BackupContainer.h"
 #include "fdbclient/BlobGranuleCommon.h"
 #include "fdbclient/BlobGranuleFiles.h"
-#include "fdbserver/Knobs.h"
 #include "flow/Arena.h"
+#include "flow/CodeProbe.h"
 #include "flow/FastRef.h"
 #include "flow/Trace.h"
 #include "flow/flow.h"
@@ -38,6 +38,8 @@
 #include "fdbclient/SystemData.h"
 #include "fdbclient/BackupContainerFileSystem.h"
 #include "fdbclient/BlobGranuleReader.actor.h"
+#include "fdbclient/ManagementAPI.actor.h"
+#include "fdbserver/Knobs.h"
 #include "fdbserver/BlobGranuleServerCommon.actor.h"
 
 #include "flow/actorcompiler.h" // has to be last include
@@ -143,7 +145,6 @@ public:
 			ASSERT(iter->seqNo == seqNo);
 			if (iter->segmentNo != nextSegmentNo) {
 				TraceEvent("BlobRestoreMissingSegment")
-				    .detail("Url", SERVER_KNOBS->BLOB_RESTORE_MANIFEST_URL)
 				    .detail("Epoch", epoch)
 				    .detail("SeqNo", epoch)
 				    .detail("Expected", nextSegmentNo)
@@ -174,6 +175,9 @@ public:
 			// return the manifest if it's valid
 			BlobManifest manifest(result);
 			if (manifest.isValid()) {
+				TraceEvent("BlobRestoreManifest")
+				    .detail("FileName", firstFile.fileName)
+				    .detail("Count", manifest.totalSegments());
 				return manifest;
 			} else {
 				dprint("Skip corrupted manifest {} {}\n", firstFile.epoch, firstFile.seqNo);
@@ -182,23 +186,25 @@ public:
 		}
 
 		dprint("No valid blob manifest files\n");
-		TraceEvent("BlobRestoreMissingManifest").detail("Url", SERVER_KNOBS->BLOB_RESTORE_MANIFEST_URL);
+		TraceEvent("BlobRestoreMissingManifest").log();
 		throw blob_restore_missing_manifest();
 	}
 
 	// Delete all files of oldest manifest
-	static void deleteOldest(const std::vector<BlobManifestFile>& allFiles,
-	                         Reference<BackupContainerFileSystem> container) {
+	ACTOR static Future<Void> deleteOldest(std::vector<BlobManifestFile> allFiles,
+	                                       Reference<BackupContainerFileSystem> container) {
 		if (allFiles.empty()) {
-			return;
+			return Void();
 		}
-		int64_t epoch = allFiles.back().epoch;
-		int64_t seqNo = allFiles.back().seqNo;
+		state int64_t epoch = allFiles.back().epoch;
+		state int64_t seqNo = allFiles.back().seqNo;
 		for (auto& f : allFiles) {
 			if (f.epoch == epoch && f.seqNo == seqNo) {
-				container->deleteFile(f.fileName);
+				wait(container->deleteFile(f.fileName));
 			}
 		}
+		TraceEvent("BlobManfiestDelete").detail("Epoch", epoch).detail("SeqNo", seqNo);
+		return Void();
 	}
 
 	// Count how many manifests
@@ -226,9 +232,12 @@ private:
 // Splitter could write manifest content into a collection of files with bounded # rows
 class BlobManifestFileSplitter : public ReferenceCounted<BlobManifestFileSplitter> {
 public:
-	BlobManifestFileSplitter(Reference<BlobConnectionProvider> blobConn, int64_t epoch, int64_t seqNo)
+	BlobManifestFileSplitter(Reference<BlobConnectionProvider> blobConn,
+	                         int64_t epoch,
+	                         int64_t seqNo,
+	                         Optional<BlobGranuleCipherKeysCtx> cipherKeysCtx)
 	  : segmentNo_(1), blobConn_(blobConn), epoch_(epoch), seqNo_(seqNo), closed_(false), totalRows_(0),
-	    logicalSize_(0), totalBytes_(0) {}
+	    logicalSize_(0), totalBytes_(0), cipherKeysCtx_(cipherKeysCtx) {}
 
 	// Append a new row to the splitter
 	void append(KeyValueRef row) {
@@ -236,6 +245,18 @@ public:
 		rows_.push_back_deep(rows_.arena(), row);
 		++totalRows_;
 		logicalSize_ += row.expectedSize();
+		if (logicalSize_ > SERVER_KNOBS->BLOB_RESTORE_MANIFEST_FILE_MAX_SIZE) {
+			flushNext();
+		}
+	}
+
+	// Append rows to the splitter
+	void append(RangeResult rows) {
+		ASSERT(!closed_);
+		rows_.arena().dependsOn(rows.arena());
+		rows_.append(rows_.arena(), rows.begin(), rows.size());
+		totalRows_ += rows.size();
+		logicalSize_ += rows.expectedSize();
 		if (logicalSize_ > SERVER_KNOBS->BLOB_RESTORE_MANIFEST_FILE_MAX_SIZE) {
 			flushNext();
 		}
@@ -275,12 +296,11 @@ private:
 	void flushNext() {
 		std::string fname = fileName(segmentNo_);
 		Optional<CompressionFilter> compressionFilter;
-		Optional<BlobGranuleCipherKeysCtx> cipherKeysCtx;
 		Value bytes = serializeChunkedSnapshot(StringRef(fname),
 		                                       rows_,
 		                                       SERVER_KNOBS->BG_SNAPSHOT_FILE_TARGET_CHUNK_BYTES,
 		                                       compressionFilter,
-		                                       cipherKeysCtx,
+		                                       cipherKeysCtx_,
 		                                       false);
 		pendingFutures_.push_back(writeToFile(this, bytes, fname));
 		TraceEvent("BlobManifestFile").detail("Rows", rows_.size()).detail("SegNo", segmentNo_);
@@ -297,6 +317,10 @@ private:
 		tailer.totalRows = totalRows_;
 		tailer.totalSegments = segmentNo_ - 1;
 		tailer.totalBytes = totalBytes_;
+		if (cipherKeysCtx_.present()) {
+			tailer.cipherKeysMeta = BlobGranuleCipherKeysCtx::toCipherKeysMeta(cipherKeysCtx_.get());
+		}
+
 		Value bytes = BinaryWriter::toValue(tailer, IncludeVersion(ProtocolVersion::withBlobGranuleFile()));
 		std::string fname = fileName(0);
 		pendingFutures_.push_back(writeToFile(this, bytes, fname));
@@ -341,15 +365,42 @@ private:
 	int64_t totalBytes_;
 	std::vector<Future<Void>> pendingFutures_;
 	bool closed_;
+	Optional<BlobGranuleCipherKeysCtx> cipherKeysCtx_;
 };
+
+ACTOR Future<BlobGranuleCipherKeysCtx> getLatestManifestCipherKeys(Reference<AsyncVar<ServerDBInfo> const> dbInfo,
+                                                                   Arena* arena) {
+	state BlobGranuleCipherKeysCtx cipherKeysCtx;
+	std::unordered_map<EncryptCipherDomainId, Reference<BlobCipherKey>> domainKeyMap =
+	    wait(GetEncryptCipherKeys<ServerDBInfo>::getLatestEncryptCipherKeys(
+	        dbInfo, { FDB_DEFAULT_ENCRYPT_DOMAIN_ID }, BlobCipherMetrics::BLOB_GRANULE));
+
+	auto domainKeyItr = domainKeyMap.find(FDB_DEFAULT_ENCRYPT_DOMAIN_ID);
+	ASSERT(domainKeyItr != domainKeyMap.end());
+	cipherKeysCtx.textCipherKey = BlobGranuleCipherKey::fromBlobCipherKey(domainKeyItr->second, *arena);
+
+	TextAndHeaderCipherKeys cipherKeys = wait(
+	    GetEncryptCipherKeys<ServerDBInfo>::getLatestSystemEncryptCipherKeys(dbInfo, BlobCipherMetrics::BLOB_GRANULE));
+	ASSERT(cipherKeys.cipherHeaderKey.isValid());
+	cipherKeysCtx.headerCipherKey = BlobGranuleCipherKey::fromBlobCipherKey(cipherKeys.cipherHeaderKey, *arena);
+
+	cipherKeysCtx.ivRef = makeString(AES_256_IV_LENGTH, *arena);
+	deterministicRandom()->randomBytes(mutateString(cipherKeysCtx.ivRef), AES_256_IV_LENGTH);
+
+	return cipherKeysCtx;
+}
 
 // This class dumps blob manifest to external blob storage.
 class BlobManifestDumper : public ReferenceCounted<BlobManifestDumper> {
 public:
-	BlobManifestDumper(Database& db, Reference<BlobConnectionProvider> blobConn, int64_t epoch, int64_t seqNo)
-	  : db_(db), blobConn_(blobConn) {
-		fileSplitter_ = makeReference<BlobManifestFileSplitter>(blobConn, epoch, seqNo);
-	}
+	BlobManifestDumper(Database& db,
+	                   Reference<AsyncVar<ServerDBInfo> const> dbInfo,
+	                   Reference<BlobConnectionProvider> blobConn,
+	                   int64_t epoch,
+	                   int64_t seqNo,
+	                   bool encryptionEnabled)
+	  : db_(db), blobConn_(blobConn), epoch_(epoch), seqNo_(seqNo), dbInfo_(dbInfo),
+	    encryptionEnabled_(encryptionEnabled) {}
 	virtual ~BlobManifestDumper() {}
 
 	// Execute the dumper
@@ -367,17 +418,21 @@ public:
 private:
 	// Read system keys and write to manifest files
 	ACTOR static Future<int64_t> dump(Reference<BlobManifestDumper> self) {
-		state Reference<BlobManifestFileSplitter> splitter = self->fileSplitter_;
+		state Arena arena;
+		state Optional<BlobGranuleCipherKeysCtx> cipherKeysCtx;
+		if (self->encryptionEnabled_) {
+			BlobGranuleCipherKeysCtx ctx = wait(getLatestManifestCipherKeys(self->dbInfo_, &arena));
+			cipherKeysCtx = ctx;
+		}
+
+		state Reference<BlobManifestFileSplitter> splitter =
+		    makeReference<BlobManifestFileSplitter>(self->blobConn_, self->epoch_, self->seqNo_, cipherKeysCtx);
 		state Transaction tr(self->db_);
+
 		loop {
-			tr.setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
-			tr.setOption(FDBTransactionOptions::PRIORITY_SYSTEM_IMMEDIATE);
-			tr.setOption(FDBTransactionOptions::LOCK_AWARE);
 			try {
-				state std::vector<KeyRangeRef> ranges = {
+				std::vector<KeyRangeRef> ranges = {
 					blobGranuleMappingKeys, // Map granule to workers. Track the active granules
-					blobGranuleHistoryKeys, // Map granule to its parents and parent bundaries. for time-travel read
-					blobGranuleFileKeys, // Map a granule version to granule files. Track files for a granule
 					blobRangeKeys // Key ranges managed by blob
 				};
 				// tenant metadata
@@ -386,42 +441,165 @@ private:
 				}
 				// last updated version for table metadata
 				ranges.push_back(KeyRangeRef(metadataVersionKey, metadataVersionKeyEnd));
+				state Version readVersion = wait(dumpRanges(self, splitter, ranges));
 
-				for (auto range : ranges) {
-					state GetRangeLimits limits(SERVER_KNOBS->BLOB_MANIFEST_RW_ROWS);
-					limits.minRows = 0;
-					state KeySelectorRef begin = firstGreaterOrEqual(range.begin);
-					state KeySelectorRef end = firstGreaterOrEqual(range.end);
-					loop {
-						state RangeResult result = wait(tr.getRange(begin, end, limits, Snapshot::True));
-						for (auto& row : result) {
-							splitter->append(KeyValueRef(row.key, row.value));
-						}
-						if (!result.more) {
-							break;
-						}
-						if (result.readThrough.present()) {
-							begin = firstGreaterOrEqual(result.readThrough.get());
-						} else {
-							begin = firstGreaterThan(result.back().key);
-						}
-					}
-				}
-
-				// store the read vesion
-				Version readVersion = wait(tr.getReadVersion());
-				Value versionEncoded = BinaryWriter::toValue(readVersion, Unversioned());
-				splitter->append(KeyValueRef(blobManifestVersionKey, versionEncoded));
+				// blobGranuleHistoryKeys - Map granule to its parents and parent bundaries. for time-travel read
+				wait(dumpRange(self, splitter, blobGranuleHistoryKeys, [=](KeyValueRef row) {
+					return shouldDumpBlobGranuleHistoryKey(row, readVersion);
+				}));
+				// blobGranuleFileKeys - Map a granule version to granule files. Track files for a granule
+				wait(dumpRange(self, splitter, blobGranuleFileKeys, [=](KeyValueRef row) {
+					return shouldDumpBlobGranuleFileKey(row, readVersion);
+				}));
 
 				// last flush for in-memory data
 				wait(BlobManifestFileSplitter::close(splitter));
+				TraceEvent("BlobManifestDump")
+				    .detail("Size", splitter->totalBytes())
+				    .detail("Encrypted", self->encryptionEnabled_)
+				    .detail("Version", readVersion);
 				return splitter->totalBytes();
 			} catch (Error& e) {
-				TraceEvent("BlobManfiestDumpError").error(e).log();
+				TraceEvent("BlobManifestDumpError").error(e).log();
 				dprint("Manifest dumping error {}\n", e.what());
-				wait(tr.onError(e));
 				wait(BlobManifestFileSplitter::reset(splitter));
+				// wait to avoid spinning
+				wait(delay(SERVER_KNOBS->BLOB_MANIFEST_RETRY_INTERVAL));
 			}
+		}
+	}
+
+	// Read ranges and append to splitter. Assume the ranges can be processed within single transaction
+	ACTOR static Future<Version> dumpRanges(Reference<BlobManifestDumper> self,
+	                                        Reference<BlobManifestFileSplitter> splitter,
+	                                        std::vector<KeyRangeRef> ranges) {
+		state Transaction tr(self->db_);
+		try {
+			tr.setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
+			tr.setOption(FDBTransactionOptions::PRIORITY_SYSTEM_IMMEDIATE);
+			tr.setOption(FDBTransactionOptions::LOCK_AWARE);
+
+			state Version readVersion = wait(tr.getReadVersion());
+			int64_t lastFlushVersion = wait(BlobGranuleBackupConfig().lastFlushVersion().getD(&tr));
+			if (readVersion < lastFlushVersion) {
+				wait(delay(FLOW_KNOBS->PREVENT_FAST_SPIN_DELAY));
+				throw blob_granule_transaction_too_old();
+			}
+
+			for (auto range : ranges) {
+				try {
+					state PromiseStream<RangeResult> rows;
+					state Future<Void> stream = tr.getRangeStream(rows, range, GetRangeLimits(), Snapshot::True);
+					loop {
+						RangeResult result = waitNext(rows.getFuture());
+						splitter->append(result);
+					}
+				} catch (Error& e) {
+					if (e.code() == error_code_end_of_stream) {
+						continue; // done and move to next range
+					}
+					throw;
+				}
+			}
+
+			Value versionEncoded = BinaryWriter::toValue(readVersion, Unversioned());
+			splitter->append(KeyValueRef(blobManifestVersionKey, versionEncoded));
+			return readVersion;
+		} catch (Error& e) {
+			state Error err = e;
+			// Cannnot simply retry on transaction errors. Need to cleanup files for partial dump
+			// so wait on error to avoid spinning read, and throw it to caller
+			wait(tr.onError(e));
+			throw err;
+		}
+	}
+
+	static bool shouldDumpBlobGranuleFileKey(KeyValueRef row, Version maxVersion) {
+		ASSERT(row.key.startsWith(blobGranuleFileKeys.begin));
+
+		UID gid;
+		uint8_t fileType;
+		Version version;
+		std::tie(gid, version, fileType) = decodeBlobGranuleFileKey(row.key);
+		if (version > maxVersion) {
+			CODE_PROBE(true, "Skip newer blob granule files for blob manifest");
+			dprint("Skip granule file {} {}\n", gid.toString(), version);
+			return false;
+		}
+		return true;
+	}
+
+	static bool shouldDumpBlobGranuleHistoryKey(KeyValueRef row, Version maxVersion) {
+		ASSERT(row.key.startsWith(blobGranuleHistoryKeys.begin));
+
+		std::pair<KeyRange, Version> decodedKey = decodeBlobGranuleHistoryKey(row.key);
+		if (decodedKey.second > maxVersion) {
+			CODE_PROBE(true, "Skip newer blob granule history for blob manifest");
+			dprint("Skip granule history {} {}\n", decodedKey.first.toString(), decodedKey.second);
+			return false;
+		}
+		return true;
+	}
+
+	// Start a transcation to read range and append to splitter. Number of rows are limited by maxRowsPerTransaction.
+	// It returns the last key that has been read.
+	ACTOR static Future<Key> dumpRange(Reference<BlobManifestDumper> self,
+	                                   Reference<BlobManifestFileSplitter> splitter,
+	                                   KeySelector begin,
+	                                   KeySelector end,
+	                                   std::function<bool(KeyValueRef)> shouldDumpFunc,
+	                                   int maxRowsPerTransaction) {
+		state Transaction tr(self->db_);
+		state int count = 0;
+		loop {
+			tr.setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
+			tr.setOption(FDBTransactionOptions::PRIORITY_SYSTEM_IMMEDIATE);
+			tr.setOption(FDBTransactionOptions::LOCK_AWARE);
+			try {
+				state GetRangeLimits limits(SERVER_KNOBS->BLOB_MANIFEST_RW_ROWS);
+				limits.minRows = 0;
+				loop {
+					RangeResult result = wait(tr.getRange(begin, end, limits, Snapshot::True));
+					for (auto& row : result) {
+						if (shouldDumpFunc(row)) {
+							splitter->append(row);
+						}
+					}
+
+					count += result.size();
+					if (!result.more) {
+						return end.getKey();
+					}
+					begin = result.nextBeginKeySelector();
+					if (count > maxRowsPerTransaction) {
+						return begin.getKey();
+					}
+				}
+			} catch (Error& e) {
+				// Cannnot simply retry on transaction errors. Need to cleanup files for partial dump
+				// so wait on error to avoid spinning read, and throw it to caller
+				state Error err = e;
+				wait(tr.onError(e));
+				throw err;
+			}
+		}
+	}
+
+	// Use multiple transactions to read the range and append to splitter. It's used for blobGranuleFileKeys
+	// and blobGranuleHistoryKeys. All rows with version greater than maxVersion will be skipped.
+	ACTOR static Future<Void> dumpRange(Reference<BlobManifestDumper> self,
+	                                    Reference<BlobManifestFileSplitter> splitter,
+	                                    KeyRange range,
+	                                    std::function<bool(KeyValueRef)> shouldDumpFunc) {
+		state KeySelectorRef begin = firstGreaterOrEqual(range.begin);
+		state KeySelectorRef end = firstGreaterOrEqual(range.end);
+		loop {
+			int limit = SERVER_KNOBS->BLOB_MANIFEST_MAX_ROWS_PER_TRANSACTION;
+			Key next = wait(dumpRange(self, splitter, begin, end, shouldDumpFunc, limit));
+			if (next >= range.end) {
+				return Void();
+			}
+			begin = firstGreaterThan(next);
 		}
 	}
 
@@ -433,17 +611,21 @@ private:
 
 		loop {
 			state std::vector<BlobManifestFile> allFiles = wait(BlobManifestFile::listAll(writer));
+			TraceEvent("BlobManfiestCleanup").detail("FileCount", allFiles.size());
 			int count = BlobManifest::count(allFiles);
 			if (count <= SERVER_KNOBS->BLOB_RESTORE_MANIFEST_RETENTION_MAX) {
 				return Void();
 			}
-			BlobManifest::deleteOldest(allFiles, writer);
+			wait(BlobManifest::deleteOldest(allFiles, writer));
 		}
 	}
 
 	Database db_;
 	Reference<BlobConnectionProvider> blobConn_;
-	Reference<BlobManifestFileSplitter> fileSplitter_;
+	int64_t epoch_;
+	int64_t seqNo_;
+	Reference<AsyncVar<ServerDBInfo> const> dbInfo_;
+	bool encryptionEnabled_;
 };
 
 // Defines filename, version, size for each granule file that interests full restore
@@ -457,7 +639,10 @@ struct GranuleFileVersion {
 // This class is to load blob manifest into system key space, which is part of for bare metal restore
 class BlobManifestLoader : public ReferenceCounted<BlobManifestLoader> {
 public:
-	BlobManifestLoader(Database& db, Reference<BlobConnectionProvider> blobConn) : db_(db), blobConn_(blobConn) {}
+	BlobManifestLoader(Database& db,
+	                   Reference<AsyncVar<ServerDBInfo> const> dbInfo,
+	                   Reference<BlobConnectionProvider> blobConn)
+	  : db_(db), blobConn_(blobConn), dbInfo_(dbInfo) {}
 	virtual ~BlobManifestLoader() {}
 
 	// Execute the loader
@@ -484,6 +669,7 @@ public:
 
 			try {
 				state Standalone<VectorRef<KeyRef>> blobRanges;
+				state Standalone<VectorRef<bool>> blobRangesAssigned;
 				// Read all granules
 				state GetRangeLimits limits(SERVER_KNOBS->BLOB_MANIFEST_RW_ROWS);
 				limits.minRows = 0;
@@ -493,22 +679,22 @@ public:
 					RangeResult rows = wait(tr.getRange(begin, end, limits, Snapshot::True));
 					for (auto& row : rows) {
 						blobRanges.push_back_deep(blobRanges.arena(), row.key);
+						blobRangesAssigned.push_back(blobRangesAssigned.arena(), !row.value.empty());
 					}
 					if (!rows.more) {
 						break;
 					}
-					if (rows.readThrough.present()) {
-						begin = firstGreaterOrEqual(rows.readThrough.get());
-					} else {
-						begin = firstGreaterThan(rows.end()[-1].key);
-					}
+					begin = rows.nextBeginKeySelector();
 				}
 
 				// check each granule range
 				state int i = 0;
 				for (i = 0; i < blobRanges.size() - 1; i++) {
 					Key startKey = blobRanges[i].removePrefix(blobGranuleMappingKeys.begin);
+					if (!blobRangesAssigned[i])
+						continue;
 					Key endKey = blobRanges[i + 1].removePrefix(blobGranuleMappingKeys.begin);
+
 					state KeyRange granuleRange = KeyRangeRef(startKey, endKey);
 					try {
 						Standalone<BlobGranuleRestoreVersion> granule = wait(getGranule(&tr, granuleRange));
@@ -519,8 +705,8 @@ public:
 							TraceEvent("BlobRestoreMissingData").detail("KeyRange", granuleRange.toString());
 						} else {
 							TraceEvent("BlobManifestError").error(e).detail("KeyRange", granuleRange.toString());
+							throw;
 						}
-						throw;
 					}
 				}
 				return results;
@@ -556,14 +742,22 @@ private:
 		// Load tailer
 		state BlobManifest manifest = BlobManifest::latest(files);
 		state Standalone<BlobManifestTailer> tailer = wait(loadTailer(self, container, manifest.tailer()));
+		state Arena arena;
+		state Optional<BlobGranuleCipherKeysCtx> cipherKeysCtx;
+		if (tailer.cipherKeysMeta.present()) {
+			BlobGranuleCipherKeysCtx ctx =
+			    wait(getGranuleCipherKeysFromKeysMeta(self->dbInfo_, tailer.cipherKeysMeta.get(), &arena));
+			cipherKeysCtx = ctx;
+		}
 
 		// Load segments
 		state int64_t totalRows = 0;
 		state int64_t totalBytes = 0;
 		state std::vector<BlobManifestFile>::iterator iter;
 		for (iter = manifest.segmentsBegin(); iter != manifest.segmentsEnd(); ++iter) {
-			wait(loadSegment(self, container, *iter, &totalRows, &totalBytes));
+			wait(loadSegment(self, container, *iter, cipherKeysCtx, &totalRows, &totalBytes));
 		}
+		wait(writeDelayedRows(self));
 
 		// Validate tailer
 		if (tailer.totalRows != totalRows || tailer.totalSegments != manifest.totalSegments() ||
@@ -585,7 +779,7 @@ private:
 	                                                               Reference<BackupContainerFileSystem> container,
 	                                                               BlobManifestFile tailerFile) {
 		if (tailerFile.segmentNo != 0) {
-			TraceEvent("BlobRestoreMissingTailer").detail("Url", SERVER_KNOBS->BLOB_RESTORE_MANIFEST_URL);
+			TraceEvent("BlobRestoreMissingTailer").log();
 			throw blob_restore_corrupted_manifest();
 		}
 
@@ -599,13 +793,13 @@ private:
 	ACTOR static Future<Void> loadSegment(Reference<BlobManifestLoader> self,
 	                                      Reference<BackupContainerFileSystem> container,
 	                                      BlobManifestFile segmentFile,
+	                                      Optional<BlobGranuleCipherKeysCtx> cipherKeysCtx,
 	                                      int64_t* totalRows,
 	                                      int64_t* totalBytes) {
-		Value data = wait(readFromFile(self, container, segmentFile.fileName));
+		state Value data = wait(readFromFile(self, container, segmentFile.fileName));
 		*totalBytes += data.size();
 
-		Standalone<StringRef> fileName;
-		state RangeResult rows = bgReadSnapshotFile(data, {}, {}, allKeys);
+		state RangeResult rows = bgReadSnapshotFile(data, {}, cipherKeysCtx, allKeys);
 		wait(writeSystemKeys(self, rows));
 		*totalRows += rows.size();
 		return Void();
@@ -649,11 +843,40 @@ private:
 			tr.setOption(FDBTransactionOptions::LOCK_AWARE);
 			try {
 				for (int i = start; i < end; ++i) {
-					tr.set(rows[i].key, rows[i].value);
+					// A special key to be loaded at the end:
+					// Blob worker monitors lastTenantId to refresh tenant map. If we load it before
+					// rest of other part of tenant metadata, Blob worker may get partial tenant map. So delay it.
+					if (rows[i].key == TenantMetadata::lastTenantId().key) {
+						self->delayedRows_.push_back_deep(self->delayedRows_.arena(), rows[i]);
+					} else {
+						tr.set(rows[i].key, rows[i].value);
+					}
 				}
 				wait(tr.commit());
 				dprint("Blob manifest loaded rows from {} to {}\n", start, end);
 				TraceEvent("BlobManifestLoader").detail("RowStart", start).detail("RowEnd", end);
+				return Void();
+			} catch (Error& e) {
+				wait(tr.onError(e));
+			}
+		}
+	}
+
+	ACTOR static Future<Void> writeDelayedRows(Reference<BlobManifestLoader> self) {
+		if (self->delayedRows_.empty()) {
+			return Void();
+		}
+
+		state Transaction tr(self->db_);
+		loop {
+			tr.setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
+			tr.setOption(FDBTransactionOptions::PRIORITY_SYSTEM_IMMEDIATE);
+			tr.setOption(FDBTransactionOptions::LOCK_AWARE);
+			try {
+				for (auto& row : self->delayedRows_) {
+					tr.set(row.key, row.value);
+				}
+				wait(tr.commit());
 				return Void();
 			} catch (Error& e) {
 				wait(tr.onError(e));
@@ -670,29 +893,6 @@ private:
 
 		BlobGranuleRestoreVersionVector _ = wait(listGranules(self));
 		return Void();
-	}
-
-	// Get manifest backup version
-	ACTOR static Future<Version> getManifestVersion(Database db) {
-		state Transaction tr(db);
-		loop {
-			try {
-				tr.setOption(FDBTransactionOptions::PRIORITY_SYSTEM_IMMEDIATE);
-				tr.setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
-				tr.setOption(FDBTransactionOptions::LOCK_AWARE);
-				Optional<Value> value = wait(tr.get(blobManifestVersionKey));
-				if (value.present()) {
-					Version version;
-					BinaryReader reader(value.get(), Unversioned());
-					reader >> version;
-					return version;
-				}
-				TraceEvent("MissingBlobManifestVersion").log();
-				throw blob_restore_corrupted_manifest();
-			} catch (Error& e) {
-				wait(tr.onError(e));
-			}
-		}
 	}
 
 	// Find the newest granule for a key range. The newest granule has the max version and relevant files
@@ -779,11 +979,7 @@ private:
 			if (!results.more) {
 				break;
 			}
-			if (results.readThrough.present()) {
-				begin = firstGreaterOrEqual(results.readThrough.get());
-			} else {
-				begin = firstGreaterThan(results.end()[-1].key);
-			}
+			begin = results.nextBeginKeySelector();
 		}
 		return files;
 	}
@@ -819,56 +1015,79 @@ private:
 
 	Database db_;
 	Reference<BlobConnectionProvider> blobConn_;
+	RangeResult delayedRows_; // special rows that we would write at the end of restore
+	Reference<AsyncVar<ServerDBInfo> const> dbInfo_;
+	Optional<BlobGranuleCipherKeysCtx> cipherKeysCtx_;
 };
 
 // API to dump a manifest copy to external storage
 ACTOR Future<int64_t> dumpManifest(Database db,
+                                   Reference<AsyncVar<ServerDBInfo> const> dbInfo,
                                    Reference<BlobConnectionProvider> blobConn,
                                    int64_t epoch,
-                                   int64_t seqNo) {
-	Reference<BlobManifestDumper> dumper = makeReference<BlobManifestDumper>(db, blobConn, epoch, seqNo);
+                                   int64_t seqNo,
+                                   bool encryptionEnabled) {
+	Reference<BlobManifestDumper> dumper =
+	    makeReference<BlobManifestDumper>(db, dbInfo, blobConn, epoch, seqNo, encryptionEnabled);
 	int64_t bytes = wait(BlobManifestDumper::execute(dumper));
 	return bytes;
 }
 
 // API to load manifest from external blob storage
-ACTOR Future<Void> loadManifest(Database db, Reference<BlobConnectionProvider> blobConn) {
-	Reference<BlobManifestLoader> loader = makeReference<BlobManifestLoader>(db, blobConn);
+ACTOR Future<Void> loadManifest(Database db,
+                                Reference<AsyncVar<ServerDBInfo> const> dbInfo,
+                                Reference<BlobConnectionProvider> blobConn) {
+	Reference<BlobManifestLoader> loader = makeReference<BlobManifestLoader>(db, dbInfo, blobConn);
 	wait(BlobManifestLoader::execute(loader));
 	return Void();
 }
 
 // API to print summary for restorable granules
-ACTOR Future<Void> printRestoreSummary(Database db, Reference<BlobConnectionProvider> blobConn) {
-	Reference<BlobManifestLoader> loader = makeReference<BlobManifestLoader>(db, blobConn);
+ACTOR Future<Void> printRestoreSummary(Database db,
+                                       Reference<AsyncVar<ServerDBInfo> const> dbInfo,
+                                       Reference<BlobConnectionProvider> blobConn) {
+	Reference<BlobManifestLoader> loader = makeReference<BlobManifestLoader>(db, dbInfo, blobConn);
 	wait(BlobManifestLoader::print(loader));
 	return Void();
 }
 
 // API to list blob granules
 ACTOR Future<BlobGranuleRestoreVersionVector> listBlobGranules(Database db,
+                                                               Reference<AsyncVar<ServerDBInfo> const> dbInfo,
                                                                Reference<BlobConnectionProvider> blobConn) {
-	Reference<BlobManifestLoader> loader = makeReference<BlobManifestLoader>(db, blobConn);
+	Reference<BlobManifestLoader> loader = makeReference<BlobManifestLoader>(db, dbInfo, blobConn);
 	BlobGranuleRestoreVersionVector result = wait(BlobManifestLoader::listGranules(loader));
 	return result;
 }
 
 // API to get max blob manager epoc from manifest files
-ACTOR Future<int64_t> lastBlobEpoc(Database db, Reference<BlobConnectionProvider> blobConn) {
-	Reference<BlobManifestLoader> loader = makeReference<BlobManifestLoader>(db, blobConn);
+ACTOR Future<int64_t> lastBlobEpoc(Database db,
+                                   Reference<AsyncVar<ServerDBInfo> const> dbInfo,
+                                   Reference<BlobConnectionProvider> blobConn) {
+	Reference<BlobManifestLoader> loader = makeReference<BlobManifestLoader>(db, dbInfo, blobConn);
 	int64_t epoc = wait(BlobManifestLoader::lastBlobEpoc(loader));
 	return epoc;
 }
 
-ACTOR Future<std::string> getMutationLogUrl() {
-	state std::string baseUrl = SERVER_KNOBS->BLOB_RESTORE_MLOGS_URL;
-	if (baseUrl.starts_with("file://")) {
-		state std::vector<std::string> containers = wait(IBackupContainer::listContainers(baseUrl, {}));
-		if (containers.size() == 0) {
-			throw blob_restore_missing_logs();
+// API to get manifest backup version
+ACTOR Future<Version> getManifestVersion(Database db) {
+	state Transaction tr(db);
+	loop {
+		try {
+			tr.setOption(FDBTransactionOptions::PRIORITY_SYSTEM_IMMEDIATE);
+			tr.setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
+			tr.setOption(FDBTransactionOptions::LOCK_AWARE);
+			Optional<Value> value = wait(tr.get(blobManifestVersionKey));
+			if (value.present()) {
+				Version version;
+				BinaryReader reader(value.get(), Unversioned());
+				reader >> version;
+				return version;
+			}
+			TraceEvent("MissingBlobManifestVersion").log();
+			throw blob_restore_corrupted_manifest();
+		} catch (Error& e) {
+			wait(tr.onError(e));
 		}
-		return containers.back();
-	} else {
-		return baseUrl;
 	}
 }

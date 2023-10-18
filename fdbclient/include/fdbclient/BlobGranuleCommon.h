@@ -25,7 +25,7 @@
 #include "fdbclient/BlobCipher.h"
 #include "fdbclient/CommitTransaction.h"
 #include "fdbclient/FDBTypes.h"
-
+#include "fdbclient/KeyBackedTypes.actor.h"
 #include "flow/EncryptUtils.h"
 #include "flow/IRandom.h"
 #include "flow/serialize.h"
@@ -90,26 +90,40 @@ struct GranuleMaterializeStats {
 struct BlobGranuleCipherKeysMeta {
 	EncryptCipherDomainId textDomainId;
 	EncryptCipherBaseKeyId textBaseCipherId;
+	EncryptCipherKeyCheckValue textBaseCipherKCV;
 	EncryptCipherRandomSalt textSalt;
 	EncryptCipherDomainId headerDomainId;
 	EncryptCipherBaseKeyId headerBaseCipherId;
+	EncryptCipherKeyCheckValue headerBaseCipherKCV;
 	EncryptCipherRandomSalt headerSalt;
 	std::string ivStr;
 
 	BlobGranuleCipherKeysMeta() {}
 	BlobGranuleCipherKeysMeta(const EncryptCipherDomainId tDomainId,
 	                          const EncryptCipherBaseKeyId tBaseCipherId,
+	                          const EncryptCipherKeyCheckValue tBaseCipherKCV,
 	                          const EncryptCipherRandomSalt tSalt,
 	                          const EncryptCipherDomainId hDomainId,
 	                          const EncryptCipherBaseKeyId hBaseCipherId,
+	                          const EncryptCipherKeyCheckValue hBaseCipherKCV,
 	                          const EncryptCipherRandomSalt hSalt,
 	                          const std::string& iv)
-	  : textDomainId(tDomainId), textBaseCipherId(tBaseCipherId), textSalt(tSalt), headerDomainId(hDomainId),
-	    headerBaseCipherId(hBaseCipherId), headerSalt(hSalt), ivStr(iv) {}
+	  : textDomainId(tDomainId), textBaseCipherId(tBaseCipherId), textBaseCipherKCV(tBaseCipherKCV), textSalt(tSalt),
+	    headerDomainId(hDomainId), headerBaseCipherId(hBaseCipherId), headerBaseCipherKCV(hBaseCipherKCV),
+	    headerSalt(hSalt), ivStr(iv) {}
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		serializer(ar, textDomainId, textBaseCipherId, textSalt, headerDomainId, headerBaseCipherId, headerSalt, ivStr);
+		serializer(ar,
+		           textDomainId,
+		           textBaseCipherId,
+		           textBaseCipherKCV,
+		           textSalt,
+		           headerDomainId,
+		           headerBaseCipherId,
+		           headerBaseCipherKCV,
+		           headerSalt,
+		           ivStr);
 	}
 };
 
@@ -119,6 +133,7 @@ struct BlobGranuleCipherKey {
 	constexpr static FileIdentifier file_identifier = 7274734;
 	EncryptCipherDomainId encryptDomainId;
 	EncryptCipherBaseKeyId baseCipherId;
+	EncryptCipherKeyCheckValue baseCipherKCV;
 	EncryptCipherRandomSalt salt;
 	StringRef baseCipher;
 
@@ -126,6 +141,7 @@ struct BlobGranuleCipherKey {
 		BlobGranuleCipherKey cipherKey;
 		cipherKey.encryptDomainId = keyRef->getDomainId();
 		cipherKey.baseCipherId = keyRef->getBaseCipherId();
+		cipherKey.baseCipherKCV = keyRef->getBaseCipherKCV();
 		cipherKey.salt = keyRef->getSalt();
 		cipherKey.baseCipher = makeString(keyRef->getBaseCipherLen(), arena);
 		memcpy(mutateString(cipherKey.baseCipher), keyRef->rawBaseCipher(), keyRef->getBaseCipherLen());
@@ -135,7 +151,7 @@ struct BlobGranuleCipherKey {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		serializer(ar, encryptDomainId, baseCipherId, salt, baseCipher);
+		serializer(ar, encryptDomainId, baseCipherId, baseCipherKCV, salt, baseCipher);
 	}
 };
 
@@ -150,9 +166,11 @@ struct BlobGranuleCipherKeysCtx {
 	static BlobGranuleCipherKeysMeta toCipherKeysMeta(const BlobGranuleCipherKeysCtx& ctx) {
 		return BlobGranuleCipherKeysMeta(ctx.textCipherKey.encryptDomainId,
 		                                 ctx.textCipherKey.baseCipherId,
+		                                 ctx.textCipherKey.baseCipherKCV,
 		                                 ctx.textCipherKey.salt,
 		                                 ctx.headerCipherKey.encryptDomainId,
 		                                 ctx.headerCipherKey.baseCipherId,
+		                                 ctx.headerCipherKey.baseCipherKCV,
 		                                 ctx.headerCipherKey.salt,
 		                                 ctx.ivRef.toString());
 	}
@@ -340,53 +358,35 @@ struct BlobManifestTailer {
 	int64_t totalRows;
 	int64_t totalSegments;
 	int64_t totalBytes;
+	// All manifest files are currently encrypted using default_domain
+	// and with a single encryption key.
+	// TODO: Extend domain_aware encryption semantics to manifest file(s)
+	Optional<BlobGranuleCipherKeysMeta> cipherKeysMeta;
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		serializer(ar, totalRows, totalSegments, totalBytes);
+		serializer(ar, totalRows, totalSegments, totalBytes, cipherKeysMeta);
 	}
 };
 
-// Defines blob restore state
-enum BlobRestorePhase {
-	INIT = 0,
-	STARTING_MIGRATOR = 1,
-	LOADING_MANIFEST = 2,
-	LOADED_MANIFEST = 3,
-	COPYING_DATA = 4,
-	APPLYING_MLOGS = 5,
-	DONE = 6,
-	ERROR = 7,
-	MAX = 8
-};
-struct BlobRestoreState {
-	constexpr static FileIdentifier file_identifier = 378657;
-	BlobRestorePhase phase;
-	int progress;
-	VectorRef<int64_t> phaseStartTs;
-	Optional<StringRef> error;
+// Value of blob range change log.
+struct BlobRangeChangeLogRef {
+	constexpr static FileIdentifier file_identifier = 9774587;
 
-	BlobRestoreState() : phase(BlobRestorePhase::INIT), progress(0){};
-	BlobRestoreState(BlobRestorePhase phase) : phase(phase), progress(0){};
-	BlobRestoreState(BlobRestorePhase phase, int progress) : phase(phase), progress(progress){};
-	BlobRestoreState(StringRef errorMessage) : phase(BlobRestorePhase::ERROR), progress(0), error(errorMessage){};
+	KeyRangeRef range;
+	ValueRef value;
+
+	BlobRangeChangeLogRef() {}
+	BlobRangeChangeLogRef(KeyRangeRef range, ValueRef value) : range(range), value(value) {}
+	BlobRangeChangeLogRef(Arena& to, KeyRangeRef range, ValueRef value) : range(to, range), value(to, value) {}
+	BlobRangeChangeLogRef(Arena& to, const BlobRangeChangeLogRef& from)
+	  : range(to, from.range), value(to, from.value) {}
+
+	int expectedSize() const { return range.expectedSize() + value.expectedSize(); }
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		serializer(ar, phase, progress, phaseStartTs, error);
-	}
-};
-
-struct BlobRestoreArg {
-	constexpr static FileIdentifier file_identifier = 947689;
-	Optional<Version> version;
-
-	BlobRestoreArg() {}
-	BlobRestoreArg(Optional<Version> v) : version(v){};
-
-	template <class Ar>
-	void serialize(Ar& ar) {
-		serializer(ar, version);
+		serializer(ar, range, value);
 	}
 };
 

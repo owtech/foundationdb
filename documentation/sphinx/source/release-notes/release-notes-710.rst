@@ -2,6 +2,44 @@
 Release Notes
 #############
 
+7.1.37
+======
+* Same as 7.1.36 release with AVX enabled.
+
+7.1.36
+======
+* Released with AVX disabled.
+* Added consistency check for rocksdb only `(PR #10751) <https://github.com/apple/foundationdb/pull/10751>`_
+* Fixed grv queue stats when requests are dropped `(PR #10753) <https://github.com/apple/foundationdb/pull/10753>`_
+
+7.1.35
+======
+* Same as 7.1.34 release with AVX enabled.
+
+7.1.34
+======
+* Released with AVX disabled.
+* Fixed a high GRV latency issue when many storage servers are recruited.  `(PR #10688) <https://github.com/apple/foundationdb/pull/10688>`_
+* Fixed a single key deletion bug when ROCKSDB_SINGLEKEY_DELETES_ON_CLEARRANGE is enabled. `(PR #10672) <https://github.com/apple/foundationdb/pull/10672>`_ and `(PR #10676) <https://github.com/apple/foundationdb/pull/10676>`_
+* Added degraded and disconnected peer recovery to gray failure detection. `(PR #10565) <https://github.com/apple/foundationdb/pull/10565>`_
+* Fixed RocksDB engine to avoid read timeout checks for eager reads and system keys. `(PR #10500) <https://github.com/apple/foundationdb/pull/10500>`_
+* Fixed backup to work with s3 compatible service.  `(PR #10369) <https://github.com/apple/foundationdb/pull/10369>`_
+* Fixed data loss during multiple range restores. `(PR #10424) <https://github.com/apple/foundationdb/pull/10424>`_
+* Updated RocksDB to version 8.1.1. `(PR #10268) <https://github.com/apple/foundationdb/pull/10268>`_
+
+7.1.33
+======
+* Same as 7.1.32 release with AVX enabled.
+
+7.1.32
+======
+* Released with AVX disabled.
+* Increased MAX_STORAGE_COMMIT_TIME to reduce storage server IO timeout errors. `(PR #10116) <https://github.com/apple/foundationdb/pull/10116>`_
+* Fixed a CPU spinning issue on DR destination clusters. `(PR #10114) <https://github.com/apple/foundationdb/pull/10114>`_
+* Fixed a inconsistent read issue when using RocksDB engine. `(PR #10060) <https://github.com/apple/foundationdb/pull/10060>`_
+* Fixed a storage server failure issue and added client backoff when commit proxy is overloaded for key location requests. `(PR #10007) <https://github.com/apple/foundationdb/pull/10007>`_
+* Added gray failure detection of disconnected remote log routers. `(PR #9933) <https://github.com/apple/foundationdb/pull/9933>`_
+
 7.1.31
 ======
 * Same as 7.1.30 release with AVX enabled.

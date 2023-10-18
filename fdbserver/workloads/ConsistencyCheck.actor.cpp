@@ -321,6 +321,7 @@ struct ConsistencyCheckWorkload : TestWorkload {
 
 					wait(::success(self->checkForStorage(cx, configuration, tssMapping, self)));
 					wait(::success(self->checkForExtraDataStores(cx, self)));
+					wait(::success(self->checkStorageMetadata(cx, self)));
 
 					// Check blob workers are operating as expected
 					if (configuration.blobGranulesEnabled) {
@@ -341,6 +342,15 @@ struct ConsistencyCheckWorkload : TestWorkload {
 					bool coordinatorsCorrect = wait(self->checkCoordinators(cx));
 					if (!coordinatorsCorrect)
 						self->testFailure("Coordinators incorrect");
+
+					bool consistencyScanStopped = wait(self->checkConsistencyScan(cx));
+					if (!consistencyScanStopped)
+						self->testFailure("Consistency scan active");
+
+					// FIXME: re-enable this check!
+					// bool singleSingletons = self->checkSingleSingletons(self, configuration);
+					// if (!singleSingletons)
+					// 	self->testFailure("Cluster has multiple instances of a singleton!");
 				}
 
 				// Get a list of key servers; verify that the TLogs and master all agree about who the key servers are
@@ -382,7 +392,6 @@ struct ConsistencyCheckWorkload : TestWorkload {
 						                          true,
 						                          self->rateLimitMax,
 						                          CLIENT_KNOBS->CONSISTENCY_CHECK_ONE_ROUND_TARGET_COMPLETION_TIME,
-						                          KeyRef(),
 						                          &self->success));
 
 						// Cache consistency check
@@ -940,6 +949,33 @@ struct ConsistencyCheckWorkload : TestWorkload {
 			if (!keyValueStoreType.present()) {
 				TraceEvent("ConsistencyCheck_ServerUnavailable").detail("ServerID", storageServers[i].id());
 				self->testFailure("Storage server unavailable");
+			} else if (configuration.perpetualStoreType.storeType() != KeyValueStoreType::END) {
+				// Perpetual storage wiggle is used to migrate storage. Check that the matched storage servers are
+				// correctly migrated.
+				if (wiggleLocalityKeyValue == "0" ||
+				    (storageServers[i].locality.get(wiggleLocalityKey).present() &&
+				     storageServers[i].locality.get(wiggleLocalityKey).get().toString() == wiggleLocalityValue)) {
+					if (keyValueStoreType.get() != configuration.perpetualStoreType) {
+						TraceEvent("ConsistencyCheck_WrongKeyValueStoreType")
+						    .detail("ServerID", storageServers[i].id())
+						    .detail("StoreType", keyValueStoreType.get().toString())
+						    .detail("DesiredType", configuration.perpetualStoreType.toString())
+						    .detail("IsPerpetualStoreType", true);
+						self->testFailure("Storage server has wrong key-value store type");
+						return true;
+					}
+				} else if ((!storageServers[i].isTss() &&
+				            keyValueStoreType.get() != configuration.storageServerStoreType) ||
+				           (storageServers[i].isTss() &&
+				            keyValueStoreType.get() != configuration.testingStorageServerStoreType)) {
+					TraceEvent("ConsistencyCheck_WrongKeyValueStoreType")
+					    .detail("ServerID", storageServers[i].id())
+					    .detail("StoreType", keyValueStoreType.get().toString())
+					    .detail("DesiredType", configuration.perpetualStoreType.toString())
+					    .detail("IsPerpetualStoreType", false);
+					self->testFailure("Storage server has wrong key-value store type");
+					return true;
+				}
 			} else if (((!storageServers[i].isTss() &&
 			             keyValueStoreType.get() != configuration.storageServerStoreType) ||
 			            (storageServers[i].isTss() &&
@@ -950,7 +986,8 @@ struct ConsistencyCheckWorkload : TestWorkload {
 				TraceEvent("ConsistencyCheck_WrongKeyValueStoreType")
 				    .detail("ServerID", storageServers[i].id())
 				    .detail("StoreType", keyValueStoreType.get().toString())
-				    .detail("DesiredType", configuration.storageServerStoreType.toString());
+				    .detail("DesiredType", configuration.storageServerStoreType.toString())
+				    .detail("IsPerpetualStoreType", false);
 				self->testFailure("Storage server has wrong key-value store type");
 				return true;
 			}
@@ -971,6 +1008,42 @@ struct ConsistencyCheckWorkload : TestWorkload {
 		return false;
 	}
 
+	// Every storage server should have it metadata populated and no metadata leak when the database reach the quiescent
+	// state
+	ACTOR Future<bool> checkStorageMetadata(Database cx, ConsistencyCheckWorkload* self) {
+		state KeyBackedObjectMap<UID, StorageMetadataType, decltype(IncludeVersion())> metadataMap(
+		    serverMetadataKeys.begin, IncludeVersion());
+		state std::vector<StorageServerInterface> servers;
+		state std::unordered_map<UID, StorageMetadataType> id_ssi;
+		state Transaction tr(cx);
+		loop {
+			servers.clear();
+			id_ssi.clear();
+			tr.setOption(FDBTransactionOptions::READ_SYSTEM_KEYS);
+			tr.setOption(FDBTransactionOptions::LOCK_AWARE);
+			try {
+				state KeyBackedRangeResult<std::pair<UID, StorageMetadataType>> metadata =
+				    wait(metadataMap.getRange(&tr, {}, {}, CLIENT_KNOBS->TOO_MANY));
+				ASSERT(!metadata.more && metadata.results.size() < CLIENT_KNOBS->TOO_MANY);
+				RangeResult serverList = wait(tr.getRange(serverListKeys, CLIENT_KNOBS->TOO_MANY));
+				ASSERT(!serverList.more && serverList.size() < CLIENT_KNOBS->TOO_MANY);
+				ASSERT_EQ(metadata.results.size(), serverList.size());
+				id_ssi = std::unordered_map<UID, StorageMetadataType>(metadata.results.begin(), metadata.results.end());
+				servers.reserve(serverList.size());
+				for (int i = 0; i < serverList.size(); i++)
+					servers.push_back(decodeServerListValue(serverList[i].value));
+				break;
+			} catch (Error& e) {
+				wait(tr.onError(e));
+			}
+		}
+
+		for (auto& ssi : servers) {
+			ASSERT(id_ssi.count(ssi.id()));
+		}
+		return true;
+	}
+
 	// Returns false if any worker that should have a storage server does not have one
 	ACTOR Future<bool> checkForStorage(Database cx,
 	                                   DatabaseConfiguration configuration,
@@ -982,7 +1055,7 @@ struct ConsistencyCheckWorkload : TestWorkload {
 
 		for (int i = 0; i < workers.size(); i++) {
 			NetworkAddress addr = workers[i].interf.stableAddress();
-			if (!configuration.isExcludedServer(workers[i].interf.addresses()) &&
+			if (!configuration.isExcludedServer(workers[i].interf.addresses(), workers[i].interf.locality) &&
 			    (workers[i].processClass == ProcessClass::StorageClass ||
 			     workers[i].processClass == ProcessClass::UnsetClass)) {
 				bool found = false;
@@ -1198,7 +1271,7 @@ struct ConsistencyCheckWorkload : TestWorkload {
 		for (const auto& worker : workers) {
 			NetworkAddress addr = worker.interf.stableAddress();
 			bool inCCDc = worker.interf.locality.dcId() == ccDcId;
-			if (!configuration.isExcludedServer(worker.interf.addresses())) {
+			if (!configuration.isExcludedServer(worker.interf.addresses(), worker.interf.locality)) {
 				if (worker.processClass == ProcessClass::BlobWorkerClass) {
 					numBlobWorkerProcesses++;
 
@@ -1252,6 +1325,7 @@ struct ConsistencyCheckWorkload : TestWorkload {
 		for (int i = 0; i < all.size(); i++) {
 			if (all[i]->isReliable() && all[i]->name == std::string("Server") &&
 			    all[i]->startingClass != ProcessClass::TesterClass &&
+			    all[i]->startingClass != ProcessClass::SimHTTPServerClass &&
 			    all[i]->protocolVersion == g_network->protocolVersion()) {
 				if (!workerAddresses.count(all[i]->address)) {
 					TraceEvent("ConsistencyCheck_WorkerMissingFromList").detail("Addr", all[i]->address);
@@ -1589,16 +1663,31 @@ struct ConsistencyCheckWorkload : TestWorkload {
 		}
 
 		// Check EncryptKeyProxy
-		if (config.encryptionAtRestMode.isEncryptionEnabled() && db.encryptKeyProxy.present() &&
-		    (!nonExcludedWorkerProcessMap.count(db.encryptKeyProxy.get().address()) ||
-		     nonExcludedWorkerProcessMap[db.encryptKeyProxy.get().address()].processClass.machineClassFitness(
+		if (config.encryptionAtRestMode.isEncryptionEnabled() && db.client.encryptKeyProxy.present() &&
+		    (!nonExcludedWorkerProcessMap.count(db.client.encryptKeyProxy.get().address()) ||
+		     nonExcludedWorkerProcessMap[db.client.encryptKeyProxy.get().address()].processClass.machineClassFitness(
 		         ProcessClass::EncryptKeyProxy) > fitnessLowerBound)) {
 			TraceEvent("ConsistencyCheck_EncryptKeyProxyNotBest")
 			    .detail("BestEncryptKeyProxyFitness", fitnessLowerBound)
 			    .detail("ExistingEncryptKeyProxyFitness",
-			            nonExcludedWorkerProcessMap.count(db.encryptKeyProxy.get().address())
-			                ? nonExcludedWorkerProcessMap[db.encryptKeyProxy.get().address()]
+			            nonExcludedWorkerProcessMap.count(db.client.encryptKeyProxy.get().address())
+			                ? nonExcludedWorkerProcessMap[db.client.encryptKeyProxy.get().address()]
 			                      .processClass.machineClassFitness(ProcessClass::EncryptKeyProxy)
+			                : -1);
+			return false;
+		}
+
+		// Check ConsistencyScan
+		if (db.consistencyScan.present() &&
+		    (!nonExcludedWorkerProcessMap.count(db.consistencyScan.get().address()) ||
+		     nonExcludedWorkerProcessMap[db.consistencyScan.get().address()].processClass.machineClassFitness(
+		         ProcessClass::ConsistencyScan) > fitnessLowerBound)) {
+			TraceEvent("ConsistencyCheck_ConsistencyScanNotBest")
+			    .detail("BestConsistencyScanFitness", fitnessLowerBound)
+			    .detail("ExistingConsistencyScanFitness",
+			            nonExcludedWorkerProcessMap.count(db.consistencyScan.get().address())
+			                ? nonExcludedWorkerProcessMap[db.consistencyScan.get().address()]
+			                      .processClass.machineClassFitness(ProcessClass::ConsistencyScan)
 			                : -1);
 			return false;
 		}
@@ -1606,6 +1695,86 @@ struct ConsistencyCheckWorkload : TestWorkload {
 		// TODO: Check Tlog
 
 		return true;
+	}
+
+	// returns true if stopped, false otherwise
+	ACTOR Future<bool> checkConsistencyScan(Database cx) {
+		if (!g_network->isSimulated()) {
+			return true;
+		}
+		state Reference<ReadYourWritesTransaction> tr = makeReference<ReadYourWritesTransaction>(cx);
+		state ConsistencyScanState cs;
+		loop {
+			try {
+				SystemDBWriteLockedNow(cx.getReference())->setOptions(tr);
+				ConsistencyScanState::Config config = wait(cs.config().getD(tr));
+				return !config.enabled;
+			} catch (Error& e) {
+				wait(tr->onError(e));
+			}
+		}
+	}
+
+	bool checkSingleSingleton(std::vector<ISimulator::ProcessInfo*> const& allProcesses,
+	                          TraceEvent& ev,
+	                          std::string const& role,
+	                          int expectedCount) {
+		// FIXME: this doesn't actually check that there aren't multiple of the same role running on the same process
+		// either
+		int count = 0;
+		for (int i = 0; i < allProcesses.size(); i++) {
+			if (g_simulator->hasRole(allProcesses[i]->address, role)) {
+				count++;
+				ev.detail(role + std::to_string(count), allProcesses[i]->address.toString());
+			}
+		}
+		ev.detail(role + "Count", count).detail(role + "ExpectedCount", expectedCount);
+		if (count != expectedCount) {
+			fmt::print("ConsistencyCheck failure: incorrect number {0} of singleton {1} running (expected {2})\n",
+			           count,
+			           role,
+			           expectedCount);
+		}
+		return count == expectedCount;
+	}
+
+	// checks that there is only one instance of each singleton running in the cluster in simulation
+	bool checkSingleSingletons(ConsistencyCheckWorkload* self, DatabaseConfiguration config) {
+		if (!g_network->isSimulated()) {
+			return true;
+		}
+
+		CODE_PROBE(self->performQuiescentChecks, "Checking for single singletons");
+
+		std::vector<ISimulator::ProcessInfo*> allProcesses = g_simulator->getAllProcesses();
+
+		bool success = true;
+		TraceEvent ev("CheckSingletons");
+
+		success &= self->checkSingleSingleton(allProcesses, ev, "Ratekeeper", 1);
+		success &= self->checkSingleSingleton(allProcesses, ev, "DataDistributor", 1);
+		success &= self->checkSingleSingleton(allProcesses, ev, "ConsistencyScan", 1);
+		success &= self->checkSingleSingleton(allProcesses, ev, "BlobManager", config.blobGranulesEnabled ? 1 : 0);
+
+		// FIXME: add blob migrator once it's always on
+		// success &= self->checkSingleSingleton(allProcesses, ev, "BlobMigrator", TODO ? 1 : 0);
+
+		success &= self->checkSingleSingleton(
+		    allProcesses,
+		    ev,
+		    "EncryptKeyProxy",
+		    config.encryptionAtRestMode.isEncryptionEnabled() || SERVER_KNOBS->ENABLE_REST_KMS_COMMUNICATION ? 1 : 0);
+
+		if (!success) {
+			// TODO REMOVE
+			fmt::print("ConsistencyCheck singletons: roles map:\n");
+			for (int i = 0; i < allProcesses.size(); i++) {
+				fmt::print(
+				    "{0}: {1}\n", allProcesses[i]->address.toString(), g_simulator->getRoles(allProcesses[i]->address));
+			}
+		}
+
+		return success;
 	}
 };
 

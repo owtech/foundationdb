@@ -41,8 +41,8 @@ standard API and some knowledge of the contents of the system key space.
 #include "fdbclient/MonitorLeader.h"
 #include "flow/actorcompiler.h" // has to be last include
 
-ACTOR Future<DatabaseConfiguration> getDatabaseConfiguration(Transaction* tr);
-ACTOR Future<DatabaseConfiguration> getDatabaseConfiguration(Database cx);
+ACTOR Future<DatabaseConfiguration> getDatabaseConfiguration(Transaction* tr, bool useSystemPriority = false);
+ACTOR Future<DatabaseConfiguration> getDatabaseConfiguration(Database cx, bool useSystemPriority = false);
 ACTOR Future<Void> waitForFullReplication(Database cx);
 
 struct IQuorumChange : ReferenceCounted<IQuorumChange> {
@@ -154,7 +154,12 @@ ACTOR Future<Void> forceRecovery(Reference<IClusterConnectionRecord> clusterFile
 ACTOR Future<UID> auditStorage(Reference<IClusterConnectionRecord> clusterFile,
                                KeyRange range,
                                AuditType type,
-                               bool async = false);
+                               double timeoutSeconds);
+// Cancel an audit given type and id
+ACTOR Future<UID> cancelAuditStorage(Reference<IClusterConnectionRecord> clusterFile,
+                                     AuditType type,
+                                     UID auditId,
+                                     double timeoutSeconds);
 
 ACTOR Future<Void> printHealthyZone(Database cx);
 ACTOR Future<bool> clearHealthyZone(Database cx, bool printWarning = false, bool clearSSFailureZoneString = false);

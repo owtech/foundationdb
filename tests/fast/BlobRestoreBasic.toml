@@ -8,9 +8,9 @@ storageEngineExcludeTypes = [4, 5]
 
 [[knobs]]
 bg_consistency_check_enabled = 0
-blob_manifest_backup = true
 shard_encode_location_metadata = false
 bw_throttling_enabled = false
+blob_restore_skip_empty_ranges = false
 
 [[test]]
 testTitle = 'SetupBlob'
@@ -22,7 +22,7 @@ waitForQuiescence = false
     [[test.workload]]
     testName = 'BlobRestoreWorkload'
     setupBlob = true
-    
+
 [[test]] 
 testTitle = 'BackupMutationLogs'
 simBackupAgents = 'BackupToFile'
@@ -32,9 +32,10 @@ waitForQuiescence = false
     [[test.workload]]
     testName = 'IncrementalBackup'
     tag = 'default'
+    blobManifestUrl = 'file://simfdb/fdbblob/manifest'
     submitOnly = true
     waitForBackup = true
-
+    
 [[test]]
 testTitle = 'CycleTest'
 simBackupAgents = 'BackupToFile'
@@ -45,7 +46,7 @@ clearAfterTest = false
     [[test.workload]]
     testName = 'Cycle'
     nodeCount = 3000
-    transactionsPerSecond = 3000.0
+    transactionsPerSecond = 1000.0
     testDuration = 30.0
     expectedRate = 0
 
@@ -70,10 +71,11 @@ waitForQuiescence = false
 [[test]]
 testTitle = 'VerifyCycle'
 checkOnly = true
+runConsistencyCheck = false
 
     [[test.workload]]
     testName = 'Cycle'
     nodeCount = 3000
-    transactionsPerSecond = 3000.0
+    transactionsPerSecond = 1000.0
     testDuration = 30.0
     expectedRate = 0

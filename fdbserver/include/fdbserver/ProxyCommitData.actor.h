@@ -70,6 +70,7 @@ struct ProxyStats {
 	Version lastCommitVersionAssigned;
 
 	LatencySample commitLatencySample;
+	LatencySample encryptionLatencySample;
 	LatencyBands commitLatencyBands;
 
 	// Ratio of tlogs receiving empty commit messages.
@@ -139,6 +140,10 @@ struct ProxyStats {
 	                        id,
 	                        SERVER_KNOBS->LATENCY_METRICS_LOGGING_INTERVAL,
 	                        SERVER_KNOBS->LATENCY_SKETCH_ACCURACY),
+	    encryptionLatencySample("CommitEncryptionLatencyMetrics",
+	                            id,
+	                            SERVER_KNOBS->LATENCY_METRICS_LOGGING_INTERVAL,
+	                            SERVER_KNOBS->LATENCY_SKETCH_ACCURACY),
 	    commitLatencyBands("CommitLatencyBands", id, SERVER_KNOBS->STORAGE_LOGGING_DELAY),
 	    commitBatchingEmptyMessageRatio("CommitBatchingEmptyMessageRatio",
 	                                    id,
@@ -285,7 +290,11 @@ struct ProxyCommitData {
 		return false;
 	}
 
-	TenantMode getTenantMode() const { return db->get().client.tenantMode; }
+	TenantMode getTenantMode() const {
+		CODE_PROBE(db->get().client.grvProxies.empty() || db->get().client.grvProxies[0].provisional,
+		           "Accessing tenant mode in provisional ClientDBInfo");
+		return db->get().client.tenantMode;
+	}
 
 	void updateLatencyBandConfig(Optional<LatencyBandConfig> newLatencyBandConfig) {
 		if (newLatencyBandConfig.present() != latencyBandConfig.present() ||

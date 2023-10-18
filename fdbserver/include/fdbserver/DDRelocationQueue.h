@@ -29,9 +29,6 @@
 // call synchronous method from components outside DDRelocationQueue
 class IDDRelocationQueue {
 public:
-	PromiseStream<RelocateShard> relocationProducer, relocationConsumer; // FIXME(xwang): not used yet
-	// PromiseStream<Promise<int>> getUnhealthyRelocationCount; // FIXME(xwang): change it to a synchronous call
-
 	virtual int getUnhealthyRelocationCount() const = 0;
 	virtual ~IDDRelocationQueue() = default;
 	;
@@ -39,12 +36,16 @@ public:
 
 // DDQueue use RelocateData to track proposed movements
 class RelocateData {
+	// If this rs comes from a splitting, parent range is the original range.
+	Optional<KeyRange> parent_range;
+
 public:
 	KeyRange keys;
 	int priority;
 	int boundaryPriority;
 	int healthPriority;
 	RelocateReason reason;
+	DataMovementReason dmReason;
 
 	double startTime;
 	UID randomId; // inherit from RelocateShard.traceId
@@ -75,10 +76,19 @@ public:
 	}
 
 	bool isRestore() const;
+	Optional<KeyRange> getParentRange() const;
 
 	bool operator>(const RelocateData& rhs) const;
 	bool operator==(const RelocateData& rhs) const;
 	bool operator!=(const RelocateData& rhs) const;
+};
+
+struct RelocateDecision {
+	const RelocateData& rd;
+	const std::vector<UID>& destIds;
+	const std::vector<UID>& extraIds;
+	const StorageMetrics& metrics;
+	const Optional<StorageMetrics>& parentMetrics;
 };
 
 // DDQueue uses Busyness to throttle too many movement to/from a same server
@@ -110,6 +120,8 @@ struct DDQueueInitParams {
 
 // DDQueue receives RelocateShard from any other DD components and schedules the actual movements
 class DDQueue : public IDDRelocationQueue, public ReferenceCounted<DDQueue> {
+	const DDEnabledState* ddEnabledState = nullptr;
+
 public:
 	friend struct DDQueueImpl;
 
@@ -224,7 +236,7 @@ public:
 	ActorCollectionNoErrors noErrorActors; // has to be the last one to be destroyed because other Actors may use it.
 	UID distributorId;
 	MoveKeysLock lock;
-	Database cx;
+	// Should always use txnProcessor to access Database object
 	Reference<IDDTxnProcessor> txnProcessor;
 
 	std::vector<TeamCollectionInterface> teamCollections;

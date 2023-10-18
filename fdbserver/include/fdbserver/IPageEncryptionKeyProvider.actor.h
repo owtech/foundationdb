@@ -28,7 +28,7 @@
 #define FDBSERVER_IPAGEENCRYPTIONKEYPROVIDER_ACTOR_H
 
 #include "fdbclient/BlobCipher.h"
-#include "fdbclient/GetEncryptCipherKeys.actor.h"
+#include "fdbclient/GetEncryptCipherKeys.h"
 #include "fdbclient/SystemData.h"
 #include "fdbclient/Tenant.h"
 
@@ -163,15 +163,9 @@ namespace {
 template <EncodingType encodingType>
 int64_t getEncryptionDomainIdFromAesEncryptionHeader(const void* encodingHeader) {
 	using Encoder = typename ArenaPage::AESEncryptionEncoder<encodingType>;
-	using EncodingHeader = typename Encoder::Header;
 	ASSERT(encodingHeader != nullptr);
-	if (CLIENT_KNOBS->ENABLE_CONFIGURABLE_ENCRYPTION) {
-		BlobCipherEncryptHeaderRef headerRef = Encoder::getEncryptionHeaderRef(encodingHeader);
-		return headerRef.getCipherDetails().textCipherDetails.encryptDomainId;
-	} else {
-		const BlobCipherEncryptHeader& header = reinterpret_cast<const EncodingHeader*>(encodingHeader)->encryption;
-		return header.cipherTextDetails.encryptDomainId;
-	}
+	BlobCipherEncryptHeaderRef headerRef = Encoder::getEncryptionHeaderRef(encodingHeader);
+	return headerRef.getCipherDetails().textCipherDetails.encryptDomainId;
 }
 } // anonymous namespace
 
@@ -208,25 +202,15 @@ public:
 	Future<EncryptionKey> getEncryptionKey(const void* encodingHeader) override {
 		using Encoder = typename ArenaPage::AESEncryptionEncoder<encodingType>;
 		EncryptionKey s;
-		if (CLIENT_KNOBS->ENABLE_CONFIGURABLE_ENCRYPTION) {
-			const BlobCipherEncryptHeaderRef headerRef = Encoder::getEncryptionHeaderRef(encodingHeader);
-			EncryptHeaderCipherDetails details = headerRef.getCipherDetails();
-			ASSERT(details.textCipherDetails.isValid());
-			s.aesKey.cipherTextKey =
-			    getCipherKey(details.textCipherDetails.encryptDomainId, details.textCipherDetails.baseCipherId);
-			if (details.headerCipherDetails.present()) {
-				ASSERT(details.headerCipherDetails.get().isValid());
-				s.aesKey.cipherHeaderKey = getCipherKey(details.headerCipherDetails.get().encryptDomainId,
-				                                        details.headerCipherDetails.get().baseCipherId);
-			}
-		} else {
-			const typename Encoder::Header* h = reinterpret_cast<const typename Encoder::Header*>(encodingHeader);
-			s.aesKey.cipherTextKey = getCipherKey(h->encryption.cipherTextDetails.encryptDomainId,
-			                                      h->encryption.cipherTextDetails.baseCipherId);
-			if (h->encryption.cipherHeaderDetails.isValid()) {
-				s.aesKey.cipherHeaderKey = getCipherKey(h->encryption.cipherHeaderDetails.encryptDomainId,
-				                                        h->encryption.cipherHeaderDetails.baseCipherId);
-			}
+		const BlobCipherEncryptHeaderRef headerRef = Encoder::getEncryptionHeaderRef(encodingHeader);
+		EncryptHeaderCipherDetails details = headerRef.getCipherDetails();
+		ASSERT(details.textCipherDetails.isValid());
+		s.aesKey.cipherTextKey =
+		    getCipherKey(details.textCipherDetails.encryptDomainId, details.textCipherDetails.baseCipherId);
+		if (details.headerCipherDetails.present()) {
+			ASSERT(details.headerCipherDetails.get().isValid());
+			s.aesKey.cipherHeaderKey = getCipherKey(details.headerCipherDetails.get().encryptDomainId,
+			                                        details.headerCipherDetails.get().baseCipherId);
 		}
 		return s;
 	}
@@ -270,10 +254,12 @@ private:
 		    EncryptAuthTokenAlgo::ENCRYPT_HEADER_AUTH_TOKEN_ALGO_HMAC_SHA,
 		    AUTH_TOKEN_HMAC_SHA_SIZE);
 		ASSERT_EQ(AUTH_TOKEN_HMAC_SHA_SIZE, AES_256_KEY_LENGTH);
+		const EncryptCipherKeyCheckValue kcv = Sha256KCV().computeKCV(&digest[0], AES_256_KEY_LENGTH);
 		return makeReference<BlobCipherKey>(cipherDetails.encryptDomainId,
 		                                    cipherDetails.baseCipherId,
 		                                    &digest[0],
 		                                    AES_256_KEY_LENGTH,
+		                                    kcv,
 		                                    cipherDetails.salt,
 		                                    std::numeric_limits<int64_t>::max() /* refreshAt */,
 		                                    std::numeric_limits<int64_t>::max() /* expireAt */);
@@ -294,6 +280,7 @@ private:
 		                                    cipherId,
 		                                    cipherKeys[cipherId - 1]->rawBaseCipher(),
 		                                    AES_256_KEY_LENGTH,
+		                                    cipherKeys[cipherId - 1]->getBaseCipherKCV(),
 		                                    cipherKeys[cipherId - 1]->getSalt(),
 		                                    std::numeric_limits<int64_t>::max() /* refreshAt */,
 		                                    std::numeric_limits<int64_t>::max() /* expireAt */);
@@ -335,16 +322,10 @@ public:
 
 	ACTOR static Future<EncryptionKey> getEncryptionKey(AESEncryptionKeyProvider* self, const void* encodingHeader) {
 		state TextAndHeaderCipherKeys cipherKeys;
-		if (CLIENT_KNOBS->ENABLE_CONFIGURABLE_ENCRYPTION) {
-			BlobCipherEncryptHeaderRef headerRef = Encoder::getEncryptionHeaderRef(encodingHeader);
-			TextAndHeaderCipherKeys cks =
-			    wait(getEncryptCipherKeys(self->db, headerRef, BlobCipherMetrics::KV_REDWOOD));
-			cipherKeys = cks;
-		} else {
-			const BlobCipherEncryptHeader& header = reinterpret_cast<const EncodingHeader*>(encodingHeader)->encryption;
-			TextAndHeaderCipherKeys cks = wait(getEncryptCipherKeys(self->db, header, BlobCipherMetrics::KV_REDWOOD));
-			cipherKeys = cks;
-		}
+		BlobCipherEncryptHeaderRef headerRef = Encoder::getEncryptionHeaderRef(encodingHeader);
+		TextAndHeaderCipherKeys cks = wait(GetEncryptCipherKeys<ServerDBInfo>::getEncryptCipherKeys(
+		    self->db, headerRef, BlobCipherMetrics::KV_REDWOOD));
+		cipherKeys = cks;
 		EncryptionKey encryptionKey;
 		encryptionKey.aesKey = cipherKeys;
 		return encryptionKey;
@@ -361,7 +342,8 @@ public:
 	ACTOR static Future<EncryptionKey> getLatestEncryptionKey(AESEncryptionKeyProvider* self, int64_t domainId) {
 		ASSERT(self->encryptionMode == EncryptionAtRestMode::DOMAIN_AWARE || domainId < 0);
 		TextAndHeaderCipherKeys cipherKeys =
-		    wait(getLatestEncryptCipherKeysForDomain(self->db, domainId, BlobCipherMetrics::KV_REDWOOD));
+		    wait(GetEncryptCipherKeys<ServerDBInfo>::getLatestEncryptCipherKeysForDomain(
+		        self->db, domainId, BlobCipherMetrics::KV_REDWOOD));
 		EncryptionKey encryptionKey;
 		encryptionKey.aesKey = cipherKeys;
 		return encryptionKey;

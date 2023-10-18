@@ -468,14 +468,19 @@ ACTOR Future<Void> loadBlobMetadataForTenants(BGTenantMap* self, std::vector<Blo
 
 	// FIXME: if one tenant gets an error, don't kill whole process
 	state double startTime = now();
+	state UID prevEKPID = UID();
+	state Future<EKPGetLatestBlobMetadataReply> requestFuture = Never();
 	loop {
 		try {
-			Future<EKPGetLatestBlobMetadataReply> requestFuture;
-			if (self->dbInfo.isValid() && self->dbInfo->get().encryptKeyProxy.present()) {
-				req.reply.reset();
-				requestFuture =
-				    brokenPromiseToNever(self->dbInfo->get().encryptKeyProxy.get().getLatestBlobMetadata.getReply(req));
+			if (self->dbInfo.isValid() && self->dbInfo->get().client.encryptKeyProxy.present()) {
+				if (self->dbInfo->get().client.encryptKeyProxy.get().myId != prevEKPID) {
+					prevEKPID = self->dbInfo->get().client.encryptKeyProxy.get().myId;
+					req.reply.reset();
+					requestFuture = brokenPromiseToNever(
+					    self->dbInfo->get().client.encryptKeyProxy.get().getLatestBlobMetadata.getReply(req));
+				}
 			} else {
+				prevEKPID = UID();
 				requestFuture = Never();
 			}
 			choose {
@@ -517,6 +522,11 @@ ACTOR Future<Void> loadBlobMetadataForTenants(BGTenantMap* self, std::vector<Blo
 					for (auto& id : missingIds) {
 						req.domainIds.push_back(id);
 					}
+
+					// redo request
+					// reset request on error
+					prevEKPID = UID();
+					requestFuture = Never();
 				}
 				when(wait(self->dbInfo->onChange())) {
 					// reset retry sleep
@@ -529,6 +539,9 @@ ACTOR Future<Void> loadBlobMetadataForTenants(BGTenantMap* self, std::vector<Blo
 			}
 			CODE_PROBE(true, "blob metadata fetch error");
 			TraceEvent(SevWarn, "BlobMetadataFetchError").errorUnsuppressed(e).suppressFor(30.0);
+			// need to reset request on error
+			prevEKPID = UID();
+			requestFuture = Never();
 		}
 		wait(delay(retrySleep));
 		retrySleep = std::min(10.0, retrySleep * 1.5);
@@ -543,21 +556,15 @@ Future<Void> loadBlobMetadataForTenant(BGTenantMap* self, BlobMetadataDomainId d
 
 // list of tenants that may or may not already exist
 void BGTenantMap::addTenants(std::vector<std::pair<int64_t, TenantMapEntry>> tenants) {
-	std::vector<BlobMetadataDomainId> tenantsToLoad;
 	for (auto entry : tenants) {
 		if (tenantInfoById.insert({ entry.first, entry.second }).second) {
 			auto r = makeReference<GranuleTenantData>(entry.second);
 			tenantData.insert(KeyRangeRef(entry.second.prefix, entry.second.prefix.withSuffix(normalKeys.end)), r);
 			if (SERVER_KNOBS->BG_METADATA_SOURCE != "tenant") {
+				r->startedLoadingBStore = true;
 				r->bstoreLoaded.send(Void());
-			} else {
-				tenantsToLoad.push_back(entry.second.id);
 			}
 		}
-	}
-
-	if (!tenantsToLoad.empty()) {
-		addActor.send(loadBlobMetadataForTenants(this, tenantsToLoad));
 	}
 }
 
@@ -582,28 +589,39 @@ ACTOR Future<Reference<GranuleTenantData>> getDataForGranuleActor(BGTenantMap* s
 	state int loopCount = 0;
 	loop {
 		loopCount++;
-		auto tenant = self->tenantData.rangeContaining(keyRange.begin);
-		ASSERT(tenant.begin() <= keyRange.begin);
-		ASSERT(tenant.end() >= keyRange.end);
+		auto tenantRange = self->tenantData.rangeContaining(keyRange.begin);
+		ASSERT(tenantRange.begin() <= keyRange.begin);
+		ASSERT(tenantRange.end() >= keyRange.end);
+		state Reference<GranuleTenantData> tenant = tenantRange.cvalue();
 
-		if (!tenant.cvalue().isValid() || !tenant.cvalue()->bstore.isValid()) {
-			return tenant.cvalue();
-		} else if (tenant.cvalue()->bstore->isExpired()) {
+		if (!tenant.isValid()) {
+			return tenant;
+		} else if (!tenant->startedLoadingBStore || (tenant->bstore.isValid() && tenant->bstore->isExpired())) {
+			tenant->startedLoadingBStore = true;
 			CODE_PROBE(true, "re-fetching expired blob metadata");
-			// fetch again
-			Future<Void> reload = loadBlobMetadataForTenant(self, tenant.cvalue()->entry.id);
-			wait(reload);
-			if (loopCount > 1) {
+
+			// even if this actor gets cancelled, we marked it as startedLoading, so finish the load in the actor
+			// collection
+			Future<Void> loadFuture = loadBlobMetadataForTenant(self, tenant->entry.id);
+			self->addActor.send(loadFuture);
+			wait(loadFuture);
+
+			ASSERT(tenant->bstore.isValid());
+			if (!tenant->bstore->isExpired()) {
+				return tenant;
+			}
+
+			if (tenant->bstore->isExpired() && loopCount > 1) {
 				TraceEvent(SevWarn, "BlobMetadataStillExpired").suppressFor(5.0).detail("LoopCount", loopCount);
 				wait(delay(0.001));
 			}
 		} else {
 			// handle refresh in background if tenant needs refres
-			if (tenant.cvalue()->bstore->needsRefresh()) {
-				Future<Void> reload = loadBlobMetadataForTenant(self, tenant.cvalue()->entry.id);
+			if (tenant->bstore.isValid() && tenant->bstore->needsRefresh()) {
+				Future<Void> reload = loadBlobMetadataForTenant(self, tenant->entry.id);
 				self->addActor.send(reload);
 			}
-			return tenant.cvalue();
+			return tenant;
 		}
 	}
 }
@@ -611,4 +629,50 @@ ACTOR Future<Reference<GranuleTenantData>> getDataForGranuleActor(BGTenantMap* s
 // TODO: handle case where tenant isn't loaded yet
 Future<Reference<GranuleTenantData>> BGTenantMap::getDataForGranule(const KeyRangeRef& keyRange) {
 	return getDataForGranuleActor(this, keyRange);
+}
+
+ACTOR Future<Void> loadBGTenantMap(BGTenantMap* tenantData, Transaction* tr) {
+	loop {
+		try {
+			tr->setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
+			state KeyBackedRangeResult<std::pair<int64_t, TenantMapEntry>> tenantResults;
+			wait(store(tenantResults,
+			           TenantMetadata::tenantMap().getRange(tr, {}, {}, CLIENT_KNOBS->MAX_TENANTS_PER_CLUSTER + 1)));
+			ASSERT(tenantResults.results.size() <= CLIENT_KNOBS->MAX_TENANTS_PER_CLUSTER && !tenantResults.more);
+			tenantData->addTenants(tenantResults.results);
+			TraceEvent("LoadedBGTenantMap").detail("Size", tenantResults.results.size());
+			return Void();
+		} catch (Error& e) {
+			wait(tr->onError(e));
+		}
+	}
+}
+
+ACTOR Future<Reference<BlobConnectionProvider>> loadBStoreForTenant(BGTenantMap* tenantData, KeyRange keyRange) {
+	if (SERVER_KNOBS->BG_METADATA_SOURCE == "tenant") {
+		state int retryCount = 0;
+		loop {
+			state Reference<GranuleTenantData> data;
+			wait(store(data, tenantData->getDataForGranule(keyRange)));
+			if (data.isValid()) {
+				wait(data->bstoreLoaded.getFuture());
+				wait(delay(0));
+				return data->bstore;
+			} else {
+				CODE_PROBE(true, "bstore for unknown tenant");
+				// Assume not loaded yet, just wait a bit. Could do sophisticated mechanism but will redo tenant
+				// loading to be versioned anyway. 10 retries means it's likely not a transient race with
+				// loading tenants, and instead a persistent issue.
+				retryCount++;
+				TraceEvent(retryCount <= 10 ? SevDebug : SevWarn, "UnknownTenantForGranule")
+				    .detail("KeyRange", keyRange);
+				wait(delay(0.1));
+			}
+		}
+	} else if (!SERVER_KNOBS->BG_URL.empty()) {
+		return BlobConnectionProvider::newBlobConnectionProvider(SERVER_KNOBS->BG_URL);
+	} else {
+		TraceEvent(SevError, "MissingBlobStoreConfig").detail("KeyRange", keyRange);
+		throw restore_error();
+	}
 }

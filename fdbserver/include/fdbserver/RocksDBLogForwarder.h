@@ -24,9 +24,8 @@
 #include <cstdarg>
 #include <thread>
 
-#ifdef SSD_ROCKSDB_EXPERIMENTAL
+#ifdef WITH_ROCKSDB
 #include <rocksdb/env.h>
-#endif
 
 #include "flow/genericactors.actor.h"
 #include "flow/IRandom.h"
@@ -95,5 +94,7 @@ public:
 	// Writes an entry to the log file, with a specificied log level
 	virtual void Logv(const rocksdb::InfoLogLevel log_level, const char* format, va_list ap);
 };
+
+#endif // WITH_ROCKSDB
 
 #endif // __ROCKSDB_LOG_FORWARDER_H__

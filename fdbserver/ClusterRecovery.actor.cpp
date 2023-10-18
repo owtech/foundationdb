@@ -89,8 +89,8 @@ ACTOR Future<Void> recruitNewMaster(ClusterControllerData* cluster,
 		// We must recruit the master in the same data center as the cluster controller.
 		// This should always be possible, because we can recruit the master on the same process as the cluster
 		// controller.
-		std::map<Optional<Standalone<StringRef>>, int> id_used;
-		id_used[cluster->clusterControllerProcessId]++;
+		ClusterControllerData::WorkerUsages id_used;
+		id_used[cluster->clusterControllerProcessId].addRole(ProcessClass::ClusterController);
 		masterWorker = cluster->getWorkerForRoleInDatacenter(
 		    cluster->clusterControllerDcId, ProcessClass::Master, ProcessClass::NeverAssign, db->config, id_used);
 		if ((masterWorker.worker.processClass.machineClassFitness(ProcessClass::Master) >
@@ -1015,6 +1015,10 @@ ACTOR Future<std::vector<Standalone<CommitTransactionRef>>> recruitEverything(
 	}
 	self->backupWorkers.swap(recruits.backupWorkers);
 
+	// Store recruitment result, which may be used to check the current being recruited transaction system in gray
+	// failure detection.
+	self->primaryRecruitment = recruits;
+
 	TraceEvent(getRecoveryEventName(ClusterRecoveryEventType::CLUSTER_RECOVERY_STATE_EVENT_NAME).c_str(), self->dbgid)
 	    .detail("StatusCode", RecoveryStatus::initializing_transaction_servers)
 	    .detail("Status", RecoveryStatus::names[RecoveryStatus::initializing_transaction_servers])
@@ -1202,8 +1206,8 @@ ACTOR Future<Void> readTransactionSystemState(Reference<ClusterRecoveryData> sel
 
 	Optional<Value> metaclusterRegistrationVal =
 	    wait(self->txnStateStore->readValue(metacluster::metadata::metaclusterRegistration().key));
-	Optional<MetaclusterRegistrationEntry> metaclusterRegistration =
-	    MetaclusterRegistrationEntry::decode(metaclusterRegistrationVal);
+	Optional<UnversionedMetaclusterRegistrationEntry> metaclusterRegistration =
+	    UnversionedMetaclusterRegistrationEntry::decode(metaclusterRegistrationVal);
 	Optional<ClusterName> metaclusterName;
 	Optional<UID> metaclusterId;
 	Optional<ClusterName> clusterName;
