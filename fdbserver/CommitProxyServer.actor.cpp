@@ -896,6 +896,7 @@ ACTOR Future<Void> preresolutionProcessing(CommitBatchContext* self) {
 			r->value().emplace_back(versionReply.resolverChangesVersion, it.dest);
 	}
 
+	pProxyCommitData->stats.commitPreresolutionLatency.addMeasurement(now() - timeStart);
 	//TraceEvent("ProxyGotVer", pProxyContext->dbgid).detail("Commit", commitVersion).detail("Prev", prevVersion);
 
 	if (debugID.present()) {
@@ -1037,7 +1038,10 @@ ACTOR Future<Void> getResolution(CommitBatchContext* self) {
 	std::vector<ResolveTransactionBatchReply> resolutionResp = wait(getAll(replies));
 	self->resolution.swap(*const_cast<std::vector<ResolveTransactionBatchReply>*>(&resolutionResp));
 
-	self->pProxyCommitData->stats.resolutionDist->sampleSeconds(now() - resolutionStart);
+	double resolutionDuration = now() - resolutionStart;
+
+	self->pProxyCommitData->stats.commitResolutionLatency.addMeasurement(resolutionDuration);
+	self->pProxyCommitData->stats.resolutionDist->sampleSeconds(resolutionDuration);
 	if (self->debugID.present()) {
 		g_traceBatch.addEvent(
 		    "CommitDebug", self->debugID.get().first(), "CommitProxyServer.commitBatch.AfterResolution");
@@ -2290,7 +2294,10 @@ ACTOR Future<Void> postResolution(CommitBatchContext* self) {
 		}
 	}
 
-	pProxyCommitData->stats.processingMutationDist->sampleSeconds(now() - postResolutionQueuing);
+	double postResolutionEnd = now();
+
+	pProxyCommitData->stats.commitPostresolutionLatency.addMeasurement(postResolutionEnd - postResolutionStart);
+	pProxyCommitData->stats.processingMutationDist->sampleSeconds(postResolutionEnd - postResolutionQueuing);
 	return Void();
 }
 
@@ -2329,7 +2336,11 @@ ACTOR Future<Void> transactionLogging(CommitBatchContext* self) {
 		pProxyCommitData->txsPopVersions.emplace_back(self->commitVersion, self->msg.popTo);
 	}
 	pProxyCommitData->logSystem->popTxs(self->msg.popTo);
-	pProxyCommitData->stats.tlogLoggingDist->sampleSeconds(now() - tLoggingStart);
+
+	double tLoggingDuration = now() - tLoggingStart;
+
+	pProxyCommitData->stats.commitTLogLoggingLatency.addMeasurement(tLoggingDuration);
+	pProxyCommitData->stats.tlogLoggingDist->sampleSeconds(tLoggingDuration);
 	return Void();
 }
 
@@ -2448,6 +2459,7 @@ ACTOR Future<Void> reply(CommitBatchContext* self) {
 		// TODO: filter if pipelined with large commit
 		const double duration = endTime - tr.requestTime();
 		pProxyCommitData->stats.commitLatencySample.addMeasurement(duration);
+		pProxyCommitData->stats.commitBatchingWaiting.addMeasurement(self->startTime - tr.requestTime());
 		if (pProxyCommitData->latencyBandConfig.present()) {
 			bool filter = self->maxTransactionBytes >
 			              pProxyCommitData->latencyBandConfig.get().commitConfig.maxCommitBytes.orDefault(
@@ -2509,7 +2521,11 @@ ACTOR Future<Void> reply(CommitBatchContext* self) {
 	pProxyCommitData->commitBatchesMemBytesCount -= self->currentBatchMemBytesCount;
 	ASSERT_ABORT(pProxyCommitData->commitBatchesMemBytesCount >= 0);
 	wait(self->releaseFuture);
-	pProxyCommitData->stats.replyCommitDist->sampleSeconds(now() - replyStart);
+
+	double replyDuration = now() - replyStart;
+
+	pProxyCommitData->stats.commitReplyLatency.addMeasurement(replyDuration);
+	pProxyCommitData->stats.replyCommitDist->sampleSeconds(replyDuration);
 	return Void();
 }
 
@@ -2531,6 +2547,8 @@ ACTOR Future<Void> commitBatch(ProxyCommitData* self,
 	context.pProxyCommitData->lastVersionTime = context.startTime;
 	++context.pProxyCommitData->stats.commitBatchIn;
 	context.setupTraceBatch();
+	context.pProxyCommitData->stats.commitBatchBytes.addMeasurement(context.currentBatchMemBytesCount);
+	context.pProxyCommitData->stats.commitBatchTransactions.addMeasurement(context.trs.size());
 
 	/////// Phase 1: Pre-resolution processing (CPU bound except waiting for a version # which is separately pipelined
 	/// and *should* be available by now (unless empty commit); ordered; currently atomic but could yield)
