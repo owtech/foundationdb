@@ -289,20 +289,21 @@ ACTOR Future<Void> commitBatcher(ProxyCommitData* commitData,
 					}
 
 					if (!batch.size()) {
-						if (now() - lastBatch > commitData->commitBatchInterval) {
-							timeout = delayJittered(SERVER_KNOBS->COMMIT_TRANSACTION_BATCH_INTERVAL_FROM_IDLE,
-							                        TaskPriority::ProxyCommitBatcher);
-						} else {
-							timeout = delayJittered(commitData->commitBatchInterval - (now() - lastBatch),
-							                        TaskPriority::ProxyCommitBatcher);
-						}
+						double targetDelay = std::max(commitData->commitBatchInterval - (now() - lastBatch),
+						                              SERVER_KNOBS->COMMIT_TRANSACTION_BATCH_INTERVAL_FROM_IDLE);
+
+						timeout = SERVER_KNOBS->COMMIT_BATCH_RANDOMIZE_INTERVAL
+						              ? delayJittered(targetDelay, TaskPriority::ProxyCommitBatcher)
+						              : delay(targetDelay, TaskPriority::ProxyCommitBatcher);
 					}
 
 					if ((batchBytes + bytes > CLIENT_KNOBS->TRANSACTION_SIZE_LIMIT || req.firstInBatch()) &&
 					    batch.size()) {
 						out.send({ std::move(batch), batchBytes });
 						lastBatch = now();
-						timeout = delayJittered(commitData->commitBatchInterval, TaskPriority::ProxyCommitBatcher);
+						timeout = SERVER_KNOBS->COMMIT_BATCH_RANDOMIZE_INTERVAL
+						              ? delayJittered(commitData->commitBatchInterval, TaskPriority::ProxyCommitBatcher)
+						              : delay(commitData->commitBatchInterval, TaskPriority::ProxyCommitBatcher);
 						batch.clear();
 						batchBytes = 0;
 					}
