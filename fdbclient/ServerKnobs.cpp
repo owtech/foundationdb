@@ -574,6 +574,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( BLOB_GRANULE_LOCATION_MAX_QUEUE_SIZE,                  1e5 ); if ( randomize && BUGGIFY ) BLOB_GRANULE_LOCATION_MAX_QUEUE_SIZE = 100;
 	init( COMMIT_PROXY_LIVENESS_TIMEOUT,                        20.0 );
 
+	init( COMMIT_BATCH_RANDOMIZE_INTERVAL,                      false );
 	init( COMMIT_TRANSACTION_BATCH_INTERVAL_FROM_IDLE,         0.0005 ); if( randomize && BUGGIFY ) COMMIT_TRANSACTION_BATCH_INTERVAL_FROM_IDLE = 0.005;
 	init( COMMIT_TRANSACTION_BATCH_INTERVAL_MIN,                0.001 ); if( randomize && BUGGIFY ) COMMIT_TRANSACTION_BATCH_INTERVAL_MIN = 0.1;
 	init( COMMIT_TRANSACTION_BATCH_INTERVAL_MAX,                0.020 );
@@ -1104,7 +1105,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	// Server request latency measurement
 	init( LATENCY_SKETCH_ACCURACY,                              0.01 );
 	init( FILE_LATENCY_SKETCH_ACCURACY,                         0.01 );
-	init( LATENCY_METRICS_LOGGING_INTERVAL,                     60.0 );
+	init( LATENCY_METRICS_LOGGING_INTERVAL,                     10.0 );
 
 	// Cluster recovery
 	init ( CLUSTER_RECOVERY_EVENT_NAME_PREFIX,              "Master" );
