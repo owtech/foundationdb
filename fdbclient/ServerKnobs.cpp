@@ -575,6 +575,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( COMMIT_PROXY_LIVENESS_TIMEOUT,                        20.0 );
 
 	init( COMMIT_BATCH_RANDOMIZE_INTERVAL,                      false );
+	init( COMMIT_BATCH_MAX_IN_PROGRESS,                             0 );
 	init( COMMIT_TRANSACTION_BATCH_INTERVAL_FROM_IDLE,         0.0005 ); if( randomize && BUGGIFY ) COMMIT_TRANSACTION_BATCH_INTERVAL_FROM_IDLE = 0.005;
 	init( COMMIT_TRANSACTION_BATCH_INTERVAL_MIN,                0.001 ); if( randomize && BUGGIFY ) COMMIT_TRANSACTION_BATCH_INTERVAL_MIN = 0.1;
 	init( COMMIT_TRANSACTION_BATCH_INTERVAL_MAX,                0.020 );
