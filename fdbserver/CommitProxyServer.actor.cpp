@@ -358,6 +358,17 @@ bool verifyTenantPrefix(ProxyCommitData* const commitData, const CommitTransacti
 	return true;
 }
 
+// calculate the batch timeout depending on server knobs
+Future<Void> makeBatchTimeoutFuture(double baseDelay) {
+	double targetDelay =
+	    SERVER_KNOBS->COMMIT_BATCH_MAX_IN_PROGRESS > 0 ? SERVER_KNOBS->MAX_COMMIT_BATCH_INTERVAL : baseDelay;
+
+	return targetDelay <= 0 ? Never()
+	       : SERVER_KNOBS->COMMIT_BATCH_RANDOMIZE_INTERVAL
+	           ? delayJittered(targetDelay, TaskPriority::ProxyCommitBatcher)
+	           : delay(targetDelay, TaskPriority::ProxyCommitBatcher);
+}
+
 ACTOR Future<Void> commitBatcher(ProxyCommitData* commitData,
                                  PromiseStream<std::pair<std::vector<CommitTransactionRequest>, int>> out,
                                  FutureStream<CommitTransactionRequest> in,
@@ -366,6 +377,7 @@ ACTOR Future<Void> commitBatcher(ProxyCommitData* commitData,
 	wait(delayJittered(commitData->commitBatchInterval, TaskPriority::ProxyCommitBatcher));
 
 	state double lastBatch = 0;
+	state int64_t batchesInProgress = 0;
 
 	loop {
 		state Future<Void> timeout;
@@ -374,14 +386,12 @@ ACTOR Future<Void> commitBatcher(ProxyCommitData* commitData,
 		// TODO: Enable this assertion (currently failing with gcc)
 		// static_assert(std::is_nothrow_move_constructible_v<CommitTransactionRequest>);
 
-		if (SERVER_KNOBS->MAX_COMMIT_BATCH_INTERVAL <= 0) {
-			timeout = Never();
-		} else {
-			timeout = delayJittered(SERVER_KNOBS->MAX_COMMIT_BATCH_INTERVAL, TaskPriority::ProxyCommitBatcher);
-		}
+		timeout = makeBatchTimeoutFuture(SERVER_KNOBS->MAX_COMMIT_BATCH_INTERVAL);
 
 		while (!timeout.isReady() &&
-		       !(batch.size() == SERVER_KNOBS->COMMIT_TRANSACTION_BATCH_COUNT_MAX || batchBytes >= desiredBytes)) {
+		       !(batch.size() == SERVER_KNOBS->COMMIT_TRANSACTION_BATCH_COUNT_MAX || batchBytes >= desiredBytes) &&
+		       !(SERVER_KNOBS->COMMIT_BATCH_MAX_IN_PROGRESS > 0 &&
+		         batchesInProgress < SERVER_KNOBS->COMMIT_BATCH_MAX_IN_PROGRESS && batch.size())) {
 			choose {
 				when(CommitTransactionRequest req = waitNext(in)) {
 					// WARNING: this code is run at a high priority, so it needs to do as little work as possible
@@ -425,22 +435,18 @@ ACTOR Future<Void> commitBatcher(ProxyCommitData* commitData,
 						g_traceBatch.addEvent("CommitDebug", req.debugID.get().first(), "CommitProxyServer.batcher");
 					}
 
-					if (!batch.size()) {
-						if (now() - lastBatch > commitData->commitBatchInterval) {
-							timeout = delayJittered(SERVER_KNOBS->COMMIT_TRANSACTION_BATCH_INTERVAL_FROM_IDLE,
-							                        TaskPriority::ProxyCommitBatcher);
-						} else {
-							timeout = delayJittered(commitData->commitBatchInterval - (now() - lastBatch),
-							                        TaskPriority::ProxyCommitBatcher);
-						}
-					}
+					if (!batch.size())
+						timeout =
+						    makeBatchTimeoutFuture(std::max(commitData->commitBatchInterval - (now() - lastBatch),
+						                                    SERVER_KNOBS->COMMIT_TRANSACTION_BATCH_INTERVAL_FROM_IDLE));
 
 					if ((batchBytes + bytes > CLIENT_KNOBS->TRANSACTION_SIZE_LIMIT || req.firstInBatch()) &&
 					    batch.size()) {
 						commitData->triggerCommit.set(false);
+						batchesInProgress++;
 						out.send({ std::move(batch), batchBytes });
 						lastBatch = now();
-						timeout = delayJittered(commitData->commitBatchInterval, TaskPriority::ProxyCommitBatcher);
+						timeout = makeBatchTimeoutFuture(commitData->commitBatchInterval);
 						batch.clear();
 						batchBytes = 0;
 					}
@@ -457,10 +463,14 @@ ACTOR Future<Void> commitBatcher(ProxyCommitData* commitData,
 						break;
 					}
 
-					timeout = timeout || delayJittered(commitTime - now(), TaskPriority::ProxyCommitBatcher);
+					timeout = timeout || makeBatchTimeoutFuture(commitTime - now());
+				}
+				when(waitNext(commitData->committedBatches.getFuture())) {
+					batchesInProgress--;
 				}
 			}
 		}
+		batchesInProgress++;
 		commitData->triggerCommit.set(false);
 		out.send({ std::move(batch), batchBytes });
 		lastBatch = now();
@@ -3758,21 +3768,22 @@ ACTOR Future<Void> commitProxyServerCore(CommitProxyInterface proxy,
 			int batchBytes = batchedRequests.second;
 			//TraceEvent("CommitProxyCTR", proxy.id()).detail("CommitTransactions", trs.size()).detail("TransactionRate", transactionRate).detail("TransactionQueue", transactionQueue.size()).detail("ReleasedTransactionCount", transactionCount);
 			//TraceEvent("CommitProxyCore", commitData.dbgid).detail("TxSize", trs.size()).detail("MasterLifetime", masterLifetime.toString()).detail("DbMasterLifetime", commitData.db->get().masterLifetime.toString()).detail("RecoveryState", commitData.db->get().recoveryState).detail("CCInf", commitData.db->get().clusterInterface.id().toString());
-			if (trs.size() || (commitData.db->get().recoveryState >= RecoveryState::ACCEPTING_COMMITS &&
-			                   masterLifetime.isEqual(commitData.db->get().masterLifetime))) {
-
-				if (trs.size() || lastCommitComplete.isReady()) {
-					lastCommitComplete = transformError(
-					    timeoutError(
-					        commitBatch(&commitData,
-					                    const_cast<std::vector<CommitTransactionRequest>*>(&batchedRequests.first),
-					                    batchBytes),
-					        SERVER_KNOBS->COMMIT_PROXY_LIVENESS_TIMEOUT),
-					    timed_out(),
-					    failed_to_progress());
-					addActor.send(lastCommitComplete);
-				}
-			}
+			if (trs.size() ||
+			    (commitData.db->get().recoveryState >= RecoveryState::ACCEPTING_COMMITS &&
+			     masterLifetime.isEqual(commitData.db->get().masterLifetime) && lastCommitComplete.isReady())) {
+				lastCommitComplete =
+				    tag(transformError(timeoutError(commitBatch(&commitData,
+				                                                const_cast<std::vector<CommitTransactionRequest>*>(
+				                                                    &batchedRequests.first),
+				                                                batchBytes),
+				                                    SERVER_KNOBS->COMMIT_PROXY_LIVENESS_TIMEOUT),
+				                       timed_out(),
+				                       failed_to_progress()),
+				        Void(),
+				        commitData.committedBatches);
+				addActor.send(lastCommitComplete);
+			} else
+				commitData.committedBatches.send(Void());
 		}
 		when(ProxySnapRequest snapReq = waitNext(proxy.proxySnapReq.getFuture())) {
 			TraceEvent(SevDebug, "SnapMasterEnqueue").log();
