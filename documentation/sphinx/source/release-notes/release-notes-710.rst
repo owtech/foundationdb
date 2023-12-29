@@ -59,6 +59,7 @@ Release Notes
 * Released with AVX disabled.
 * Added consistency check for rocksdb only `(PR #10751) <https://github.com/apple/foundationdb/pull/10751>`_
 * Fixed grv queue stats when requests are dropped `(PR #10753) <https://github.com/apple/foundationdb/pull/10753>`_
+
 7.1.35
 ======
 * Same as 7.1.34 release with AVX enabled.
