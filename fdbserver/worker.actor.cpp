@@ -1996,6 +1996,7 @@ ACTOR Future<Void> deleteStorageFile(KeyValueStoreType storeType,
 	TraceEvent("RemoveStorageDisk").detail("Filename", filename).detail("StoreID", storeID);
 	return Void();
 }
+
 ACTOR Future<Void> cleanupStaleStorageDisk(Reference<AsyncVar<ServerDBInfo>> dbInfo,
                                            std::unordered_map<UID, StorageDiskCleaner>* cleaners,
                                            UID storeID,
