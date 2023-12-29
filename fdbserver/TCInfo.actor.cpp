@@ -92,6 +92,24 @@ public:
 				server->collection->removeLaggingStorageServer(server->lastKnownInterface.locality.zoneId().get());
 			}
 		}
+
+		if (SERVER_KNOBS->ENABLE_AUTO_SHARD_SPLIT_FOR_LONG_STORAGE_QUEUE) {
+			int64_t queueSize = server->getStorageQueueSize();
+			bool storageQueueKeepTooLong = server->updateAndGetStorageQueueTooLong(queueSize, server->getId());
+			double currentTime = now();
+			if (storageQueueKeepTooLong) {
+				if (!server->lastStorageQueueTooLongTriggerTime.present() ||
+				    currentTime - server->lastStorageQueueTooLongTriggerTime.get() >
+				        SERVER_KNOBS->DD_MIN_LONG_STORAGE_QUEUE_SPLIT_INTERVAL_SEC) {
+					server->storageQueueTooLong.trigger(); // will trigger split
+					TraceEvent(SevInfo, "StorageQueueTooLongNotified", server->collection->getDistributorId())
+					    .detail("SSID", server->getId())
+					    .detail("CurrentQueueSize", queueSize);
+					server->lastStorageQueueTooLongTriggerTime = currentTime;
+				}
+			}
+		}
+
 		return Void();
 	}
 
@@ -219,6 +237,10 @@ std::pair<int64_t, int64_t> TCServerInfo::spaceBytes(bool includeInFlight) const
 
 int64_t TCServerInfo::loadBytes() const {
 	return getMetrics().load.bytes;
+}
+
+int64_t TCServerInfo::getStorageQueueSize() const {
+	return getMetrics().bytesInput - getMetrics().bytesDurable;
 }
 
 void TCServerInfo::removeTeam(Reference<TCTeamInfo> team) {
@@ -354,6 +376,18 @@ int64_t TCTeamInfo::getDataInFlightToTeam() const {
 		dataInFlight += server->getDataInFlightToServer();
 	}
 	return dataInFlight;
+}
+
+Optional<int64_t> TCTeamInfo::getLongestStorageQueueSize() const {
+	int64_t longestQueueSize = 0;
+	for (const auto& server : servers) {
+		if (server->metricsPresent()) {
+			longestQueueSize = std::max(longestQueueSize, server->getStorageQueueSize());
+		} else {
+			return Optional<int64_t>();
+		}
+	}
+	return longestQueueSize;
 }
 
 int64_t TCTeamInfo::getLoadBytes(bool includeInFlight, double inflightPenalty) const {

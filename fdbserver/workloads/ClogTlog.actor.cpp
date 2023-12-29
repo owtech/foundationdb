@@ -37,6 +37,7 @@ struct ClogTlogWorkload : TestWorkload {
 	bool enabled;
 	double testDuration;
 	bool clogged = false;
+	bool useDisconnection = false;
 	Optional<NetworkAddress> tlog; // the tlog to be clogged with all other processes except the CC
 	std::vector<std::pair<IPAddress, IPAddress>> cloggedPairs;
 
@@ -103,8 +104,13 @@ struct ClogTlogWorkload : TestWorkload {
 		// clog pairs
 		for (const auto& ip : ips) {
 			if (ip != tlog.get().ip && ip != cc) {
-				g_simulator.clogPair(ip, tlog.get().ip, seconds);
-				g_simulator.clogPair(tlog.get().ip, ip, seconds);
+				if (useDisconnection) {
+					g_simulator.disconnectPair(ip, tlog.get().ip, seconds);
+					g_simulator.disconnectPair(tlog.get().ip, ip, seconds);
+				} else {
+					g_simulator.clogPair(ip, tlog.get().ip, seconds);
+					g_simulator.clogPair(tlog.get().ip, ip, seconds);
+				}
 				cloggedPairs.emplace_back(ip, tlog.get().ip);
 				cloggedPairs.emplace_back(tlog.get().ip, ip);
 			}
@@ -115,7 +121,11 @@ struct ClogTlogWorkload : TestWorkload {
 	void unclogAll() {
 		// unclog previously clogged connections
 		for (const auto& pair : cloggedPairs) {
-			g_simulator.unclogPair(pair.first, pair.second);
+			if (useDisconnection) {
+				g_simulator.reconnectPair(pair.first, pair.second);
+			} else {
+				g_simulator.unclogPair(pair.first, pair.second);
+			}
 		}
 		cloggedPairs.clear();
 	}
@@ -145,6 +155,9 @@ struct ClogTlogWorkload : TestWorkload {
 	}
 
 	ACTOR Future<Void> clogClient(ClogTlogWorkload* self, Database cx) {
+		if (deterministicRandom()->coinflip()) {
+			self->useDisconnection = true;
+		}
 		// Let cycle workload issue some transactions.
 		wait(delay(20.0));
 
@@ -153,7 +166,7 @@ struct ClogTlogWorkload : TestWorkload {
 		}
 
 		double startTime = now();
-		state double workloadEnd = now() + self->testDuration;
+		state double workloadEnd = now() + self->testDuration - 10;
 		TraceEvent("ClogTlog").detail("StartTime", startTime).detail("EndTime", workloadEnd);
 
 		// Clog and wait for recovery to happen
@@ -162,13 +175,21 @@ struct ClogTlogWorkload : TestWorkload {
 			wait(self->dbInfo->onChange());
 		}
 
-		// start exclusion and wait for fully recovery
-		state Future<Void> excludeLog = excludeFailedLog(self, cx);
+		state bool useGrayFailureToRecover = false;
+		if (deterministicRandom()->coinflip() && self->useDisconnection) {
+			// Use gray failure instead of exclusion to recover the cluster.
+			TraceEvent("ClogTlogUseGrayFailreToRecover").log();
+			useGrayFailureToRecover = true;
+		}
+
+		// start exclusion and wait for fully recovery. When using gray failure, the cluster should recover by itself
+		// eventually.
+		state Future<Void> excludeLog = useGrayFailureToRecover ? Never() : excludeFailedLog(self, cx);
 		state Future<Void> onChange = self->dbInfo->onChange();
 		loop choose {
 			when(wait(onChange)) {
 				if (self->dbInfo->get().recoveryState == RecoveryState::FULLY_RECOVERED) {
-					TraceEvent("ClogDoneFullyRecovered");
+					TraceEvent("ClogDoneFullyRecovered").log();
 					self->unclogAll();
 					return Void();
 				}

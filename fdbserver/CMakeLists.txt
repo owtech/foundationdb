@@ -41,6 +41,7 @@ set(FDBSERVER_SRCS
   DiskQueue.actor.cpp
   EncryptKeyProxy.actor.cpp
   EncryptKeyProxyInterface.h
+  ExclusionTracker.actor.h
   FDBExecHelper.actor.cpp
   FDBExecHelper.actor.h
   FDBRocksDBVersion.h
@@ -241,6 +242,7 @@ set(FDBSERVER_SRCS
   workloads/LogMetrics.actor.cpp
   workloads/LowLatency.actor.cpp
   workloads/MachineAttrition.actor.cpp
+  workloads/ManualShardSplit.actor.cpp
   workloads/Mako.actor.cpp
   workloads/MemoryKeyValueStore.cpp
   workloads/MemoryKeyValueStore.h
@@ -250,6 +252,7 @@ set(FDBSERVER_SRCS
   workloads/MutationLogReaderCorrectness.actor.cpp
   workloads/ParallelRestore.actor.cpp
   workloads/Performance.actor.cpp
+  workloads/PerpetualWiggleStorageMigrationWorkload.actor.cpp
   workloads/PhysicalShardMove.actor.cpp
   workloads/Ping.actor.cpp
   workloads/PopulateTPCC.actor.cpp

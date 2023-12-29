@@ -285,7 +285,7 @@ static JsonBuilderObject machineStatusFetcher(WorkerEvents mMetrics,
 	// map from machine networkAddress to datacenter ID
 	std::map<NetworkAddress, std::string> dcIds;
 	std::map<NetworkAddress, LocalityData> locality;
-	std::map<std::string, bool> notExcludedMap;
+	std::map<std::string, bool> excludedMap;
 	std::map<std::string, int32_t> workerContribMap;
 	std::map<std::string, JsonBuilderObject> machineJsonMap;
 
@@ -351,7 +351,7 @@ static JsonBuilderObject machineStatusFetcher(WorkerEvents mMetrics,
 				statusObj["network"] = networkObj;
 
 				if (configuration.present()) {
-					notExcludedMap[machineId] =
+					excludedMap[machineId] =
 					    true; // Will be set to false below if this or any later process is not excluded
 				}
 
@@ -359,18 +359,26 @@ static JsonBuilderObject machineStatusFetcher(WorkerEvents mMetrics,
 				machineJsonMap[machineId] = statusObj;
 			}
 
-			// FIXME: this will not catch if the secondary address of the process was excluded
-			NetworkAddressList tempList;
-			tempList.address = it->first;
-			bool excludedServer = false;
-			bool excludedLocality = false;
-			if (configuration.present() && configuration.get().isExcludedServer(tempList))
-				excludedServer = true;
-			if (locality.count(it->first) && configuration.present() &&
-			    configuration.get().isMachineExcluded(locality[it->first]))
-				excludedLocality = true;
+			bool excludedServer = true;
+			// If the machine is already marked as not excluded, because at least one process was found to not be
+			// excluded, we can stop checking further servers on this machine.
+			if (configuration.present() && excludedMap[machineId]) {
+				NetworkAddressList tempList;
+				tempList.address = it->first;
+				// Check if the locality data is present and if so, make use of it.
+				auto localityData = LocalityData();
+				if (locality.count(it->first)) {
+					localityData = locality[it->first];
+				}
 
-			notExcludedMap[machineId] = excludedServer || excludedLocality;
+				// The isExcludedServer method already contains a check for the excluded localities.
+				excludedServer = configuration.get().isExcludedServer(tempList, localityData);
+			}
+
+			// If any server is not excluded, set the overall exclusion status of the machine to false.
+			if (!excludedServer) {
+				excludedMap[machineId] = false;
+			}
 			workerContribMap[machineId]++;
 		} catch (Error&) {
 			++failed;
@@ -381,7 +389,7 @@ static JsonBuilderObject machineStatusFetcher(WorkerEvents mMetrics,
 	for (auto& mapPair : machineJsonMap) {
 		auto& machineId = mapPair.first;
 		auto& jsonItem = machineJsonMap[machineId];
-		jsonItem["excluded"] = notExcludedMap[machineId];
+		jsonItem["excluded"] = excludedMap[machineId];
 		jsonItem["contributing_workers"] = workerContribMap[machineId];
 		machineMap[machineId] = jsonItem;
 	}
@@ -1099,8 +1107,8 @@ ACTOR static Future<JsonBuilderObject> processStatusFetcher(
 			statusObj["roles"] = roles.getStatusForAddress(address);
 
 			if (configuration.present()) {
-				statusObj["excluded"] = configuration.get().isExcludedServer(workerItr->interf.addresses()) ||
-				                        configuration.get().isExcludedLocality(workerItr->interf.locality);
+				statusObj["excluded"] =
+				    configuration.get().isExcludedServer(workerItr->interf.addresses(), workerItr->interf.locality);
 			}
 
 			statusObj["class_type"] = workerItr->processClass.toString();
@@ -2069,7 +2077,7 @@ static int getExtraTLogEligibleZones(const std::vector<WorkerDetails>& workers,
 	std::map<Key, std::set<StringRef>> dcId_zone;
 	for (auto const& worker : workers) {
 		if (worker.processClass.machineClassFitness(ProcessClass::TLog) < ProcessClass::NeverAssign &&
-		    !configuration.isExcludedServer(worker.interf.addresses())) {
+		    !configuration.isExcludedServer(worker.interf.addresses(), worker.interf.locality)) {
 			allZones.insert(worker.interf.locality.zoneId().get());
 			if (worker.interf.locality.dcId().present()) {
 				dcId_zone[worker.interf.locality.dcId().get()].insert(worker.interf.locality.zoneId().get());

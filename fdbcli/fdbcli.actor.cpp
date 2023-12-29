@@ -798,6 +798,7 @@ void configureGenerator(const char* text, const char* line, std::vector<std::str
 		                   "resolvers=",
 		                   "perpetual_storage_wiggle=",
 		                   "perpetual_storage_wiggle_locality=",
+		                   "perpetual_storage_wiggle_engine=",
 		                   "storage_migration_type=",
 		                   "tenant_mode=",
 		                   "blob_granules_enabled=",
@@ -1739,6 +1740,14 @@ ACTOR Future<int> cli(CLIOptions opt, LineNoise* plinenoise) {
 					bool _result = wait(makeInterruptable(maintenanceCommandActor(db, tokens)));
 					if (!_result)
 						is_error = true;
+					continue;
+				}
+
+				if (tokencmp(tokens[0], "redistribute")) {
+					bool _result = wait(makeInterruptable(redistributeCommandActor(ccf, tokens)));
+					if (!_result) {
+						is_error = true;
+					}
 					continue;
 				}
 

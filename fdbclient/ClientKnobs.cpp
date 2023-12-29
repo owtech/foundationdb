@@ -208,6 +208,7 @@ void ClientKnobs::initialize(Randomize randomize) {
 	init( IS_ACCEPTABLE_DELAY,                     1.5 );
 
 	init( HTTP_REQUEST_AWS_V4_HEADER,             true );
+	init( HTTP_RESPONSE_SKIP_VERIFY_CHECKSUM_FOR_PARTIAL_CONTENT, false );
 	init( BLOBSTORE_ENCRYPTION_TYPE,                "" );
 	init( BLOBSTORE_CONNECT_TRIES,                  10 );
 	init( BLOBSTORE_CONNECT_TIMEOUT,                10 );
@@ -232,6 +233,9 @@ void ClientKnobs::initialize(Randomize randomize) {
 	init( BLOBSTORE_MAX_SEND_BYTES_PER_SECOND,      1e9 );
 	init( BLOBSTORE_MAX_RECV_BYTES_PER_SECOND,      1e9 );
 
+	init( BLOBSTORE_MAX_DELAY_RETRYABLE_ERROR,      60  );
+	init( BLOBSTORE_MAX_DELAY_CONNECTION_FAILED,    10  );
+
 	init( BLOBSTORE_LIST_REQUESTS_PER_SECOND,       200 );
 	init( BLOBSTORE_WRITE_REQUESTS_PER_SECOND,       50 );
 	init( BLOBSTORE_READ_REQUESTS_PER_SECOND,       100 );
@@ -254,6 +258,63 @@ void ClientKnobs::initialize(Randomize randomize) {
 
 	init( CONSISTENCY_CHECK_RATE_LIMIT_MAX,        50e6 ); // Limit in per sec
 	init( CONSISTENCY_CHECK_ONE_ROUND_TARGET_COMPLETION_TIME,	7 * 24 * 60 * 60 ); // 7 days
+	init( CONSISTENCY_CHECK_URGENT_MODE,           true );
+	init( CONSISTENCY_CHECK_DISTRIBUTED_WIGGLE_ROOM, 50 ); if( randomize && BUGGIFY ) CONSISTENCY_CHECK_DISTRIBUTED_WIGGLE_ROOM = 1;
+	init( CONSISTENCY_CHECK_RETRY_DEPTH_MAX,        100 ); if( randomize && BUGGIFY ) CONSISTENCY_CHECK_RETRY_DEPTH_MAX = 10;
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_0,           "" ); if( randomize && BUGGIFY ) CONSISTENCY_CHECK_RANGE_BEGIN_0 = "";
+	init( CONSISTENCY_CHECK_RANGE_END_0,   "\\xff\\xff" ); if( randomize && BUGGIFY ) CONSISTENCY_CHECK_RANGE_END_0 = "\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x33\\x66\\x63\\x36";
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_1,           "" );
+	init( CONSISTENCY_CHECK_RANGE_END_1,             "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_2,           "" );
+	init( CONSISTENCY_CHECK_RANGE_END_2,             "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_3,           "" );
+	init( CONSISTENCY_CHECK_RANGE_END_3,             "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_4,           "" );
+	init( CONSISTENCY_CHECK_RANGE_END_4,             "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_5,           "" );
+	init( CONSISTENCY_CHECK_RANGE_END_5,             "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_6,           "" ); 
+	init( CONSISTENCY_CHECK_RANGE_END_6,             "" ); 
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_7,           "" );
+	init( CONSISTENCY_CHECK_RANGE_END_7,             "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_8,           "" );
+	init( CONSISTENCY_CHECK_RANGE_END_8,             "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_9,           "" );
+	init( CONSISTENCY_CHECK_RANGE_END_9,             "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_10,          "" );
+	init( CONSISTENCY_CHECK_RANGE_END_10,            "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_11,          "" );
+	init( CONSISTENCY_CHECK_RANGE_END_11,            "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_12,          "" );
+	init( CONSISTENCY_CHECK_RANGE_END_12,            "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_13,          "" );
+	init( CONSISTENCY_CHECK_RANGE_END_13,            "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_14,          "" );
+	init( CONSISTENCY_CHECK_RANGE_END_14,            "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_15,          "" );
+	init( CONSISTENCY_CHECK_RANGE_END_15,            "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_16,          "" );
+	init( CONSISTENCY_CHECK_RANGE_END_16,            "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_17,          "" );
+	init( CONSISTENCY_CHECK_RANGE_END_17,            "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_18,          "" );
+	init( CONSISTENCY_CHECK_RANGE_END_18,            "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_19,          "" );
+	init( CONSISTENCY_CHECK_RANGE_END_19,            "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_20,          "" );
+	init( CONSISTENCY_CHECK_RANGE_END_20,            "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_21,          "" );
+	init( CONSISTENCY_CHECK_RANGE_END_21,            "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_22,          "" );
+	init( CONSISTENCY_CHECK_RANGE_END_22,            "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_23,          "" );
+	init( CONSISTENCY_CHECK_RANGE_END_23,            "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_24,          "" );
+	init( CONSISTENCY_CHECK_RANGE_END_24,            "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_25,          "" );
+	init( CONSISTENCY_CHECK_RANGE_END_25,            "" );
+	init( CONSISTENCY_CHECK_RANGE_BEGIN_26,          "" ); if( randomize && BUGGIFY ) CONSISTENCY_CHECK_RANGE_BEGIN_26 = "\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x33\\x66\\x65\\x34\\x63\\x62";
+	init( CONSISTENCY_CHECK_RANGE_END_26,            "" ); if( randomize && BUGGIFY ) CONSISTENCY_CHECK_RANGE_END_26 = "\\xff\\xff";
 
 	//fdbcli
 	init( CLI_CONNECT_PARALLELISM,                  400 );

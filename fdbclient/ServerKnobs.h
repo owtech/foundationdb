@@ -128,6 +128,7 @@ public:
 	double DD_QUEUE_LOGGING_INTERVAL;
 	double RELOCATION_PARALLELISM_PER_SOURCE_SERVER;
 	double RELOCATION_PARALLELISM_PER_DEST_SERVER;
+	double MANUAL_SPLIT_RELOCATION_PARALLELISM_PER_DEST_SERVER;
 	int DD_QUEUE_MAX_KEY_SERVERS;
 	int DD_REBALANCE_PARALLELISM;
 	int DD_REBALANCE_RESET_AMOUNT;
@@ -156,11 +157,13 @@ public:
 	int PRIORITY_TEAM_REDUNDANT;
 	int PRIORITY_MERGE_SHARD;
 	int PRIORITY_POPULATE_REGION;
+	int PRIORITY_TEAM_STORAGE_QUEUE_TOO_LONG;
 	int PRIORITY_TEAM_UNHEALTHY;
 	int PRIORITY_TEAM_2_LEFT;
 	int PRIORITY_TEAM_1_LEFT;
 	int PRIORITY_TEAM_FAILED; // Priority when a server in the team is excluded as failed
 	int PRIORITY_TEAM_0_LEFT;
+	int PRIORITY_MANUAL_SHARD_SPLIT; // Priority when a server has a long storage queue
 	int PRIORITY_SPLIT_SHARD;
 
 	// Data distribution
@@ -177,9 +180,19 @@ public:
 	double METRIC_DELAY;
 	double ALL_DATA_REMOVED_DELAY;
 	double INITIAL_FAILURE_REACTION_DELAY;
-	double CHECK_TEAM_DELAY;
-	double PERPETUAL_WIGGLE_DELAY;
-	bool PERPETUAL_WIGGLE_DISABLE_REMOVER;
+	double CHECK_TEAM_DELAY; // Perpetual wiggle check cluster team healthy
+	double PERPETUAL_WIGGLE_SMALL_LOAD_RATIO; // If the average load of storage server is less than this ratio * average
+	                                          // shard bytes, the perpetual wiggle won't consider the available space
+	                                          // load balance in the cluster
+	double PERPETUAL_WIGGLE_MIN_BYTES_BALANCE_RATIO; // target min : average space load balance ratio after re-include
+	                                                 // before perpetual wiggle will start the next wiggle
+	int PW_MAX_SS_LESSTHAN_MIN_BYTES_BALANCE_RATIO; // Maximum number of storage servers that can have the load bytes
+	                                                // less than PERPETUAL_WIGGLE_MIN_BYTES_BALANCE_RATIO before
+	                                                // perpetual wiggle will start the next wiggle.
+	                                                // Used to speed up wiggling rather than waiting for every SS to get
+	                                                // balanced/filledup before starting the next wiggle.
+	double PERPETUAL_WIGGLE_DELAY; // The min interval between the last wiggle finish and the next wiggle start
+	bool PERPETUAL_WIGGLE_DISABLE_REMOVER; // Whether the start of perpetual wiggle replace team remover
 	double LOG_ON_COMPLETION_DELAY;
 	int BEST_TEAM_MAX_TEAM_TRIES;
 	int BEST_TEAM_OPTION_COUNT;
@@ -226,6 +239,15 @@ public:
 	int DD_TEAM_ZERO_SERVER_LEFT_LOG_DELAY;
 	int DD_STORAGE_WIGGLE_PAUSE_THRESHOLD; // How many unhealthy relocations are ongoing will pause storage wiggle
 	int DD_STORAGE_WIGGLE_STUCK_THRESHOLD; // How many times bestTeamStuck accumulate will pause storage wiggle
+	bool ENABLE_STORAGE_QUEUE_AWARE_TEAM_SELECTION; // experimental!
+	int64_t DD_TARGET_STORAGE_QUEUE_SIZE;
+	bool TRACE_STORAGE_QUEUE_AWARE_GET_TEAM_FOR_MANUAL_SPLIT_ONLY;
+	bool ENABLE_AUTO_SHARD_SPLIT_FOR_LONG_STORAGE_QUEUE;
+	int64_t DD_SS_TOO_LONG_STORAGE_QUEUE_BYTES;
+	int64_t DD_SS_SHORT_STORAGE_QUEUE_BYTES;
+	double DD_STORAGE_QUEUE_TOO_LONG_DURATION;
+	double DD_MIN_LONG_STORAGE_QUEUE_SPLIT_INTERVAL_SEC;
+	int64_t DD_MIN_SHARD_BYTES_PER_KSEC_TO_MOVE_OUT;
 
 	// TeamRemover to remove redundant teams
 	bool TR_FLAG_DISABLE_MACHINE_TEAM_REMOVER; // disable the machineTeamRemover actor
@@ -338,7 +360,7 @@ public:
 	int64_t ROCKSDB_HARD_PENDING_COMPACT_BYTES_LIMIT;
 	int64_t ROCKSDB_CAN_COMMIT_COMPACT_BYTES_LIMIT;
 	bool ROCKSDB_PARANOID_FILE_CHECKS;
-	int ROCKSDB_CAN_COMMIT_DELAY_ON_OVERLOAD;
+	double ROCKSDB_CAN_COMMIT_DELAY_ON_OVERLOAD;
 	int ROCKSDB_CAN_COMMIT_DELAY_TIMES_ON_OVERLOAD;
 	bool ROCKSDB_DISABLE_WAL_EXPERIMENTAL;
 	int64_t ROCKSDB_WAL_TTL_SECONDS;
@@ -355,6 +377,8 @@ public:
 	int ROCKSDB_STATS_LEVEL;
 	int64_t ROCKSDB_COMPACTION_READAHEAD_SIZE;
 	int64_t ROCKSDB_BLOCK_SIZE;
+	int ROCKSDB_MAX_LOG_FILE_SIZE;
+	int ROCKSDB_KEEP_LOG_FILE_NUM;
 	bool SS_BACKUP_KEYS_OP_LOGS;
 
 	// Leader election
@@ -736,6 +760,8 @@ public:
 	bool WORKER_HEALTH_REPORT_RECENT_DESTROYED_PEER; // When enabled, the worker's health monitor also report any recent
 	                                                 // destroyed peers who are part of the transaction system to
 	                                                 // cluster controller.
+	bool GRAY_FAILURE_ENABLE_TLOG_RECOVERY_MONITORING; // When enabled, health monitor will try to detect any gray
+	                                                   // failure during tlog recovery during the recovery process.
 	bool STORAGE_SERVER_REBOOT_ON_IO_TIMEOUT; // When enabled, storage server's worker will crash on io_timeout error;
 	                                          // this allows fdbmonitor to restart the worker and recreate the same SS.
 	                                          // When SS can be temporarily throttled by infrastructure, e.g, k8s,
