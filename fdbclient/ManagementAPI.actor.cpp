@@ -1725,6 +1725,7 @@ ACTOR Future<std::vector<AddressExclusion>> getAllExcludedServers(Transaction* t
 			}
 		}
 	}
+
 	uniquify(exclusions);
 	return exclusions;
 }
@@ -1782,6 +1783,7 @@ ACTOR Future<std::vector<std::string>> getAllExcludedLocalities(Transaction* tr)
 	exclusions.insert(exclusions.end(), excludedLocalities.begin(), excludedLocalities.end());
 	auto failedLocalities = fFailedLocalities.get();
 	exclusions.insert(exclusions.end(), failedLocalities.begin(), failedLocalities.end());
+
 	uniquify(exclusions);
 	return exclusions;
 }
