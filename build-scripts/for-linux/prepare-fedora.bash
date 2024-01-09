@@ -25,6 +25,7 @@ sudo dnf install -y \
   libcxx-devel \
   libcxx-static \
   libcxxabi-static \
+  libstdc++-static \
   libzstd-static \
   lz4-devel \
   lz4-static \
