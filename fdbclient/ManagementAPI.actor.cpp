@@ -217,6 +217,24 @@ std::map<std::string, std::string> configForToken(std::string const& mode) {
 				p = end + 1;
 			}
 		}
+
+		if (key == "perpetual_storage_wiggle_engine") {
+			StringRef s = value;
+
+			// Parse as engine_name[:p=v]... to handle future storage engine params
+			Value engine = s.eat(":");
+			std::map<Key, Value> params;
+			while (!s.empty()) {
+				params[s.eat("=")] = s.eat(":");
+			}
+
+			try {
+				out[p + key] = format("%d", KeyValueStoreType::fromString(engine.toString()).storeType());
+			} catch (Error& e) {
+				printf("Error: Invalid value for %s (%s): %s\n", key.c_str(), value.c_str(), e.what());
+			}
+			return out;
+		}
 		return out;
 	}
 
@@ -1674,10 +1692,39 @@ ACTOR Future<std::vector<AddressExclusion>> getExcludedFailedServerList(Transact
 
 ACTOR Future<std::vector<AddressExclusion>> getAllExcludedServers(Transaction* tr) {
 	state std::vector<AddressExclusion> exclusions;
-	std::vector<AddressExclusion> excludedServers = wait(getExcludedServerList(tr));
+	// Request all exclusion based information concurrently.
+	state Future<std::vector<AddressExclusion>> fExcludedServers = getExcludedServerList(tr);
+	state Future<std::vector<AddressExclusion>> fExcludedFailed = getExcludedFailedServerList(tr);
+	state Future<std::vector<std::string>> fExcludedLocalities = getAllExcludedLocalities(tr);
+	state Future<std::vector<ProcessData>> fWorkers = getWorkers(tr);
+
+	// Wait until all data is gathered, we are not waiting here for the workers future to return
+	// instead we wait for the worker future only if we need the data.
+	wait(success(fExcludedServers) && success(fExcludedFailed) && success(fExcludedLocalities));
+	// Update the exclusions vector with all excluded servers.
+	auto excludedServers = fExcludedServers.get();
 	exclusions.insert(exclusions.end(), excludedServers.begin(), excludedServers.end());
-	std::vector<AddressExclusion> excludedFailed = wait(getExcludedFailedServerList(tr));
+	auto excludedFailed = fExcludedFailed.get();
 	exclusions.insert(exclusions.end(), excludedFailed.begin(), excludedFailed.end());
+
+	// We have to return all servers that are excluded, this includes servers that are excluded
+	// based on the locality. Otherwise those excluded servers might be used, even if they shouldn't.
+	state std::vector<std::string> excludedLocalities = fExcludedLocalities.get();
+
+	// Only if at least one locality was found we have to perform this check.
+	if (!excludedLocalities.empty()) {
+		// First we have to fetch all workers to match the localities of each worker against the excluded localities.
+		wait(success(fWorkers));
+		state std::vector<ProcessData> workers = fWorkers.get();
+
+		for (const auto& locality : excludedLocalities) {
+			std::set<AddressExclusion> localityAddresses = getAddressesByLocality(workers, locality);
+			if (!localityAddresses.empty()) {
+				// Add all the server ipaddresses that belong to the given localities to the exclusionSet.
+				exclusions.insert(exclusions.end(), localityAddresses.begin(), localityAddresses.end());
+			}
+		}
+	}
 	uniquify(exclusions);
 	return exclusions;
 }
@@ -1725,9 +1772,15 @@ ACTOR Future<std::vector<std::string>> getExcludedFailedLocalityList(Transaction
 
 ACTOR Future<std::vector<std::string>> getAllExcludedLocalities(Transaction* tr) {
 	state std::vector<std::string> exclusions;
-	std::vector<std::string> excludedLocalities = wait(getExcludedLocalityList(tr));
+	state Future<std::vector<std::string>> fExcludedLocalities = getExcludedLocalityList(tr);
+	state Future<std::vector<std::string>> fFailedLocalities = getExcludedFailedLocalityList(tr);
+
+	// Wait until all data is gathered.
+	wait(success(fExcludedLocalities) && success(fFailedLocalities));
+
+	auto excludedLocalities = fExcludedLocalities.get();
 	exclusions.insert(exclusions.end(), excludedLocalities.begin(), excludedLocalities.end());
-	std::vector<std::string> failedLocalities = wait(getExcludedFailedLocalityList(tr));
+	auto failedLocalities = fFailedLocalities.get();
 	exclusions.insert(exclusions.end(), failedLocalities.begin(), failedLocalities.end());
 	uniquify(exclusions);
 	return exclusions;
@@ -1763,21 +1816,56 @@ std::pair<std::string, std::string> decodeLocality(const std::string& locality) 
 	return std::make_pair("", "");
 }
 
-// Returns the list of IPAddresses of the workers that match the given locality.
-// Example: locality="dcid:primary" returns all the ip addresses of the workers in the primary dc.
-std::set<AddressExclusion> getAddressesByLocality(const std::vector<ProcessData>& workers,
-                                                  const std::string& locality) {
-	std::pair<std::string, std::string> localityKeyValue = decodeLocality(locality);
+// Returns the list of IPAddresses of the servers that match the given locality.
+// Example: locality="dcid:primary" returns all the ip addresses of the servers in the primary dc.
+std::set<AddressExclusion> getServerAddressesByLocality(
+    const std::map<std::string, StorageServerInterface> server_interfaces,
+    const std::string& locality) {
+	std::pair<std::string, std::string> locality_key_value = decodeLocality(locality);
+	std::set<AddressExclusion> locality_addresses;
 
-	std::set<AddressExclusion> localityAddresses;
-	for (int i = 0; i < workers.size(); i++) {
-		if (workers[i].locality.isPresent(localityKeyValue.first) &&
-		    workers[i].locality.get(localityKeyValue.first) == localityKeyValue.second) {
-			localityAddresses.insert(AddressExclusion(workers[i].address.ip, workers[i].address.port));
+	for (auto& server : server_interfaces) {
+		auto locality_value = server.second.locality.get(locality_key_value.first);
+		if (!locality_value.present()) {
+			continue;
+		}
+
+		if (locality_value.get() != locality_key_value.second) {
+			continue;
+		}
+
+		auto primary_address = server.second.address();
+		locality_addresses.insert(AddressExclusion(primary_address.ip, primary_address.port));
+		if (server.second.secondaryAddress().present()) {
+			auto secondary_address = server.second.secondaryAddress().get();
+			locality_addresses.insert(AddressExclusion(secondary_address.ip, secondary_address.port));
 		}
 	}
 
-	return localityAddresses;
+	return locality_addresses;
+}
+
+// Returns the list of IPAddresses of the workers that match the given locality.
+// Example: locality="locality_dcid:primary" returns all the ip addresses of the workers in the primary dc.
+std::set<AddressExclusion> getAddressesByLocality(const std::vector<ProcessData>& workers,
+                                                  const std::string& locality) {
+	std::pair<std::string, std::string> locality_key_value = decodeLocality(locality);
+	std::set<AddressExclusion> locality_addresses;
+
+	for (int i = 0; i < workers.size(); i++) {
+		auto locality_value = workers[i].locality.get(locality_key_value.first);
+		if (!locality_value.present()) {
+			continue;
+		}
+
+		if (locality_value.get() != locality_key_value.second) {
+			continue;
+		}
+
+		locality_addresses.insert(AddressExclusion(workers[i].address.ip, workers[i].address.port));
+	}
+
+	return locality_addresses;
 }
 
 ACTOR Future<Void> printHealthyZone(Database cx) {
@@ -2322,6 +2410,23 @@ ACTOR Future<Void> forceRecovery(Reference<IClusterConnectionRecord> clusterFile
 			when(wait(clusterInterface->onChange())) {}
 		}
 	}
+}
+
+ACTOR Future<Void> redistribute(Reference<IClusterConnectionRecord> clusterFile,
+                                KeyRange range,
+                                double timeoutSeconds) {
+	state Reference<AsyncVar<Optional<ClusterInterface>>> clusterInterface(new AsyncVar<Optional<ClusterInterface>>);
+	state Future<Void> leaderMon = monitorLeader<ClusterInterface>(clusterFile, clusterInterface);
+	try {
+		while (!clusterInterface->get().present()) {
+			wait(clusterInterface->onChange());
+		}
+		wait(timeoutError(clusterInterface->get().get().moveShard.getReply(MoveShardRequest(range)), timeoutSeconds));
+	} catch (Error& e) {
+		TraceEvent(SevWarn, "RedistributeFailedToTrigger").errorUnsuppressed(e).detail("InputRange", range);
+		throw manual_shard_split_failed();
+	}
+	return Void();
 }
 
 ACTOR Future<Void> waitForPrimaryDC(Database cx, StringRef dcId) {

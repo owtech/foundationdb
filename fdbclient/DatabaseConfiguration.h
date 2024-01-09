@@ -248,6 +248,7 @@ struct DatabaseConfiguration {
 	// Perpetual Storage Setting
 	int32_t perpetualStorageWiggleSpeed;
 	std::string perpetualStorageWiggleLocality;
+	KeyValueStoreType perpetualStoreType;
 
 	// Storage Migration Type
 	StorageMigrationType storageMigrationType;
@@ -257,9 +258,8 @@ struct DatabaseConfiguration {
 	TenantMode tenantMode;
 
 	// Excluded servers (no state should be here)
-	bool isExcludedServer(NetworkAddressList) const;
+	bool isExcludedServer(NetworkAddressList, const LocalityData& locality) const;
 	bool isExcludedLocality(const LocalityData& locality) const;
-	bool isMachineExcluded(const LocalityData& locality) const;
 	std::set<AddressExclusion> getExcludedServers() const;
 	std::set<std::string> getExcludedLocalities() const;
 

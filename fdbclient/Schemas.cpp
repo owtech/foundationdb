@@ -902,6 +902,19 @@ const KeyRef JSONSchemas::statusSchema = LiteralStringRef(R"statusSchema(
          "backup_worker_enabled":1,
          "perpetual_storage_wiggle":0,
          "perpetual_storage_wiggle_locality":"0",
+         "perpetual_storage_wiggle_engine":{
+         "$enum":[
+             "ssd",
+             "ssd-1",
+             "ssd-2",
+             "ssd-redwood-1",
+             "ssd-rocksdb-v1",
+             "memory",
+             "memory-1",
+             "memory-2",
+             "memory-radixtree-beta",
+             "none"
+         ]},
          "storage_migration_type": {
              "$enum":[
              "disabled",
@@ -1146,7 +1159,8 @@ const KeyRef JSONSchemas::latencyBandConfigurationSchema = LiteralStringRef(R"co
 
 const KeyRef JSONSchemas::dataDistributionStatsSchema = LiteralStringRef(R"""(
 {
-  "shard_bytes": 1947000
+  "shard_bytes": 1947000,
+  "shard_bytes_per_ksecond": 1000000
 }
 )""");
 

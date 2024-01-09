@@ -36,6 +36,7 @@ void DatabaseConfiguration::resetInternal() {
 	    storageTeamSize = desiredLogRouterCount = -1;
 	tLogVersion = TLogVersion::DEFAULT;
 	tLogDataStoreType = storageServerStoreType = testingStorageServerStoreType = KeyValueStoreType::END;
+	perpetualStoreType = KeyValueStoreType::NONE;
 	desiredTSSCount = 0;
 	tLogSpillType = TLogSpillType::DEFAULT;
 	autoCommitProxyCount = CLIENT_KNOBS->DEFAULT_AUTO_COMMIT_PROXIES;
@@ -405,6 +406,9 @@ StatusObject DatabaseConfiguration::toJSON(bool noPolicies) const {
 	result["backup_worker_enabled"] = (int32_t)backupWorkerEnabled;
 	result["perpetual_storage_wiggle"] = perpetualStorageWiggleSpeed;
 	result["perpetual_storage_wiggle_locality"] = perpetualStorageWiggleLocality;
+	if (perpetualStoreType.storeType() != KeyValueStoreType::END) {
+		result["perpetual_storage_wiggle_engine"] = perpetualStoreType.toString();
+	}
 	result["storage_migration_type"] = storageMigrationType.toString();
 	result["blob_granules_enabled"] = (int32_t)blobGranulesEnabled;
 	result["tenant_mode"] = tenantMode.toString();
@@ -628,6 +632,9 @@ bool DatabaseConfiguration::setInternal(KeyRef key, ValueRef value) {
 			return false;
 		}
 		perpetualStorageWiggleLocality = value.toString();
+	} else if (ck == LiteralStringRef("perpetual_storage_wiggle_engine")) {
+		parse((&type), value);
+		perpetualStoreType = (KeyValueStoreType::StoreType)type;
 	} else if (ck == LiteralStringRef("storage_migration_type")) {
 		parse((&type), value);
 		storageMigrationType = (StorageMigrationType::MigrationType)type;
@@ -700,7 +707,7 @@ Optional<ValueRef> DatabaseConfiguration::get(KeyRef key) const {
 	}
 }
 
-bool DatabaseConfiguration::isExcludedServer(NetworkAddressList a) const {
+bool DatabaseConfiguration::isExcludedServer(NetworkAddressList a, const LocalityData& locality) const {
 	return get(encodeExcludedServersKey(AddressExclusion(a.address.ip, a.address.port))).present() ||
 	       get(encodeExcludedServersKey(AddressExclusion(a.address.ip))).present() ||
 	       get(encodeFailedServersKey(AddressExclusion(a.address.ip, a.address.port))).present() ||
@@ -711,7 +718,8 @@ bool DatabaseConfiguration::isExcludedServer(NetworkAddressList a) const {
 	         get(encodeExcludedServersKey(AddressExclusion(a.secondaryAddress.get().ip))).present() ||
 	         get(encodeFailedServersKey(AddressExclusion(a.secondaryAddress.get().ip, a.secondaryAddress.get().port)))
 	             .present() ||
-	         get(encodeFailedServersKey(AddressExclusion(a.secondaryAddress.get().ip))).present()));
+	         get(encodeFailedServersKey(AddressExclusion(a.secondaryAddress.get().ip))).present())) ||
+	       isExcludedLocality(locality);
 }
 std::set<AddressExclusion> DatabaseConfiguration::getExcludedServers() const {
 	const_cast<DatabaseConfiguration*>(this)->makeConfigurationImmutable();
@@ -745,20 +753,6 @@ bool DatabaseConfiguration::isExcludedLocality(const LocalityData& locality) con
 		        .present()) {
 			return true;
 		}
-	}
-
-	return false;
-}
-
-// checks if this machineid of given locality is excluded.
-bool DatabaseConfiguration::isMachineExcluded(const LocalityData& locality) const {
-	if (locality.machineId().present()) {
-		return get(encodeExcludedLocalityKey(LocalityData::ExcludeLocalityKeyMachineIdPrefix.toString() +
-		                                     locality.machineId().get().toString()))
-		           .present() ||
-		       get(encodeFailedLocalityKey(LocalityData::ExcludeLocalityKeyMachineIdPrefix.toString() +
-		                                   locality.machineId().get().toString()))
-		           .present();
 	}
 
 	return false;

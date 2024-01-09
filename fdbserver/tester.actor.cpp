@@ -562,7 +562,10 @@ ACTOR Future<Void> runWorkloadAsync(Database cx,
 			startReq = req;
 			if (!startResult.present()) {
 				try {
-					TraceEvent("TestStarting", workIface.id()).detail("Workload", workload->description());
+					TraceEvent("TestStarting", workIface.id())
+					    .detail("Workload", workload->description())
+					    .detail("ClientCount", workload->clientCount)
+					    .detail("ClientId", workload->clientId);
 					wait(workload->start(cx) || databaseError);
 					startResult = Void();
 				} catch (Error& e) {
@@ -589,6 +592,9 @@ ACTOR Future<Void> runWorkloadAsync(Database cx,
 					TraceEvent("TestChecking", workIface.id()).detail("Workload", workload->description());
 					bool check = wait(timeoutError(workload->check(cx), workload->getCheckTimeout()));
 					checkResult = CheckReply{ (!startResult.present() || !startResult.get().isError()) && check };
+					TraceEvent("TestChecked", workIface.id())
+					    .detail("Workload", workload->description())
+					    .detail("Result", (!startResult.present() || !startResult.get().isError()) && check);
 				} catch (Error& e) {
 					checkResult = operation_failed(); // was: checkResult = false;
 					if (e.code() == error_code_please_reboot || e.code() == error_code_please_reboot_delete)
@@ -949,17 +955,21 @@ ACTOR Future<Void> checkConsistency(Database cx,
 	options.push_back_deep(options.arena(),
 	                       KeyValueRef(LiteralStringRef("quiescentWaitTimeout"),
 	                                   ValueRef(options.arena(), format("%f", quiescentWaitTimeout))));
-	options.push_back_deep(options.arena(), KeyValueRef(LiteralStringRef("distributed"), LiteralStringRef("false")));
+	// options.push_back_deep(options.arena(), KeyValueRef(LiteralStringRef("distributed"), LiteralStringRef("false")));
+	options.push_back_deep(options.arena(),
+	                       KeyValueRef(LiteralStringRef("distributed"),
+	                                   StringRef(CLIENT_KNOBS->CONSISTENCY_CHECK_URGENT_MODE ? "true" : "false")));
 	spec.options.push_back_deep(spec.options.arena(), options);
-
 	state double start = now();
 	state bool lastRun = false;
 	loop {
+		TraceEvent("ConsistencyCheckWorkLoadLoopBegin");
 		DistributedTestResults testResults = wait(runWorkload(cx, testers, spec, Optional<TenantName>()));
 		if (testResults.ok() || lastRun) {
 			if (g_network->isSimulated()) {
 				g_simulator.connectionFailuresDisableDuration = connectionFailures;
 			}
+			TraceEvent("ConsistencyCheckWorkLoadEnd");
 			return Void();
 		}
 		if (now() - start > softTimeLimit) {
@@ -967,7 +977,7 @@ ACTOR Future<Void> checkConsistency(Database cx,
 			                               KeyValueRef(LiteralStringRef("failureIsError"), LiteralStringRef("true")));
 			lastRun = true;
 		}
-
+		TraceEvent("ConsistencyCheckWorkLoadRepairDC");
 		wait(repairDeadDatacenter(cx, dbInfo, "ConsistencyCheck"));
 	}
 }
@@ -1004,8 +1014,10 @@ ACTOR Future<bool> runTest(Database cx,
 			fprintf(stderr, "ERROR: Test timed out after %d seconds.\n", spec.timeout);
 			testResults.failures = testers.size();
 			testResults.successes = 0;
-		} else
+		} else {
+			TraceEvent(SevWarnAlways, "TestFailure").error(e).detail("Reason", e.what());
 			throw;
+		}
 	}
 
 	state bool ok = testResults.ok();
@@ -1659,6 +1671,7 @@ ACTOR Future<Void> runTests(Reference<AsyncVar<Optional<struct ClusterController
                             Optional<TenantName> defaultTenant) {
 	state int flags = (at == TEST_ON_SERVERS ? 0 : GetWorkersRequest::TESTER_CLASS_ONLY) |
 	                  GetWorkersRequest::NON_EXCLUDED_PROCESSES_ONLY;
+	TraceEvent("RunTests").detail("TestOnServers", at == TEST_ON_SERVERS);
 	state Future<Void> testerTimeout = delay(600.0); // wait 600 sec for testers to show up
 	state std::vector<WorkerDetails> workers;
 
@@ -1749,8 +1762,11 @@ ACTOR Future<Void> runTests(Reference<IClusterConnectionRecord> connRecord,
 		                       KeyValueRef(LiteralStringRef("testName"), LiteralStringRef("ConsistencyCheck")));
 		options.push_back_deep(options.arena(),
 		                       KeyValueRef(LiteralStringRef("performQuiescentChecks"), LiteralStringRef("false")));
+		// options.push_back_deep(options.arena(),
+		//                        KeyValueRef(LiteralStringRef("distributed"), LiteralStringRef("false")));
 		options.push_back_deep(options.arena(),
-		                       KeyValueRef(LiteralStringRef("distributed"), LiteralStringRef("false")));
+		                       KeyValueRef(LiteralStringRef("distributed"),
+		                                   StringRef(CLIENT_KNOBS->CONSISTENCY_CHECK_URGENT_MODE ? "true" : "false")));
 		options.push_back_deep(options.arena(),
 		                       KeyValueRef(LiteralStringRef("failureIsError"), LiteralStringRef("true")));
 		options.push_back_deep(options.arena(), KeyValueRef(LiteralStringRef("indefinite"), LiteralStringRef("true")));

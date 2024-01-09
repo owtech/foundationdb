@@ -128,6 +128,7 @@ struct SstFileMetaData {
 	std::string name;
 	// DEPRECATED: replaced by `directory` in base struct
 	std::string db_path;
+
 	// These bounds define the effective key range for range tombstones
 	// in this file.
 	// Currently only used by CreateColumnFamilyWithImport().

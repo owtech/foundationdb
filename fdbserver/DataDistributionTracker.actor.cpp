@@ -477,21 +477,50 @@ private:
 ACTOR Future<Void> shardSplitter(DataDistributionTracker* self,
                                  KeyRange keys,
                                  Reference<AsyncVar<Optional<ShardMetrics>>> shardSize,
-                                 ShardSizeBounds shardBounds) {
+                                 ShardSizeBounds shardBounds,
+                                 std::shared_ptr<std::set<Key>> manualSplitPoints) {
 	state StorageMetrics metrics = shardSize->get().get().metrics;
 	state BandwidthStatus bandwidthStatus = getBandwidthStatus(metrics);
+	state bool doManualSplit = !manualSplitPoints->empty();
 
 	// Split
 	TEST(true); // shard to be split
 
-	StorageMetrics splitMetrics;
-	splitMetrics.bytes = shardBounds.max.bytes / 2;
-	splitMetrics.bytesPerKSecond =
-	    keys.begin >= keyServersKeys.begin ? splitMetrics.infinity : SERVER_KNOBS->SHARD_SPLIT_BYTES_PER_KSEC;
-	splitMetrics.iosPerKSecond = splitMetrics.infinity;
-	splitMetrics.bytesReadPerKSecond = splitMetrics.infinity; // Don't split by readBandwidth
+	state Standalone<VectorRef<KeyRef>> splitKeys;
+	if (doManualSplit) {
+		// Check if all split points are with in the shard
+		for (const auto& manualSplitKey : *manualSplitPoints) {
+			ASSERT_WE_THINK(manualSplitKey < keys.end && manualSplitKey > keys.begin);
+		}
+		// Add two ends to the split points
+		manualSplitPoints->insert(keys.begin);
+		manualSplitPoints->insert(keys.end);
+		// Sort split points and add to splitKeys
+		std::vector<Key> manualSplitPointList;
+		for (const auto& manualSplitKey : *manualSplitPoints) {
+			manualSplitPointList.push_back(manualSplitKey);
+		}
+		std::sort(manualSplitPointList.begin(), manualSplitPointList.end(), std::less<Key>());
+		for (const auto& manualSplitPoint : manualSplitPointList) {
+			splitKeys.push_back_deep(splitKeys.arena(), manualSplitPoint);
+		}
+		TraceEvent(SevInfo, "ManualShardSplitReadSplitPointInShard", self->distributorId)
+		    .detail("Points", describe(*manualSplitPoints))
+		    .detail("Size", manualSplitPoints->size())
+		    .detail("Shard", keys);
+		// Cleanup
+		manualSplitPoints->clear();
+	} else {
+		StorageMetrics splitMetrics;
+		splitMetrics.bytes = shardBounds.max.bytes / 2;
+		splitMetrics.bytesPerKSecond =
+		    keys.begin >= keyServersKeys.begin ? splitMetrics.infinity : SERVER_KNOBS->SHARD_SPLIT_BYTES_PER_KSEC;
+		splitMetrics.iosPerKSecond = splitMetrics.infinity;
+		splitMetrics.bytesReadPerKSecond = splitMetrics.infinity; // Don't split by readBandwidth
 
-	state Standalone<VectorRef<KeyRef>> splitKeys = wait(getSplitKeys(self, keys, splitMetrics, metrics));
+		Standalone<VectorRef<KeyRef>> splitKeys_ = wait(getSplitKeys(self, keys, splitMetrics, metrics));
+		splitKeys = splitKeys_;
+	}
 	// fprintf(stderr, "split keys:\n");
 	// for( int i = 0; i < splitKeys.size(); i++ ) {
 	//	fprintf(stderr, "   %s\n", printable(splitKeys[i]).c_str());
@@ -513,6 +542,7 @@ ACTOR Future<Void> shardSplitter(DataDistributionTracker* self,
 	}
 
 	if (numShards > 1) {
+		int priority = doManualSplit ? SERVER_KNOBS->PRIORITY_MANUAL_SHARD_SPLIT : SERVER_KNOBS->PRIORITY_SPLIT_SHARD;
 		int skipRange = deterministicRandom()->randomInt(0, numShards);
 		// The queue can't deal with RelocateShard requests which split an existing shard into three pieces, so
 		// we have to send the unskipped ranges in this order (nibbling in from the edges of the old range)
@@ -525,12 +555,18 @@ ACTOR Future<Void> shardSplitter(DataDistributionTracker* self,
 		for (int i = 0; i < skipRange; i++) {
 			KeyRangeRef r(splitKeys[i], splitKeys[i + 1]);
 			self->shardsAffectedByTeamFailure->defineShard(r);
-			self->output.send(RelocateShard(r, SERVER_KNOBS->PRIORITY_SPLIT_SHARD));
+			self->output.send(RelocateShard(r, priority));
 		}
 		for (int i = numShards - 1; i > skipRange; i--) {
 			KeyRangeRef r(splitKeys[i], splitKeys[i + 1]);
 			self->shardsAffectedByTeamFailure->defineShard(r);
-			self->output.send(RelocateShard(r, SERVER_KNOBS->PRIORITY_SPLIT_SHARD));
+			self->output.send(RelocateShard(r, priority));
+		}
+		if (doManualSplit) {
+			// If manual shard split, we move all shards out of the team
+			KeyRangeRef r(splitKeys[skipRange], splitKeys[skipRange + 1]);
+			self->shardsAffectedByTeamFailure->defineShard(r);
+			self->output.send(RelocateShard(r, priority));
 		}
 
 		self->sizeChanges.add(changeSizes(self, keys, shardSize->get().get().metrics.bytes));
@@ -685,8 +721,11 @@ Future<Void> shardMerger(DataDistributionTracker* self,
 ACTOR Future<Void> shardEvaluator(DataDistributionTracker* self,
                                   KeyRange keys,
                                   Reference<AsyncVar<Optional<ShardMetrics>>> shardSize,
-                                  Reference<HasBeenTrueFor> wantsToMerge) {
-	Future<Void> onChange = shardSize->onChange() || yieldedFuture(self->maxShardSize->onChange());
+                                  Reference<HasBeenTrueFor> wantsToMerge,
+                                  Reference<AsyncVar<Void>> manualSplitTrigger,
+                                  std::shared_ptr<std::set<Key>> manualSplitPoints) {
+	Future<Void> onChange =
+	    shardSize->onChange() || yieldedFuture(self->maxShardSize->onChange()) || manualSplitTrigger->onChange();
 
 	// There are the bounds inside of which we are happy with the shard size.
 	// getShardSizeBounds() will allways have shardBounds.min.bytes == 0 for shards that start at allKeys.begin,
@@ -698,6 +737,12 @@ ACTOR Future<Void> shardEvaluator(DataDistributionTracker* self,
 	bool shouldSplit = stats.bytes > shardBounds.max.bytes ||
 	                   (bandwidthStatus == BandwidthStatusHigh && keys.begin < keyServersKeys.begin);
 	bool shouldMerge = stats.bytes < shardBounds.min.bytes && bandwidthStatus == BandwidthStatusLow;
+
+	if (!manualSplitPoints->empty()) {
+		// Have points to split, then force to split
+		shouldSplit = true;
+		shouldMerge = false;
+	}
 
 	// Every invocation must set this or clear it
 	if (shouldMerge && !self->anyZeroHealthyTeams->get()) {
@@ -730,7 +775,7 @@ ACTOR Future<Void> shardEvaluator(DataDistributionTracker* self,
 		onChange = onChange || shardMerger(self, keys, shardSize);
 	}
 	if (shouldSplit) {
-		onChange = onChange || shardSplitter(self, keys, shardSize, shardBounds);
+		onChange = onChange || shardSplitter(self, keys, shardSize, shardBounds, manualSplitPoints);
 	}
 
 	wait(onChange);
@@ -739,7 +784,9 @@ ACTOR Future<Void> shardEvaluator(DataDistributionTracker* self,
 
 ACTOR Future<Void> shardTracker(DataDistributionTracker::SafeAccessor self,
                                 KeyRange keys,
-                                Reference<AsyncVar<Optional<ShardMetrics>>> shardSize) {
+                                Reference<AsyncVar<Optional<ShardMetrics>>> shardSize,
+                                Reference<AsyncVar<Void>> manualSplitTrigger,
+                                std::shared_ptr<std::set<Key>> manualSplitPoints) {
 	wait(yieldedFuture(self()->readyToStart.getFuture()));
 
 	if (!shardSize->get().present())
@@ -765,7 +812,7 @@ ACTOR Future<Void> shardTracker(DataDistributionTracker::SafeAccessor self,
 	try {
 		loop {
 			// Use the current known size to check for (and start) splits and merges.
-			wait(shardEvaluator(self(), keys, shardSize, wantsToMerge));
+			wait(shardEvaluator(self(), keys, shardSize, wantsToMerge, manualSplitTrigger, manualSplitPoints));
 
 			// We could have a lot of actors being released from the previous wait at the same time. Immediately calling
 			// delay(0) mitigates the resulting SlowTask
@@ -790,6 +837,8 @@ void restartShardTrackers(DataDistributionTracker* self, KeyRangeRef keys, Optio
 		}
 
 		auto shardMetrics = makeReference<AsyncVar<Optional<ShardMetrics>>>();
+		auto manualSplitTrigger = makeReference<AsyncVar<Void>>();
+		auto manualSplitPoints = std::make_shared<std::set<Key>>();
 
 		// For the case where the new tracker will take over at the boundaries of current shard(s)
 		//  we can use the old size if it is available. This will be the case when merging shards.
@@ -805,7 +854,13 @@ void restartShardTrackers(DataDistributionTracker* self, KeyRangeRef keys, Optio
 
 		ShardTrackedData data;
 		data.stats = shardMetrics;
-		data.trackShard = shardTracker(DataDistributionTracker::SafeAccessor(self), ranges[i], shardMetrics);
+		data.manualSplitTrigger = manualSplitTrigger;
+		data.manualSplitPoints = manualSplitPoints;
+		data.trackShard = shardTracker(DataDistributionTracker::SafeAccessor(self),
+		                               ranges[i],
+		                               shardMetrics,
+		                               manualSplitTrigger,
+		                               manualSplitPoints);
 		data.trackBytes = trackShardMetrics(DataDistributionTracker::SafeAccessor(self), ranges[i], shardMetrics);
 		self->shards.insert(ranges[i], data);
 	}
@@ -890,7 +945,9 @@ ACTOR Future<Void> fetchShardMetricsList_impl(DataDistributionTracker* self, Get
 					break;
 				}
 				result.push_back_deep(result.arena(),
-				                      DDMetricsRef(stats->get().get().metrics.bytes, KeyRef(t.begin().toString())));
+				                      DDMetricsRef(stats->get().get().metrics.bytes,
+				                                   stats->get().get().metrics.bytesPerKSecond,
+				                                   KeyRef(t.begin().toString())));
 				++shardNum;
 				if (shardNum >= req.shardLimit) {
 					break;
@@ -927,7 +984,9 @@ ACTOR Future<Void> dataDistributionTracker(Reference<InitialDataDistribution> in
                                            Reference<ShardsAffectedByTeamFailure> shardsAffectedByTeamFailure,
                                            PromiseStream<GetMetricsRequest> getShardMetrics,
                                            PromiseStream<GetMetricsListRequest> getShardMetricsList,
+                                           PromiseStream<DistributorSplitRangeRequest> manualShardSplit,
                                            FutureStream<Promise<int64_t>> getAverageShardBytes,
+                                           FutureStream<ServerTeamInfo> triggerSplitForStorageQueueTooLong,
                                            Promise<Void> readyToStart,
                                            Reference<AsyncVar<bool>> anyZeroHealthyTeams,
                                            UID distributorId,
@@ -952,6 +1011,44 @@ ACTOR Future<Void> dataDistributionTracker(Reference<InitialDataDistribution> in
 			when(Promise<int64_t> req = waitNext(getAverageShardBytes)) {
 				req.send(self.maxShardSize->get().get() / 2);
 			}
+			when(ServerTeamInfo req = waitNext(triggerSplitForStorageQueueTooLong)) {
+				TraceEvent e("DDTrackerStorageServerQueueTooLongNotified", self.distributorId);
+				e.detail("Server", req.serverId);
+				e.detail("Teams", req.teams.size());
+				int64_t maxShardWriteTraffic = 0;
+				KeyRange shardToMove;
+				ShardsAffectedByTeamFailure::Team selectedTeam;
+				for (const auto& team : req.teams) {
+					for (auto const& shard : self.shardsAffectedByTeamFailure->getShardsFor(team)) {
+						for (auto it : self.shards.intersectingRanges(shard)) {
+							if (it->value().stats->get().present()) {
+								int64_t shardWriteTraffic = it->value().stats->get().get().metrics.bytesPerKSecond;
+								if (shardWriteTraffic > maxShardWriteTraffic &&
+								    shardWriteTraffic > SERVER_KNOBS->DD_MIN_SHARD_BYTES_PER_KSEC_TO_MOVE_OUT) {
+									shardToMove = it->range();
+									selectedTeam = team;
+									maxShardWriteTraffic = shardWriteTraffic;
+								}
+							}
+						}
+					}
+				}
+				if (!shardToMove.empty()) {
+					e.detail("TeamSelected", selectedTeam.servers);
+					e.detail("ShardSelected", shardToMove);
+					e.detail("ShardWriteBytesPerKSec", maxShardWriteTraffic);
+					RelocateShard rs;
+					rs.keys = shardToMove;
+					rs.priority = SERVER_KNOBS->PRIORITY_TEAM_STORAGE_QUEUE_TOO_LONG;
+					self.output.send(rs);
+					TraceEvent("SendRelocateToDDQueue", self.distributorId)
+					    .detail("ServerPrimary", req.primary)
+					    .detail("ServerTeam", selectedTeam.servers)
+					    .detail("KeyBegin", rs.keys.begin)
+					    .detail("KeyEnd", rs.keys.end)
+					    .detail("Priority", rs.priority);
+				}
+			}
 			when(wait(loggingTrigger)) {
 				TraceEvent("DDTrackerStats", self.distributorId)
 				    .detail("Shards", self.shards.size())
@@ -966,6 +1063,50 @@ ACTOR Future<Void> dataDistributionTracker(Reference<InitialDataDistribution> in
 			}
 			when(GetMetricsListRequest req = waitNext(getShardMetricsList.getFuture())) {
 				self.sizeChanges.add(fetchShardMetricsList(&self, req));
+			}
+			when(DistributorSplitRangeRequest req = waitNext(manualShardSplit.getFuture())) {
+				if (req.splitPoints.size() != 2) {
+					TraceEvent(SevWarn, "ManualShardSplitDDFailedToTrigger", self.distributorId)
+					    .detail("Reason", "Wrong number of split points")
+					    .detail("SplitPoints", req.splitPoints);
+					req.reply.sendError(manual_shard_split_failed());
+					continue;
+				} else if (req.splitPoints[0] == req.splitPoints[1]) {
+					TraceEvent(SevWarn, "ManualShardSplitDDFailedToTrigger", self.distributorId)
+					    .detail("Reason", "Two split points are same")
+					    .detail("SplitPoints", req.splitPoints);
+					req.reply.sendError(manual_shard_split_failed());
+					continue;
+				}
+				TraceEvent(SevInfo, "ManualShardSplitDDStart", self.distributorId)
+				    .detail("SplitPoints", req.splitPoints);
+				KeyRange inputRange = req.splitPoints[0] < req.splitPoints[1]
+				                          ? KeyRangeRef(req.splitPoints[0], req.splitPoints[1])
+				                          : KeyRangeRef(req.splitPoints[1], req.splitPoints[0]);
+				for (auto it : self.shards.intersectingRanges(inputRange)) {
+					bool triggerManualSplitShard = false;
+					for (const auto& splitPoint : req.splitPoints) {
+						if (it->range().begin < splitPoint && splitPoint < it->range().end) {
+							triggerManualSplitShard = true;
+							it->value().manualSplitPoints->insert(splitPoint);
+							TraceEvent(SevInfo, "ManualShardSplitAddSplitPointToShard", self.distributorId)
+							    .detail("Point", splitPoint)
+							    .detail("Shard", it->range());
+						}
+					}
+					if (triggerManualSplitShard) {
+						// Trigger split for this shard
+						it->value().manualSplitTrigger->trigger();
+						TraceEvent(SevInfo, "ManualShardSplitDDTriggerShardSplit", self.distributorId)
+						    .detail("Shard", it->range());
+					} else {
+						// Trigger data move for this shard
+						self.output.send(RelocateShard(it->range(), SERVER_KNOBS->PRIORITY_MANUAL_SHARD_SPLIT));
+						TraceEvent(SevInfo, "ManualShardSplitDDTriggerShardMove", self.distributorId)
+						    .detail("Shard", it->range());
+					}
+				}
+				req.reply.send(SplitShardReply());
 			}
 			when(wait(self.sizeChanges.getResult())) {}
 		}

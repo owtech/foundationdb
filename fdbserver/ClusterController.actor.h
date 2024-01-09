@@ -117,6 +117,8 @@ struct RecruitRemoteWorkersInfo : ReferenceCounted<RecruitRemoteWorkersInfo> {
 	RecruitRemoteWorkersInfo(RecruitRemoteFromConfigurationRequest const& req) : req(req) {}
 };
 
+struct ClusterRecoveryData;
+
 class ClusterControllerData {
 public:
 	struct DBInfo {
@@ -138,6 +140,7 @@ public:
 		Future<Void> clientCounter;
 		int clientCount;
 		AsyncVar<bool> blobGranulesEnabled;
+		Reference<ClusterRecoveryData> recoveryData;
 
 		DBInfo()
 		  : clientInfo(new AsyncVar<ClientDBInfo>()), serverInfo(new AsyncVar<ServerDBInfo>()),
@@ -402,7 +405,8 @@ public:
 
 		for (auto& it : id_worker) {
 			auto fitness = it.second.details.processClass.machineClassFitness(ProcessClass::Storage);
-			if (workerAvailable(it.second, false) && !conf.isExcludedServer(it.second.details.interf.addresses()) &&
+			if (workerAvailable(it.second, false) &&
+			    !conf.isExcludedServer(it.second.details.interf.addresses(), it.second.details.interf.locality) &&
 			    !isExcludedDegradedServer(it.second.details.interf.addresses()) &&
 			    fitness != ProcessClass::NeverAssign &&
 			    (!dcId.present() || it.second.details.interf.locality.dcId() == dcId.get())) {
@@ -634,7 +638,7 @@ public:
 				logWorkerUnavailable(SevInfo, id, "complex", "Worker is not available", worker_details, fitness, dcIds);
 				continue;
 			}
-			if (conf.isExcludedServer(worker_details.interf.addresses())) {
+			if (conf.isExcludedServer(worker_details.interf.addresses(), worker_details.interf.locality)) {
 				logWorkerUnavailable(SevInfo,
 				                     id,
 				                     "complex",
@@ -882,7 +886,7 @@ public:
 				logWorkerUnavailable(SevInfo, id, "simple", "Worker is not available", worker_details, fitness, dcIds);
 				continue;
 			}
-			if (conf.isExcludedServer(worker_details.interf.addresses())) {
+			if (conf.isExcludedServer(worker_details.interf.addresses(), worker_details.interf.locality)) {
 				logWorkerUnavailable(SevInfo,
 				                     id,
 				                     "simple",
@@ -1030,7 +1034,7 @@ public:
 				    SevInfo, id, "deprecated", "Worker is not available", worker_details, fitness, dcIds);
 				continue;
 			}
-			if (conf.isExcludedServer(worker_details.interf.addresses())) {
+			if (conf.isExcludedServer(worker_details.interf.addresses(), worker_details.interf.locality)) {
 				logWorkerUnavailable(SevInfo,
 				                     id,
 				                     "deprecated",
@@ -1478,7 +1482,7 @@ public:
 
 		for (auto& it : id_worker) {
 			auto fitness = it.second.details.processClass.machineClassFitness(role);
-			if (conf.isExcludedServer(it.second.details.interf.addresses()) ||
+			if (conf.isExcludedServer(it.second.details.interf.addresses(), it.second.details.interf.locality) ||
 			    isExcludedDegradedServer(it.second.details.interf.addresses())) {
 				fitness = std::max(fitness, ProcessClass::ExcludeFit);
 			}
@@ -1530,7 +1534,7 @@ public:
 		for (auto& it : id_worker) {
 			auto fitness = it.second.details.processClass.machineClassFitness(role);
 			if (workerAvailable(it.second, checkStable) &&
-			    !conf.isExcludedServer(it.second.details.interf.addresses()) &&
+			    !conf.isExcludedServer(it.second.details.interf.addresses(), it.second.details.interf.locality) &&
 			    !isExcludedDegradedServer(it.second.details.interf.addresses()) &&
 			    it.second.details.interf.locality.dcId() == dcId &&
 			    (!minWorker.present() || (it.second.details.interf.id() != minWorker.get().worker.interf.id()))) {
@@ -1670,7 +1674,7 @@ public:
 		std::set<Optional<Standalone<StringRef>>> result;
 		for (auto& it : id_worker)
 			if (workerAvailable(it.second, checkStable) &&
-			    !conf.isExcludedServer(it.second.details.interf.addresses()) &&
+			    !conf.isExcludedServer(it.second.details.interf.addresses(), it.second.details.interf.locality) &&
 			    !isExcludedDegradedServer(it.second.details.interf.addresses()))
 				result.insert(it.second.details.interf.locality.dcId());
 		return result;
@@ -2183,8 +2187,9 @@ public:
 		for (auto& it : first) {
 			auto w = id_worker.find(it.locality.processId());
 			ASSERT(w != id_worker.end());
-			ASSERT(!conf.isExcludedServer(w->second.details.interf.addresses()));
-			firstDetails.push_back(w->second.details);
+			auto const& [_, workerInfo] = *w;
+			ASSERT(!conf.isExcludedServer(workerInfo.details.interf.addresses(), workerInfo.details.interf.locality));
+			firstDetails.push_back(workerInfo.details);
 			//TraceEvent("CompareAddressesFirst").detail(description.c_str(), w->second.details.interf.address());
 		}
 		RoleFitness firstFitness(firstDetails, role, firstUsed);
@@ -2193,8 +2198,9 @@ public:
 		for (auto& it : second) {
 			auto w = id_worker.find(it.locality.processId());
 			ASSERT(w != id_worker.end());
-			ASSERT(!conf.isExcludedServer(w->second.details.interf.addresses()));
-			secondDetails.push_back(w->second.details);
+			auto const& [_, workerInfo] = *w;
+			ASSERT(!conf.isExcludedServer(workerInfo.details.interf.addresses(), workerInfo.details.interf.locality));
+			secondDetails.push_back(workerInfo.details);
 			//TraceEvent("CompareAddressesSecond").detail(description.c_str(), w->second.details.interf.address());
 		}
 		RoleFitness secondFitness(secondDetails, role, secondUsed);
@@ -2541,7 +2547,7 @@ public:
 		// still need master for recovery.
 		ProcessClass::Fitness oldMasterFit =
 		    masterWorker->second.details.processClass.machineClassFitness(ProcessClass::Master);
-		if (db.config.isExcludedServer(dbi.master.addresses())) {
+		if (db.config.isExcludedServer(dbi.master.addresses(), dbi.master.locality)) {
 			oldMasterFit = std::max(oldMasterFit, ProcessClass::ExcludeFit);
 		}
 
@@ -2552,7 +2558,7 @@ public:
 		WorkerFitnessInfo mworker = getWorkerForRoleInDatacenter(
 		    clusterControllerDcId, ProcessClass::Master, ProcessClass::NeverAssign, db.config, id_used, {}, true);
 		auto newMasterFit = mworker.worker.processClass.machineClassFitness(ProcessClass::Master);
-		if (db.config.isExcludedServer(mworker.worker.interf.addresses())) {
+		if (db.config.isExcludedServer(mworker.worker.interf.addresses(), mworker.worker.interf.locality)) {
 			newMasterFit = std::max(newMasterFit, ProcessClass::ExcludeFit);
 		}
 
@@ -3181,92 +3187,11 @@ public:
 	}
 
 	// Whether the transaction system (in primary DC if in HA setting) contains degraded servers.
-	bool transactionSystemContainsDegradedServers() {
-		const ServerDBInfo& dbi = db.serverInfo->get();
-		auto transactionWorkerInList =
-		    [&dbi](const std::unordered_set<NetworkAddress>& serverList, bool skipSatellite, bool skipRemote) -> bool {
-			for (const auto& server : serverList) {
-				if (dbi.master.addresses().contains(server)) {
-					return true;
-				}
-
-				for (const auto& logSet : dbi.logSystemConfig.tLogs) {
-					if (skipSatellite && logSet.locality == tagLocalitySatellite) {
-						continue;
-					}
-
-					if (skipRemote && !logSet.isLocal) {
-						continue;
-					}
-
-					if (!logSet.isLocal) {
-						// Only check log routers in the remote region.
-						for (const auto& logRouter : logSet.logRouters) {
-							if (logRouter.present() && logRouter.interf().addresses().contains(server)) {
-								return true;
-							}
-						}
-					} else {
-						for (const auto& tlog : logSet.tLogs) {
-							if (tlog.present() && tlog.interf().addresses().contains(server)) {
-								return true;
-							}
-						}
-					}
-				}
-
-				for (const auto& proxy : dbi.client.grvProxies) {
-					if (proxy.addresses().contains(server)) {
-						return true;
-					}
-				}
-
-				for (const auto& proxy : dbi.client.commitProxies) {
-					if (proxy.addresses().contains(server)) {
-						return true;
-					}
-				}
-
-				for (const auto& resolver : dbi.resolvers) {
-					if (resolver.addresses().contains(server)) {
-						return true;
-					}
-				}
-			}
-
-			return false;
-		};
-
-		// Check if transaction system contains degraded/disconnected servers. For satellite and remote regions, we only
-		// check for disconnection since the latency between prmary and satellite is across WAN and may not be very
-		// stable.
-		return transactionWorkerInList(degradationInfo.degradedServers, /*skipSatellite=*/true, /*skipRemote=*/true) ||
-		       transactionWorkerInList(degradationInfo.disconnectedServers,
-		                               /*skipSatellite=*/false,
-		                               /*skipRemote=*/!SERVER_KNOBS->CC_ENABLE_REMOTE_LOG_ROUTER_MONITORING);
-	}
+	bool transactionSystemContainsDegradedServers();
 
 	// Whether transaction system in the remote DC, e.g. log router and tlogs in the remote DC, contains degraded
 	// servers.
-	bool remoteTransactionSystemContainsDegradedServers() {
-		if (db.config.usableRegions <= 1) {
-			return false;
-		}
-
-		for (const auto& excludedServer : degradationInfo.degradedServers) {
-			if (addressInDbAndRemoteDc(excludedServer, db.serverInfo)) {
-				return true;
-			}
-		}
-
-		for (const auto& excludedServer : degradationInfo.disconnectedServers) {
-			if (addressInDbAndRemoteDc(excludedServer, db.serverInfo)) {
-				return true;
-			}
-		}
-
-		return false;
-	}
+	bool remoteTransactionSystemContainsDegradedServers();
 
 	// Returns true if remote DC is healthy and can failover to.
 	bool remoteDCIsHealthy() {
@@ -3299,10 +3224,6 @@ public:
 	bool shouldTriggerRecoveryDueToDegradedServers() {
 		if (degradationInfo.degradedServers.size() + degradationInfo.disconnectedServers.size() >
 		    SERVER_KNOBS->CC_MAX_EXCLUSION_DUE_TO_HEALTH) {
-			return false;
-		}
-
-		if (db.serverInfo->get().recoveryState < RecoveryState::ACCEPTING_COMMITS) {
 			return false;
 		}
 

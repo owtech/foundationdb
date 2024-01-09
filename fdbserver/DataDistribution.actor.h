@@ -46,6 +46,7 @@ struct IDataDistributionTeam {
 	virtual std::vector<UID> const& getServerIDs() const = 0;
 	virtual void addDataInFlightToTeam(int64_t delta) = 0;
 	virtual int64_t getDataInFlightToTeam() const = 0;
+	virtual Optional<int64_t> getLongestStorageQueueSize() const = 0;
 	virtual int64_t getLoadBytes(bool includeInFlight = true, double inflightPenalty = 1.0) const = 0;
 	virtual int64_t getMinAvailableSpace(bool includeInFlight = true) const = 0;
 	virtual double getMinAvailableSpaceRatio(bool includeInFlight = true) const = 0;
@@ -79,9 +80,12 @@ struct IDataDistributionTeam {
 struct GetTeamRequest {
 	bool wantsNewServers;
 	bool wantsTrueBest;
+	bool storageQueueAware;
 	bool preferLowerUtilization;
 	bool teamMustHaveShards;
 	double inflightPenalty;
+	UID relocationId;
+	bool traceStorageQueueAware;
 	std::vector<UID> completeSources;
 	std::vector<UID> src;
 	Promise<std::pair<Optional<Reference<IDataDistributionTeam>>, bool>> reply;
@@ -92,15 +96,16 @@ struct GetTeamRequest {
 	               bool preferLowerUtilization,
 	               bool teamMustHaveShards,
 	               double inflightPenalty = 1.0)
-	  : wantsNewServers(wantsNewServers), wantsTrueBest(wantsTrueBest), preferLowerUtilization(preferLowerUtilization),
-	    teamMustHaveShards(teamMustHaveShards), inflightPenalty(inflightPenalty) {}
+	  : wantsNewServers(wantsNewServers), wantsTrueBest(wantsTrueBest), storageQueueAware(false),
+	    preferLowerUtilization(preferLowerUtilization), teamMustHaveShards(teamMustHaveShards),
+	    inflightPenalty(inflightPenalty), traceStorageQueueAware(false) {}
 
 	std::string getDesc() const {
 		std::stringstream ss;
 
 		ss << "WantsNewServers:" << wantsNewServers << " WantsTrueBest:" << wantsTrueBest
-		   << " PreferLowerUtilization:" << preferLowerUtilization << " teamMustHaveShards:" << teamMustHaveShards
-		   << " inflightPenalty:" << inflightPenalty << ";";
+		   << " StorageQueueAware:" << storageQueueAware << " PreferLowerUtilization:" << preferLowerUtilization
+		   << " teamMustHaveShards:" << teamMustHaveShards << " inflightPenalty:" << inflightPenalty << ";";
 		ss << "CompleteSources:";
 		for (const auto& cs : completeSources) {
 			ss << cs.toString() << ",";
@@ -203,6 +208,15 @@ private:
 	void insert(Team team, KeyRange const& range);
 };
 
+struct ServerTeamInfo {
+	UID serverId;
+	std::vector<ShardsAffectedByTeamFailure::Team> teams;
+	bool primary;
+
+	ServerTeamInfo() {}
+	ServerTeamInfo(UID serverId, std::vector<ShardsAffectedByTeamFailure::Team> teams, bool primary)
+	  : serverId(serverId), teams(teams), primary(primary) {}
+};
 // DDShardInfo is so named to avoid link-time name collision with ShardInfo within the StorageServer
 struct DDShardInfo {
 	Key key;
@@ -242,6 +256,8 @@ struct ShardTrackedData {
 	Future<Void> trackShard;
 	Future<Void> trackBytes;
 	Reference<AsyncVar<Optional<ShardMetrics>>> stats;
+	Reference<AsyncVar<Void>> manualSplitTrigger;
+	std::shared_ptr<std::set<Key>> manualSplitPoints;
 };
 
 ACTOR Future<Void> dataDistributionTracker(Reference<InitialDataDistribution> initData,
@@ -250,7 +266,9 @@ ACTOR Future<Void> dataDistributionTracker(Reference<InitialDataDistribution> in
                                            Reference<ShardsAffectedByTeamFailure> shardsAffectedByTeamFailure,
                                            PromiseStream<GetMetricsRequest> getShardMetrics,
                                            PromiseStream<GetMetricsListRequest> getShardMetricsList,
+                                           PromiseStream<DistributorSplitRangeRequest> manualShardSplit,
                                            FutureStream<Promise<int64_t>> getAverageShardBytes,
+                                           FutureStream<ServerTeamInfo> triggerSplitForStorageQueueTooLong,
                                            Promise<Void> readyToStart,
                                            Reference<AsyncVar<bool>> zeroHealthyTeams,
                                            UID distributorId,

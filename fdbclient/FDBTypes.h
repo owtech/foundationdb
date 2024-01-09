@@ -857,6 +857,7 @@ struct KeyValueStoreType {
 		SSD_REDWOOD_V1 = 3,
 		MEMORY_RADIXTREE = 4,
 		SSD_ROCKSDB_V1 = 5,
+		NONE = 7,
 		END
 	};
 
@@ -887,10 +888,35 @@ struct KeyValueStoreType {
 			return "memory";
 		case MEMORY_RADIXTREE:
 			return "memory-radixtree-beta";
+		case NONE:
+			return "none";
 		default:
 			return "unknown";
 		}
 	}
+
+	// Convert a string to a KeyValueStoreType
+	// This is a many-to-one mapping as there are aliases for some storage engines
+	static KeyValueStoreType fromString(const std::string& str) {
+		static std::map<std::string, StoreType> names = { { "ssd-1", SSD_BTREE_V1 },
+			                                              { "ssd-2", SSD_BTREE_V2 },
+			                                              { "ssd", SSD_BTREE_V2 },
+			                                              { "redwood", SSD_REDWOOD_V1 },
+			                                              { "ssd-redwood-1", SSD_REDWOOD_V1 },
+			                                              { "ssd-redwood-1-experimental", SSD_REDWOOD_V1 },
+			                                              { "ssd-rocksdb-v1", SSD_ROCKSDB_V1 },
+			                                              { "memory", MEMORY },
+			                                              { "memory-radixtree-beta", MEMORY_RADIXTREE },
+			                                              { "none", NONE } };
+		auto it = names.find(str);
+		if (it == names.end()) {
+			throw unknown_storage_engine();
+		}
+		return it->second;
+	}
+
+	// Whether the storage type is a valid storage type.
+	bool isValid() const { return type != NONE && type != END; }
 
 private:
 	uint32_t type;
@@ -1257,16 +1283,19 @@ struct HealthMetrics {
 
 struct DDMetricsRef {
 	int64_t shardBytes;
+	int64_t shardBytesPerKSecond;
 	KeyRef beginKey;
 
-	DDMetricsRef() : shardBytes(0) {}
-	DDMetricsRef(int64_t bytes, KeyRef begin) : shardBytes(bytes), beginKey(begin) {}
+	DDMetricsRef() : shardBytes(0), shardBytesPerKSecond(0) {}
+	DDMetricsRef(int64_t bytes, int64_t bytesPerKSecond, KeyRef begin)
+	  : shardBytes(bytes), shardBytesPerKSecond(bytesPerKSecond), beginKey(begin) {}
 	DDMetricsRef(Arena& a, const DDMetricsRef& copyFrom)
-	  : shardBytes(copyFrom.shardBytes), beginKey(a, copyFrom.beginKey) {}
+	  : shardBytes(copyFrom.shardBytes), shardBytesPerKSecond(copyFrom.shardBytesPerKSecond),
+	    beginKey(a, copyFrom.beginKey) {}
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		serializer(ar, shardBytes, beginKey);
+		serializer(ar, shardBytes, beginKey, shardBytesPerKSecond);
 	}
 };
 
