@@ -1123,10 +1123,6 @@ ACTOR Future<Void> waitForShardReady(StorageServerInterface server,
 		try {
 			GetShardStateReply rep =
 			    wait(server.getShardState.getReply(GetShardStateRequest(keys, mode), TaskPriority::MoveKeys));
-			TraceEvent("GetShardStateReadyDD", server.id())
-			    .detail("RepVersion", rep.first)
-			    .detail("MinVersion", rep.second)
-			    .log();
 			if (rep.first >= minVersion) {
 				return Void();
 			}
@@ -2470,6 +2466,7 @@ ACTOR Future<std::pair<Version, Tag>> addStorageServer(Database cx, StorageServe
 
 				StorageMetadataType metadata(StorageMetadataType::currentTime());
 				metadataMap.set(tr, server.id(), metadata);
+				tr->set(serverMetadataChangeKey, deterministicRandom()->randomUniqueID().toString());
 
 				if (SERVER_KNOBS->TSS_HACK_IDENTITY_MAPPING) {
 					// THIS SHOULD NEVER BE ENABLED IN ANY NON-TESTING ENVIRONMENT
@@ -2480,7 +2477,9 @@ ACTOR Future<std::pair<Version, Tag>> addStorageServer(Database cx, StorageServe
 
 			tr->set(serverListKeyFor(server.id()), serverListValue(server));
 			wait(tr->commit());
-			TraceEvent("AddedStorageServerSystemKey").detail("ServerID", server.id());
+			TraceEvent("AddedStorageServerSystemKey")
+			    .detail("ServerID", server.id())
+			    .detail("CommitVersion", tr->getCommittedVersion());
 
 			return std::make_pair(tr->getCommittedVersion(), tag);
 		} catch (Error& e) {
@@ -2628,9 +2627,14 @@ ACTOR Future<Void> removeStorageServer(Database cx,
 				}
 
 				metadataMap.erase(tr, serverID);
+				tr->set(serverMetadataChangeKey, deterministicRandom()->randomUniqueID().toString());
 
 				retry = true;
 				wait(tr->commit());
+				TraceEvent("RemoveStorageServer")
+				    .detail("State", "Success")
+				    .detail("ServerID", serverID)
+				    .detail("CommitVersion", tr->getCommittedVersion());
 				return Void();
 			}
 		} catch (Error& e) {
@@ -3246,6 +3250,7 @@ void seedShardServers(Arena& arena, CommitTransactionRef& tr, std::vector<Storag
 			tr.set(arena, uidRef.withPrefix(tssMappingKeys.begin), uidRef);
 		}
 	}
+	tr.set(arena, serverMetadataChangeKey, deterministicRandom()->randomUniqueID().toString());
 
 	std::vector<Tag> serverTags;
 	std::vector<UID> serverSrcUID;

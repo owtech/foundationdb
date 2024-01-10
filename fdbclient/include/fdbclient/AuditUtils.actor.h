@@ -81,6 +81,7 @@ ACTOR Future<std::vector<AuditStorageState>> initAuditMetadata(Database cx,
                                                                bool ddEnabled,
                                                                UID dataDistributorId,
                                                                int persistFinishAuditCount);
+
 struct AuditGetServerKeysRes {
 	KeyRange completeRange;
 	Version readAtVersion;
@@ -115,5 +116,6 @@ std::vector<KeyRange> coalesceRangeList(std::vector<KeyRange> ranges);
 Optional<std::pair<KeyRange, KeyRange>> rangesSame(std::vector<KeyRange> rangesA, std::vector<KeyRange> rangesB);
 ACTOR Future<AuditGetServerKeysRes> getThisServerKeysFromServerKeys(UID serverID, Transaction* tr, KeyRange range);
 ACTOR Future<AuditGetKeyServersRes> getShardMapFromKeyServers(UID auditServerId, Transaction* tr, KeyRange range);
+
 #include "flow/unactorcompiler.h"
 #endif

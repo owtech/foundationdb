@@ -133,7 +133,8 @@ bool ClusterControllerData::transactionSystemContainsDegradedServers() {
 				}
 			}
 
-			if (recoveryData.isValid() && recoveryData->recoveryState < RecoveryState::ACCEPTING_COMMITS) {
+			if (SERVER_KNOBS->GRAY_FAILURE_ENABLE_TLOG_RECOVERY_MONITORING && recoveryData.isValid() &&
+			    recoveryData->recoveryState < RecoveryState::ACCEPTING_COMMITS) {
 				// During recovery, TLogs may not be able to pull data from previous generation TLogs due to gray
 				// failures. In this case, we rely on the latest recruitment information and see if any newly recruited
 				// TLogs are degraded.
@@ -531,7 +532,7 @@ ProcessClass::Fitness findBestFitnessForSingleton(const ClusterControllerData* s
 	// If the process has been marked as excluded, we take the max with ExcludeFit to ensure its fit
 	// is at least as bad as ExcludeFit. This assists with successfully offboarding such processes
 	// and removing them from the cluster.
-	if (self->db.config.isExcludedServer(worker.interf.addresses())) {
+	if (self->db.config.isExcludedServer(worker.interf.addresses(), worker.interf.locality)) {
 		bestFitness = std::max(bestFitness, ProcessClass::ExcludeFit);
 	}
 	return bestFitness;
@@ -1030,8 +1031,8 @@ void clusterRegisterMaster(ClusterControllerData* self, RegisterMasterRequest co
 			self->gotFullyRecoveredConfig = true;
 			db->fullyRecoveredConfig = req.configuration.get();
 			for (auto& it : self->id_worker) {
-				bool isExcludedFromConfig =
-				    db->fullyRecoveredConfig.isExcludedServer(it.second.details.interf.addresses());
+				bool isExcludedFromConfig = db->fullyRecoveredConfig.isExcludedServer(
+				    it.second.details.interf.addresses(), it.second.details.interf.locality);
 				if (it.second.priorityInfo.isExcluded != isExcludedFromConfig) {
 					it.second.priorityInfo.isExcluded = isExcludedFromConfig;
 					if (!it.second.reply.isSet()) {
@@ -1253,7 +1254,7 @@ ACTOR Future<Void> registerWorker(RegisterWorkerRequest req,
 		}
 
 		if (self->gotFullyRecoveredConfig) {
-			newPriorityInfo.isExcluded = self->db.fullyRecoveredConfig.isExcludedServer(w.addresses());
+			newPriorityInfo.isExcluded = self->db.fullyRecoveredConfig.isExcludedServer(w.addresses(), w.locality);
 		}
 	}
 
@@ -1511,6 +1512,7 @@ ACTOR Future<Void> statusServer(FutureStream<StatusRequest> requests,
 			                                                                  self->cx,
 			                                                                  workers,
 			                                                                  workerIssues,
+			                                                                  self->storageStatusInfos,
 			                                                                  &self->db.clientStatus,
 			                                                                  coordinators,
 			                                                                  incompatibleConnections,
@@ -1662,6 +1664,53 @@ ACTOR Future<Void> monitorServerInfoConfig(ClusterControllerData::DBInfo* db) {
 			} catch (Error& e) {
 				wait(tr.onError(e));
 			}
+		}
+	}
+}
+
+// Monitors storage metadata changes and updates to storage servers.
+ACTOR Future<Void> monitorStorageMetadata(ClusterControllerData* self) {
+	state KeyBackedObjectMap<UID, StorageMetadataType, decltype(IncludeVersion())> metadataMap(serverMetadataKeys.begin,
+	                                                                                           IncludeVersion());
+	state Reference<ReadYourWritesTransaction> tr = makeReference<ReadYourWritesTransaction>(self->cx);
+	state std::vector<StorageServerMetaInfo> servers;
+	loop {
+		try {
+			servers.clear();
+			tr->setOption(FDBTransactionOptions::READ_SYSTEM_KEYS);
+			tr->setOption(FDBTransactionOptions::LOCK_AWARE);
+			tr->setOption(FDBTransactionOptions::PRIORITY_SYSTEM_IMMEDIATE);
+			state RangeResult serverList = wait(tr->getRange(serverListKeys, CLIENT_KNOBS->TOO_MANY));
+			ASSERT(!serverList.more && serverList.size() < CLIENT_KNOBS->TOO_MANY);
+
+			servers.reserve(serverList.size());
+			for (const auto ss : serverList) {
+				servers.push_back(StorageServerMetaInfo(decodeServerListValue(ss.value)));
+			}
+
+			state RangeResult serverMetadata = wait(tr->getRange(serverMetadataKeys, CLIENT_KNOBS->TOO_MANY));
+			ASSERT(!serverMetadata.more && serverMetadata.size() < CLIENT_KNOBS->TOO_MANY);
+			std::map<UID, StorageMetadataType> idMetadata;
+			for (const auto& sm : serverMetadata) {
+				const UID id = decodeServerMetadataKey(sm.key);
+				idMetadata[id] = decodeServerMetadataValue(sm.value);
+			}
+			for (auto& s : servers) {
+				if (idMetadata.count(s.id())) {
+					s.metadata = idMetadata[s.id()];
+				} else {
+					TraceEvent(SevWarn, "StorageServerMetadataMissing", self->id).detail("ServerID", s.id());
+				}
+			}
+
+			state Future<Void> watchFuture = tr->watch(serverMetadataChangeKey);
+			wait(tr->commit());
+
+			self->storageStatusInfos = std::move(servers);
+			wait(watchFuture);
+			tr->reset();
+		} catch (Error& e) {
+			wait(tr->onError(e));
 		}
 	}
 }
@@ -3061,6 +3110,7 @@ ACTOR Future<Void> clusterControllerCore(ClusterControllerFullInterface interf,
 	self.addActor.send(timeKeeper(&self));
 	self.addActor.send(monitorProcessClasses(&self));
 	self.addActor.send(monitorServerInfoConfig(&self.db));
+	self.addActor.send(monitorStorageMetadata(&self));
 	self.addActor.send(monitorGlobalConfig(&self.db));
 	self.addActor.send(updatedChangingDatacenters(&self));
 	self.addActor.send(updatedChangedDatacenters(&self));
@@ -3125,7 +3175,8 @@ ACTOR Future<Void> clusterControllerCore(ClusterControllerFullInterface interf,
 
 			for (auto const& [id, worker] : self.id_worker) {
 				if ((req.flags & GetWorkersRequest::NON_EXCLUDED_PROCESSES_ONLY) &&
-				    self.db.config.isExcludedServer(worker.details.interf.addresses())) {
+				    self.db.config.isExcludedServer(worker.details.interf.addresses(),
+				                                    worker.details.interf.locality)) {
 					continue;
 				}
 

@@ -68,6 +68,7 @@ IKeyValueStore* openKVStore(KeyValueStoreType storeType,
 	}
 	UNREACHABLE(); // FIXME: is this right?
 }
+
 ACTOR static Future<Void> replaceRange_impl(IKeyValueStore* self,
                                             KeyRange range,
                                             Standalone<VectorRef<KeyValueRef>> data) {

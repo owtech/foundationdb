@@ -30,6 +30,7 @@
 
 #include <set>
 #include "flow/flow.h"
+#include "flow/Trace.h"
 #include "fdbclient/DatabaseContext.h"
 #include "fdbclient/ManagementAPI.actor.h"
 #include "flow/actorcompiler.h" // This must be the last #include.
@@ -101,24 +102,46 @@ struct ExclusionTracker {
 					std::string locality = decodeExcludedLocalityKey(r.key);
 					std::set<AddressExclusion> localityExcludedAddresses = getAddressesByLocality(workers, locality);
 					newExcluded.insert(localityExcludedAddresses.begin(), localityExcludedAddresses.end());
+					if (localityExcludedAddresses.empty()) {
+						TraceEvent(SevWarn, "ExclusionTrackerLocalityNotFound").detail("Locality", locality);
+					}
 				}
 				for (const auto& r : failedLocalityResults) {
 					std::string locality = decodeFailedLocalityKey(r.key);
 					std::set<AddressExclusion> localityFailedAddresses = getAddressesByLocality(workers, locality);
 					newFailed.insert(localityFailedAddresses.begin(), localityFailedAddresses.end());
+					if (localityFailedAddresses.empty()) {
+						TraceEvent(SevWarn, "ExclusionTrackerFailedLocalityNotFound").detail("Locality", locality);
+					}
 				}
 
-				self->excluded = newExcluded;
-				self->failed = newFailed;
-				self->changed.trigger();
+				bool foundChange = false;
+				if (self->excluded != newExcluded) {
+					self->excluded = newExcluded;
+					foundChange = true;
+				}
+				if (self->failed != newFailed) {
+					self->failed = newFailed;
+					foundChange = true;
+				}
+
+				if (foundChange) {
+					self->changed.trigger();
+				}
 
 				state Future<Void> watchFuture =
 				    tr.watch(excludedServersVersionKey) || tr.watch(failedServersVersionKey) ||
 				    tr.watch(excludedLocalityVersionKey) || tr.watch(failedLocalityVersionKey);
 				wait(tr.commit());
+				if (excludedLocalityResults.size() > 0 || failedLocalityResults.size() > 0) {
+					// when there are excluded localities we need to monitor for when the worker list changes, so we
+					// must poll
+					watchFuture = watchFuture || delay(10.0);
+				}
 				wait(watchFuture);
 				tr.reset();
 			} catch (Error& e) {
+				TraceEvent("ExclusionTrackerError").error(e);
 				wait(tr.onError(e));
 			}
 		}
