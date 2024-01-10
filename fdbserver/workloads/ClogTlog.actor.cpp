@@ -158,6 +158,7 @@ struct ClogTlogWorkload : TestWorkload {
 		if (deterministicRandom()->coinflip()) {
 			self->useDisconnection = true;
 		}
+
 		// Let cycle workload issue some transactions.
 		wait(delay(20.0));
 
