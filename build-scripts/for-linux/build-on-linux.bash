@@ -38,8 +38,10 @@ APP_PRMS="\
 # find swift
 APP_PRMS="$APP_PRMS -DCMAKE_Swift_COMPILER=`$BASE_DIR/find-swift.bash`"
 
-echo "env CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS . $SRC_DIR"
-env CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS . $SRC_DIR
+echo "env CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS $SRC_DIR"
+env CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS $SRC_DIR
+
+echo "number of parallel jobs: [$PARALLEL_PRMS]"
 
 ninja $PARALLEL_PRMS -k 0
 
