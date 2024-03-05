@@ -49,8 +49,8 @@ jobs:
             for: linux
             prepare: "debian-based"
             build_on: linux
-            use_image: ghcr.io/owtech/foundationdb-build:7.3.0-1.ow.build
-            parallel: 2
+            use_image: ghcr.io/owtech/foundationdb-build:7.4.0-1.ow.build
+            parallel: 5
 
     runs-on: ${{ matrix.run_on }}
     steps:
