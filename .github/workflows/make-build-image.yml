@@ -34,7 +34,7 @@ jobs:
           - run_on: ubuntu-latest
             for: linux
             prepare: debian-based
-            base_image: debian:10
+            base_image: debian:12
             image_name: foundationdb-build
 
     env:
