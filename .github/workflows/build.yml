@@ -98,7 +98,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RPM_IMAGE: oraclelinux:8
-      DEB_IMAGE: debian:10
+      DEB_IMAGE: debian:12
 
     steps:
       - name: Checkout
