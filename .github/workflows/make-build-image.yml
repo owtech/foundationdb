@@ -45,9 +45,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: lower-repo
-        run: echo "owner=${GITHUB_REPOSITORY_OWNER@L}" >> "$GITHUB_ENV"
-
       - name: Build an image
         run: |
           podman build \
@@ -63,4 +60,4 @@ jobs:
         run: echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u $ --password-stdin
 
       - name: Push image
-        run: podman push $IMAGE_NAME ghcr.io/$owner/$IMAGE_NAME
+        run: podman push $IMAGE_NAME ghcr.io/${GITHUB_REPOSITORY_OWNER@L}/$IMAGE_NAME
