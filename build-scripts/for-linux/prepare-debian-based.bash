@@ -16,7 +16,8 @@ case $CURRENT_LINUX_VER in
                  clang \
                  libc++-dev \
                  libc++abi-dev \
-                 default-jdk
+                 default-jdk \
+                 wget
                ;;
     $DEBIAN10) $BASE_DIR/prepare-debian-based-cmake.bash 3.24
                $BASE_DIR/prepare-debian-based-clang.sh
