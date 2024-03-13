@@ -3,7 +3,7 @@
 # Test deploying foundationdb on rpm-and deb-based linux
 # $1 - full Foundationdb version, ex. 7.1.29-0.ow.1
 # $2 - distr dir. Default is bld/linux/packages relative to the current dir
-# $3 - a rpm-based linux docker image. Default is oraclelinux:8
+# $3 - a rpm-based linux docker image. Default is oraclelinux:9
 # $4 - a deb-based linux docker image. Default is debian:12
 
 set -e
@@ -11,7 +11,7 @@ set -e
 BASE_DIR="$(readlink -f $(dirname $0))"
 FULL_VERSION="$1"
 DISTR_DIR="$(readlink -f ${2:-bld/linux/packages})"
-RPM_IMAGE=${3:-oraclelinux:8}
+RPM_IMAGE=${3:-oraclelinux:9}
 DEB_IMAGE=${4:-debian:12}
 
 print_usage() {
