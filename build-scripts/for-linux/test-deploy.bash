@@ -3,16 +3,16 @@
 # Test deploying foundationdb on rpm-and deb-based linux
 # $1 - full Foundationdb version, ex. 7.1.29-0.ow.1
 # $2 - distr dir. Default is bld/linux/packages relative to the current dir
-# $3 - a rpm-based linux docker image. Default is oraclelinux:9
-# $4 - a deb-based linux docker image. Default is debian:12
+# $3 - a rpm-based linux docker image. Default is oraclelinux:8
+# $4 - a deb-based linux docker image. Default is debian:10
 
 set -e
 
 BASE_DIR="$(readlink -f $(dirname $0))"
 FULL_VERSION="$1"
 DISTR_DIR="$(readlink -f ${2:-bld/linux/packages})"
-RPM_IMAGE=${3:-oraclelinux:9}
-DEB_IMAGE=${4:-debian:12}
+RPM_IMAGE=${3:-oraclelinux:8}
+DEB_IMAGE=${4:-debian:10}
 
 print_usage() {
   echo >&2 "Usage: $0 FullFdbVersion [FdbDistrDir] [RpmImage] [DebImage]"
@@ -35,7 +35,7 @@ fi
 # foundationdb writes to files with 2600 mode
 # but podman under kernel 6.1 or 6.2 does not respect this
 # so test if the writing works and choose an appropriate container engine
-CONTAINER_TEST_IMAGE=debian:12
+CONTAINER_TEST_IMAGE=debian:10
 CONTAINER_TEST_RUNNABLE='bash -c "touch /tmp/file01.tst; chgrp users /tmp/file01.tst; chmod 2600 /tmp/file01.tst; echo test >/tmp/file01.tst"'
 
 test_container_engine() {

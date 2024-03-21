@@ -97,8 +97,8 @@ jobs:
     needs: [calc_ver, build]
     runs-on: ubuntu-latest
     env:
-      RPM_IMAGE: oraclelinux:9
-      DEB_IMAGE: debian:12
+      RPM_IMAGE: oraclelinux:8
+      DEB_IMAGE: debian:10
 
     steps:
       - name: Checkout
