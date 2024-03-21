@@ -50,7 +50,7 @@ jobs:
             prepare: "debian-based"
             build_on: linux
             parallel: 5
-            image: foundationdb-build:7.4.0-4.ow.build
+            image: foundationdb-build:7.4.0-5.ow.build
 
     runs-on: ${{ matrix.run_on }}
     steps:

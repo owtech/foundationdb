@@ -10,7 +10,7 @@ sudo apt update
 max_clang_version=14
 
 RECENT_VERSION=` \
-  apt search -o APT::Cache::Search::Version=1 '^clang-[0-9]+$' | \
+  apt-cache search -o APT::Cache::Search::Version=1 '^clang-[0-9]+$' | \
   tr - ' ' | \
   awk -v ver="$max_clang_version" '{if($2<=ver) print $2;}' | \
   sort -n  | \
