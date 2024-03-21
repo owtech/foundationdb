@@ -6,26 +6,11 @@ BASE_DIR=`dirname $0`
 
 sudo apt update
 
-CURRENT_LINUX_VER=`grep VERSION_ID /etc/os-release | grep -o "[0-9]*"`
-DEBIAN10=10
-DEBIAN12=12
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y wget
 
-case $CURRENT_LINUX_VER in
-    $DEBIAN12) sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-                 cmake \
-                 clang \
-                 libc++-dev \
-                 libc++abi-dev \
-                 default-jdk \
-                 wget
-               ;;
-    $DEBIAN10) $BASE_DIR/prepare-debian-based-cmake.bash 3.24
-               $BASE_DIR/prepare-debian-based-clang.sh
-               $BASE_DIR/prepare-debian-based-jdk.bash
-               ;;
-    *)         echo "Current version linux [$CURRENT_LINUX_VER] not supported"
-               exit 1;;
-esac
+$BASE_DIR/prepare-debian-based-cmake.bash 3.24
+$BASE_DIR/prepare-debian-based-clang.sh
+$BASE_DIR/prepare-debian-based-jdk.bash
 
 # make is necessary for building Jemalloc on Astra Linux
 
