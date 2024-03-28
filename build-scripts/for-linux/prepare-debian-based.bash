@@ -6,6 +6,7 @@ BASE_DIR=`dirname $0`
 
 sudo apt update
 
+# wget is required to download cmake 3.24 if you are using Debian 12 to build.
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y wget
 
 $BASE_DIR/prepare-debian-based-cmake.bash 3.24
