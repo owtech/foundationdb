@@ -50,7 +50,8 @@ jobs:
             prepare: "debian-based"
             build_on: linux
             parallel: 5
-            image: foundationdb-build:7.4.0-5.ow.build
+            image: foundationdb-build:7.4.0-1.ow.build
+            owner: owtech
 
     runs-on: ${{ matrix.run_on }}
     steps:
@@ -59,7 +60,7 @@ jobs:
       
       - name: Set building repo
         run: | 
-          echo "use_image=ghcr.io/${GITHUB_REPOSITORY_OWNER@L}/${{matrix.image}}" >> "$GITHUB_ENV"
+          echo "use_image=ghcr.io/${{matrix.owner}}/${{matrix.image}}" >> "$GITHUB_ENV"
 
       - name: Build
         run: |

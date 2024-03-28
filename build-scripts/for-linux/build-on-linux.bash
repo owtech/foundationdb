@@ -38,7 +38,11 @@ APP_PRMS="\
 # find swift
 APP_PRMS="$APP_PRMS -DCMAKE_Swift_COMPILER=`$BASE_DIR/find-swift.bash`"
 
-JAVA=`(readlink -f /usr/bin/javac | sed "s:/bin/javac::")`
+# set oldest java
+JAVA_OLDEST=$(sudo update-java-alternatives -l | sort -Vk1 | head -n 1 | awk '{print $1}')
+sudo update-java-alternatives -s $JAVA_OLDEST 2>/dev/null
+
+JAVA=$(readlink -nf $(which java) | xargs dirname | xargs dirname)
 
 echo "env JAVA_HOME=$JAVA CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS $SRC_DIR"
 env JAVA_HOME=$JAVA CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS $SRC_DIR
