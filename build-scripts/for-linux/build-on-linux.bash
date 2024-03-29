@@ -6,6 +6,19 @@
 # $4 - Paralllel threads
 # $5 - Source Dir. If not set then relative to the script dir
 
+#!/bin/bash
+
+get_oldest_java_path()
+{
+    if ! [ -x "$(command -v update-java-alternatives)" ]
+    then
+      echo 'update-java-alternatives is not installed'
+      JAVA_OLDEST_PATH=$(readlink `(ls -d /etc/alternatives/* | grep openjdk | grep -P "\d+" | sort -V | head -n 1)`)
+    else
+      JAVA_OLDEST_PATH=$(update-java-alternatives -l | sort -Vk1 | head -n 1 | awk '{print $3}')
+    fi
+}
+
 set -e
 
 BASE_DIR="$(readlink -f $(dirname $0))"
@@ -39,7 +52,7 @@ APP_PRMS="\
 APP_PRMS="$APP_PRMS -DCMAKE_Swift_COMPILER=`$BASE_DIR/find-swift.bash`"
 
 # set oldest java
-JAVA_OLDEST_PATH=$(update-java-alternatives -l | sort -Vk1 | head -n 1 | awk '{print $3}')
+get_oldest_java_path
 
 echo "env JAVA_HOME=$JAVA_OLDEST_PATH CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS $SRC_DIR"
 env JAVA_HOME=$JAVA CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS $SRC_DIR
