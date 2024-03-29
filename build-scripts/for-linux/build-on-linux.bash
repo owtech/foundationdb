@@ -39,12 +39,9 @@ APP_PRMS="\
 APP_PRMS="$APP_PRMS -DCMAKE_Swift_COMPILER=`$BASE_DIR/find-swift.bash`"
 
 # set oldest java
-JAVA_OLDEST=$(sudo update-java-alternatives -l | sort -Vk1 | head -n 1 | awk '{print $1}')
-sudo update-java-alternatives -s $JAVA_OLDEST 2>/dev/null
+JAVA_OLDEST_PATH=$(update-java-alternatives -l | sort -Vk1 | head -n 1 | awk '{print $3}')
 
-JAVA=$(readlink -nf $(which java) | xargs dirname | xargs dirname)
-
-echo "env JAVA_HOME=$JAVA CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS $SRC_DIR"
+echo "env JAVA_HOME=$JAVA_OLDEST_PATH CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS $SRC_DIR"
 env JAVA_HOME=$JAVA CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS $SRC_DIR
 
 echo "number of parallel jobs: [$PARALLEL_PRMS]"
