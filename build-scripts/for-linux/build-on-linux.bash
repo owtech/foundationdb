@@ -13,7 +13,7 @@ get_oldest_java_path()
     if ! [ -x "$(command -v update-java-alternatives)" ]
     then
       echo 'update-java-alternatives is not installed'
-      JAVA_OLDEST_PATH=$(readlink `(ls -d /etc/alternatives/* | grep openjdk | grep -P "\d+" | sort -V | head -n 1)`)
+      JAVA_OLDEST_PATH=$(ls -d /etc/alternatives/java_sdk_*[0-9] | sort -V | head -n 1)
     else
       JAVA_OLDEST_PATH=$(update-java-alternatives -l | sort -Vk1 | head -n 1 | awk '{print $3}')
     fi
