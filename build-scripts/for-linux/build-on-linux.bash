@@ -10,13 +10,13 @@
 
 get_oldest_java_path()
 {
-    if ! [ -x "$(command -v update-java-alternatives)" ]
-    then
-      echo 'update-java-alternatives is not installed'
-      JAVA_OLDEST_PATH=$(ls -d /etc/alternatives/java_sdk_*[0-9] | sort -V | head -n 1)
-    else
-      JAVA_OLDEST_PATH=$(update-java-alternatives -l | sort -Vk1 | head -n 1 | awk '{print $3}')
-    fi
+  if [ -x "$(command -v update-java-alternatives)" ]
+  then
+    update-java-alternatives -l | sort -Vk1 | head -n 1 | awk '{print $3}'
+  else
+    echo 'update-java-alternatives is not installed' >&2
+    ls -d /etc/alternatives/java_sdk_*[0-9] | sort -V | head -n 1
+  fi
 }
 
 set -e
@@ -52,10 +52,10 @@ APP_PRMS="\
 APP_PRMS="$APP_PRMS -DCMAKE_Swift_COMPILER=`$BASE_DIR/find-swift.bash`"
 
 # set oldest java
-get_oldest_java_path
+JAVA_OLDEST_PATH=$(get_oldest_java_path)
 
 echo "env JAVA_HOME=$JAVA_OLDEST_PATH CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS $SRC_DIR"
-env JAVA_HOME=$JAVA CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS $SRC_DIR
+env JAVA_HOME=$JAVA_OLDEST_PATH CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS $SRC_DIR
 
 echo "number of parallel jobs: [$PARALLEL_PRMS]"
 
