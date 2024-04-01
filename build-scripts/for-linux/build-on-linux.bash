@@ -6,6 +6,17 @@
 # $4 - Paralllel threads
 # $5 - Source Dir. If not set then relative to the script dir
 
+get_oldest_java_path()
+{
+  if [ -x "$(command -v update-java-alternatives)" ]
+  then
+    update-java-alternatives -l | sort -Vk1 | head -n 1 | awk '{print $3}'
+  else
+    echo 'update-java-alternatives is not installed' >&2
+    ls -d /etc/alternatives/java_sdk_*[0-9] | sort -V | head -n 1
+  fi
+}
+
 set -e
 
 BASE_DIR="$(readlink -f $(dirname $0))"
@@ -35,8 +46,13 @@ APP_PRMS="\
 [ ! -e /usr/lib64/libcrypto.a -a -e /opt/openssl/lib/libcrypto.a ] && \
   APP_PRMS="$APP_PRMS -DOPENSSL_ROOT_DIR=/opt/openssl"
 
-echo "env CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS . $SRC_DIR"
-env CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS . $SRC_DIR
+# set oldest java
+JAVA_OLDEST_PATH=$(get_oldest_java_path)
+
+echo "env JAVA_HOME=$JAVA_OLDEST_PATH CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS $SRC_DIR"
+env JAVA_HOME=$JAVA_OLDEST_PATH CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS $SRC_DIR
+
+echo "number of parallel jobs: [$PARALLEL_PRMS]"
 
 ninja $PARALLEL_PRMS -k 0
 
