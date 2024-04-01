@@ -6,8 +6,6 @@
 # $4 - Paralllel threads
 # $5 - Source Dir. If not set then relative to the script dir
 
-#!/bin/bash
-
 get_oldest_java_path()
 {
   if [ -x "$(command -v update-java-alternatives)" ]
@@ -47,9 +45,6 @@ APP_PRMS="\
 
 [ ! -e /usr/lib64/libcrypto.a -a -e /opt/openssl/lib/libcrypto.a ] && \
   APP_PRMS="$APP_PRMS -DOPENSSL_ROOT_DIR=/opt/openssl"
-
-# find swift
-APP_PRMS="$APP_PRMS -DCMAKE_Swift_COMPILER=`$BASE_DIR/find-swift.bash`"
 
 # set oldest java
 JAVA_OLDEST_PATH=$(get_oldest_java_path)
