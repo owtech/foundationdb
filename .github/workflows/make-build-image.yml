@@ -26,6 +26,7 @@ jobs:
 
   build-image:
     needs: [calc_ver]
+    permissions: write-all
 
     strategy:
       matrix:
@@ -59,4 +60,4 @@ jobs:
         run: echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u $ --password-stdin
 
       - name: Push image
-        run: podman push $IMAGE_NAME ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME
+        run: podman push $IMAGE_NAME ghcr.io/${GITHUB_REPOSITORY_OWNER@L}/$IMAGE_NAME

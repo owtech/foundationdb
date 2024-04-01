@@ -7,7 +7,7 @@ set -e
 sudo apt update
 
 find_pkg() {
-  apt search -o APT::Cache::Search::Version=1 "^$1\$" | awk '{print $1;}'
+  apt-cache search -o APT::Cache::Search::Version=1 "^$1\$" | awk '{print $1;}'
 }
 
 PKG_AV=""
