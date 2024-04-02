@@ -49,13 +49,17 @@ jobs:
             for: linux
             prepare: "debian-based"
             build_on: linux
-            use_image: ghcr.io/owtech/foundationdb-build:7.3.0-1.ow.build
-            parallel: 2
-
+            parallel: 5
+            image: foundationdb-build:7.3.0-1.ow.build
+            owner: owtech
     runs-on: ${{ matrix.run_on }}
     steps:
       - name: Checkout
         uses: actions/checkout@v3
+      
+      - name: Set building repo
+        run: | 
+          echo "use_image=ghcr.io/${{matrix.owner}}/${{matrix.image}}" >> "$GITHUB_ENV"
 
       - name: Build
         run: |
@@ -68,7 +72,7 @@ jobs:
             --security-opt label=disable \
             --mount=type=bind,src=${{github.workspace}},dst=/home/runner/src,readonly \
             --mount=type=bind,src=${{github.workspace}}/bld,dst=/home/runner/bld \
-            ${{ matrix.use_image }} \
+            $use_image \
             /home/runner/src/build-scripts/for-${{ matrix.for }}/build-on-${{ matrix.build_on }}.bash \
             ${{needs.calc_ver.outputs.project_ver}} \
             ${{needs.calc_ver.outputs.build_ver}} \
