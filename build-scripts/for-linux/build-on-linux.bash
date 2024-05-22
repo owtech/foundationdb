@@ -56,4 +56,3 @@ tar -I pigz -cvf $BINS_FILENAME -C packages/bin .
 tar -I pigz -cvf $LIBS_FILENAME -C packages/lib .
 
 popd
-

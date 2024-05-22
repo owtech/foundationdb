@@ -6,7 +6,7 @@ BASE_DIR=`dirname $0`
 
 sudo apt update
 
-$BASE_DIR/prepare-debian-based-cmake.bash
+$BASE_DIR/prepare-debian-based-cmake.bash 3.24
 $BASE_DIR/prepare-debian-based-clang.sh
 $BASE_DIR/prepare-debian-based-jdk.bash
 
@@ -14,19 +14,25 @@ $BASE_DIR/prepare-debian-based-jdk.bash
 
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   git \
+  lld \
   mono-mcs \
   make \
   ninja-build \
   pigz \
   python3 \
+  python3-pip \
+  python3-sphinx \
   python3-venv \
   rpm
 
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-  libssl-dev \
-  liblz4-dev
+  libjemalloc-dev \
+  liblz4-dev \
+  libssl-dev
 
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   libmono-system-data-datasetextensions4.0-cil \
   libmono-system-runtime-serialization4.0-cil \
   libmono-system-xml-linq4.0-cil
+
+sudo pip3 install sphinx-bootstrap-theme
