@@ -34,8 +34,8 @@ APP_PRMS="\
 [ ! -e /usr/lib64/libcrypto.a -a -e /opt/openssl/lib/libcrypto.a ] && \
   APP_PRMS="$APP_PRMS -DOPENSSL_ROOT_DIR=/opt/openssl"
 
-echo "env CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS . $SRC_DIR"
-env CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS . $SRC_DIR
+echo "env CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS $SRC_DIR"
+env CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS $SRC_DIR
 
 ninja $PARALLEL_PRMS -k 0
 
@@ -56,4 +56,3 @@ tar -I pigz -cvf $BINS_FILENAME -C packages/bin .
 tar -I pigz -cvf $LIBS_FILENAME -C packages/lib .
 
 popd
-
