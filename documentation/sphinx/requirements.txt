@@ -4,4 +4,4 @@ sphinx
 sphinx-bootstrap-theme
 docutils
 Jinja2
-urllib3
+urllib3<2

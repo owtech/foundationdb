@@ -9,8 +9,8 @@ ARG FOR_OS=linux
 
 # Set up the runner user
 RUN \
-  apt update \
-  && apt install -y sudo apt-utils \
+  apt-get update \
+  && apt-get install -y sudo apt-utils \
   && useradd -mN runner \
   && echo "runner ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/90-runner
 
