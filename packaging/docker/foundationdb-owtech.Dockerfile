@@ -24,6 +24,8 @@
 #   and foundationdb-libs-${FDB_VERSION}.x86_64.tgz must be there.
 
 ARG BASE_IMAGE=oraclelinux:9
+
+## base
 FROM ${BASE_IMAGE} as base
 
 RUN OS_SPECIFIC_PACKAGES="" \
@@ -73,10 +75,11 @@ RUN curl -Ls https://github.com/krallin/tini/releases/download/v0.19.0/tini-amd6
 
 WORKDIR /
 
+## foundationdb-base
 FROM base as foundationdb-base
 
 WORKDIR /tmp
-ARG FDB_VERSION=6.3.25-5.ow.1
+ARG FDB_VERSION=7.1.61-1.ow.image
 
 RUN mkdir -p /var/fdb/{logs,tmp,lib} && \
     mkdir -p /usr/lib/fdb/multiversion && \
@@ -100,6 +103,26 @@ RUN tar -xvf /mnt/distr/foundationdb-bins-${FDB_VERSION}.x86_64.tgz -C /usr/bin 
 
 WORKDIR /
 
+## go-build
+FROM golang:1.22.2-bullseye AS go-build
+
+COPY fdbkubernetesmonitor/ /fdbkubernetesmonitor
+WORKDIR /fdbkubernetesmonitor
+RUN go build -o /fdb-kubernetes-monitor *.go
+
+## fdb-kubernetes-monitor
+FROM foundationdb-base as fdb-kubernetes-monitor
+
+# Install the kubernetes monitor binary
+COPY --from=go-build /fdb-kubernetes-monitor /usr/bin/
+
+# Runtime Configuration Options
+USER fdb
+WORKDIR /var/fdb
+VOLUME /var/fdb/data
+ENTRYPOINT ["/usr/bin/fdb-kubernetes-monitor"]
+
+## foundationdb
 FROM foundationdb-base as foundationdb
 
 WORKDIR /tmp
@@ -125,6 +148,7 @@ ENV FDB_CLUSTER_FILE_CONTENTS ""
 ENV FDB_PROCESS_CLASS unset
 ENTRYPOINT ["/usr/bin/tini", "-g", "--", "/var/fdb/scripts/fdb.bash"]
 
+## foundationdb-kubernetes-sidecar
 FROM foundationdb-base as foundationdb-kubernetes-sidecar
 
 RUN dnf -y install python3 python3-pip \

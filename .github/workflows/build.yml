@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Calculate versions
         id: vers
@@ -49,13 +49,17 @@ jobs:
             for: linux
             prepare: "debian-based"
             build_on: linux
-            use_image: ghcr.io/owtech/foundationdb-build:6.3.25-5.ow.1
-            parallel: 3
-
+            parallel: 5
+            image: foundationdb-build:7.1.61-1.ow.image
+            owner: ${GITHUB_REPOSITORY_OWNER@L}
     runs-on: ${{ matrix.run_on }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+      
+      - name: Set building repo
+        run: | 
+          echo "use_image=ghcr.io/${{matrix.owner}}/${{matrix.image}}" >> "$GITHUB_ENV"
 
       - name: Build
         run: |
@@ -68,7 +72,7 @@ jobs:
             --security-opt label=disable \
             --mount=type=bind,src=${{github.workspace}},dst=/home/runner/src,readonly \
             --mount=type=bind,src=${{github.workspace}}/bld,dst=/home/runner/bld \
-            ${{ matrix.use_image }} \
+            $use_image \
             /home/runner/src/build-scripts/for-${{ matrix.for }}/build-on-${{ matrix.build_on }}.bash \
             ${{needs.calc_ver.outputs.project_ver}} \
             ${{needs.calc_ver.outputs.build_ver}} \
@@ -95,7 +99,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Download the foundationdb distro
         uses: actions/download-artifact@v3
@@ -134,7 +138,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Download the foundationdb distro
         uses: actions/download-artifact@v3
@@ -158,10 +162,11 @@ jobs:
       - name: Build and push images
         shell: bash
         run: |
+          cp -r ${{github.workspace}}/fdbkubernetesmonitor ${{github.workspace}}/packaging/docker/fdbkubernetesmonitor
           ${{github.workspace}}/packaging/docker/build-images-for-owtech.bash \
             ${{needs.calc_ver.outputs.full_ver}} \
             ${{github.workspace}}/bld/linux/packages \
-            ghcr.io/${{ github.repository_owner }}
+            ghcr.io/${GITHUB_REPOSITORY_OWNER@L}
 
   tests:
     needs: [calc_ver, build]

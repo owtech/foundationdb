@@ -1,9 +1,9 @@
 /*
- * FDBRocksDBVersion.h
+ * suite_test.go
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2013-2023 Apple Inc. and the FoundationDB project authors
+ * Copyright 2023 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,11 +18,20 @@
  * limitations under the License.
  */
 
-#ifndef FDBSERVER_FDBROCKSDBVERSION_H
-#define FDBSERVER_FDBROCKSDBVERSION_H
+package main
 
-#define FDB_ROCKSDB_MAJOR 8
-#define FDB_ROCKSDB_MINOR 10
-#define FDB_ROCKSDB_PATCH 0
+import (
+	"testing"
+	"time"
 
-#endif
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+)
+
+// These tests use Ginkgo (BDD-style Go testing framework). Refer to
+// http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
+func TestAPIs(t *testing.T) {
+	RegisterFailHandler(Fail)
+	SetDefaultEventuallyTimeout(10 * time.Second)
+	RunSpecs(t, "FDB Kubernetes Monitor")
+}
