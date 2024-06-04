@@ -76,7 +76,7 @@ WORKDIR /
 FROM base as foundationdb-base
 
 WORKDIR /tmp
-ARG FDB_VERSION=6.3.25-5.ow.1
+ARG FDB_VERSION=7.1.61-1.ow.image
 
 RUN mkdir -p /var/fdb/{logs,tmp,lib} && \
     mkdir -p /usr/lib/fdb/multiversion && \
