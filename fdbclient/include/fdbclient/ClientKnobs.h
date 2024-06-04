@@ -253,8 +253,19 @@ public:
 	int BLOBSTORE_MAX_DELAY_RETRYABLE_ERROR;
 	int BLOBSTORE_MAX_DELAY_CONNECTION_FAILED;
 
-	int CONSISTENCY_CHECK_RATE_LIMIT_MAX;
-	int CONSISTENCY_CHECK_ONE_ROUND_TARGET_COMPLETION_TIME;
+	int CONSISTENCY_CHECK_RATE_LIMIT_MAX; // Available in both normal and urgent mode
+	int CONSISTENCY_CHECK_ONE_ROUND_TARGET_COMPLETION_TIME; // Available in normal mode
+	int CONSISTENCY_CHECK_URGENT_NEXT_WAIT_TIME; // Available in urgent mode
+	int CONSISTENCY_CHECK_URGENT_BATCH_SHARD_COUNT; // Available in urgent mode
+	int CONSISTENCY_CHECK_URGENT_RETRY_DEPTH_MAX; // Available in urgent mode
+	std::string CONSISTENCY_CHECK_URGENT_RANGE_BEGIN_0; // Available in urgent mode
+	std::string CONSISTENCY_CHECK_URGENT_RANGE_END_0; // Available in urgent mode
+	std::string CONSISTENCY_CHECK_URGENT_RANGE_BEGIN_1; // Available in urgent mode
+	std::string CONSISTENCY_CHECK_URGENT_RANGE_END_1; // Available in urgent mode
+	std::string CONSISTENCY_CHECK_URGENT_RANGE_BEGIN_2;
+	std::string CONSISTENCY_CHECK_URGENT_RANGE_END_2;
+	std::string CONSISTENCY_CHECK_URGENT_RANGE_BEGIN_3;
+	std::string CONSISTENCY_CHECK_URGENT_RANGE_END_3;
 
 	// fdbcli
 	int CLI_CONNECT_PARALLELISM;
@@ -322,6 +333,9 @@ public:
 	// REST KMS configurations
 	bool REST_KMS_ALLOW_NOT_SECURE_CONNECTION;
 	int SIM_KMS_VAULT_MAX_KEYS;
+
+	bool ENABLE_MUTATION_CHECKSUM;
+	bool ENABLE_ACCUMULATIVE_CHECKSUM;
 
 	ClientKnobs(Randomize randomize);
 	void initialize(Randomize randomize);

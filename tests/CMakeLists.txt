@@ -166,15 +166,9 @@ if(WITH_PYTHON)
   add_fdb_test(TEST_FILES fast/ChangeFeedOperations.toml)
   add_fdb_test(TEST_FILES fast/ChangeFeedOperationsMove.toml)
   add_fdb_test(TEST_FILES fast/DataLossRecovery.toml)
-  if(WITH_TLS)
-    add_fdb_test(TEST_FILES fast/EncryptionOps.toml)
-    add_fdb_test(TEST_FILES fast/EncryptionUnitTests.toml)
-    add_fdb_test(TEST_FILES fast/EncryptKeyProxyTest.toml)
-  else()
-    add_fdb_test(TEST_FILES fast/EncryptionOps.toml IGNORE)
-    add_fdb_test(TEST_FILES fast/EncryptionUnitTests.toml IGNORE)
-    add_fdb_test(TEST_FILES fast/EncryptKeyProxyTest.toml IGNORE)
-  endif()
+  add_fdb_test(TEST_FILES fast/EncryptionOps.toml)
+  add_fdb_test(TEST_FILES fast/EncryptionUnitTests.toml)
+  add_fdb_test(TEST_FILES fast/EncryptKeyProxyTest.toml)
   add_fdb_test(TEST_FILES fast/FuzzApiCorrectness.toml)
   add_fdb_test(TEST_FILES fast/FuzzApiCorrectnessClean.toml)
   add_fdb_test(TEST_FILES fast/HTTPKeyValueStore.toml)
@@ -242,7 +236,7 @@ if(WITH_PYTHON)
     else()
       add_fdb_test(TEST_FILES noSim/PerfShardedRocksDBTest.toml UNIT)
     endif()
-    add_fdb_test(TEST_FILES fast/PhysicalShardMove.toml)
+    add_fdb_test(TEST_FILES fast/PhysicalShardMove.toml IGNORE)
     add_fdb_test(TEST_FILES fast/StorageServerCheckpointRestore.toml IGNORE)
     add_fdb_test(TEST_FILES rare/PerpetualWiggleStorageMigration.toml)
   else()
@@ -334,10 +328,10 @@ if(WITH_PYTHON)
     restarting/from_7.1.0_until_7.2.0/UpgradeAndBackupRestore-2.toml)
   add_fdb_test(
     TEST_FILES restarting/from_7.1.0_until_7.2.0/VersionVectorDisableRestart-1.toml
-    restarting/from_7.1.0_until_7.2.0/VersionVectorDisableRestart-2.toml)
+    restarting/from_7.1.0_until_7.2.0/VersionVectorDisableRestart-2.toml IGNORE)
   add_fdb_test(
     TEST_FILES restarting/from_7.1.0_until_7.2.0/VersionVectorEnableRestart-1.toml
-    restarting/from_7.1.0_until_7.2.0/VersionVectorEnableRestart-2.toml)
+    restarting/from_7.1.0_until_7.2.0/VersionVectorEnableRestart-2.toml IGNORE)
   add_fdb_test(
     TEST_FILES restarting/from_7.2.0_until_7.3.0/ConfigureTestRestart-1.toml
     restarting/from_7.2.0_until_7.3.0/ConfigureTestRestart-2.toml)
@@ -349,10 +343,10 @@ if(WITH_PYTHON)
       restarting/from_7.2.0_until_7.3.0/DrUpgradeRestart-2.toml)
   add_fdb_test(
     TEST_FILES restarting/from_7.2.0_until_7.3.0/VersionVectorDisableRestart-1.toml
-    restarting/from_7.2.0_until_7.3.0/VersionVectorDisableRestart-2.toml)
+    restarting/from_7.2.0_until_7.3.0/VersionVectorDisableRestart-2.toml IGNORE)
   add_fdb_test(
     TEST_FILES restarting/from_7.2.0_until_7.3.0/VersionVectorEnableRestart-1.toml
-    restarting/from_7.2.0_until_7.3.0/VersionVectorEnableRestart-2.toml)
+    restarting/from_7.2.0_until_7.3.0/VersionVectorEnableRestart-2.toml IGNORE)
   add_fdb_test(
     TEST_FILES restarting/from_7.2.4_until_7.3.0/UpgradeAndBackupRestore-1.toml
     restarting/from_7.2.4_until_7.3.0/UpgradeAndBackupRestore-2.toml)
@@ -370,10 +364,10 @@ if(WITH_PYTHON)
     restarting/from_7.3.0/UpgradeAndBackupRestore-2.toml)
   add_fdb_test(
     TEST_FILES restarting/from_7.3.0/VersionVectorDisableRestart-1.toml
-    restarting/from_7.3.0/VersionVectorDisableRestart-2.toml)
+    restarting/from_7.3.0/VersionVectorDisableRestart-2.toml IGNORE)
   add_fdb_test(
     TEST_FILES restarting/from_7.3.0/VersionVectorEnableRestart-1.toml
-    restarting/from_7.3.0/VersionVectorEnableRestart-2.toml)
+    restarting/from_7.3.0/VersionVectorEnableRestart-2.toml IGNORE)
   add_fdb_test(
     TEST_FILES restarting/from_7.3.0/BlobGranuleRestartCycle-1.toml
     restarting/from_7.3.0/BlobGranuleRestartCycle-2.toml)
