@@ -199,6 +199,7 @@ struct DDTeamCollectionInitParams {
 	Promise<UID> removeFailedServer;
 	PromiseStream<Promise<int>> getUnhealthyRelocationCount;
 	PromiseStream<Promise<int64_t>> getAverageShardBytes;
+	PromiseStream<RebalanceStorageQueueRequest> triggerStorageQueueRebalance;
 };
 
 class DDTeamCollection : public ReferenceCounted<DDTeamCollection> {
@@ -237,6 +238,7 @@ protected:
 	Reference<AsyncVar<bool>> processingWiggle; // track whether wiggling relocation is being processed
 	PromiseStream<StorageWiggleValue> nextWiggleInfo;
 	PromiseStream<Promise<int64_t>> getAverageShardBytes;
+	PromiseStream<RebalanceStorageQueueRequest> triggerStorageQueueRebalance;
 
 	std::vector<Reference<TCTeamInfo>> badTeams;
 	std::vector<Reference<TCTeamInfo>> largeTeams;
@@ -536,7 +538,7 @@ protected:
 
 	// Read storage metadata from database, get the server's storeType, and do necessary updates. Error is caught by the
 	// caller
-	Future<Void> updateStorageMetadata(TCServerInfo* server, bool isTss);
+	Future<Void> updateStorageMetadata(TCServerInfo* server);
 
 	Future<Void> serverGetTeamRequests(TeamCollectionInterface tci);
 

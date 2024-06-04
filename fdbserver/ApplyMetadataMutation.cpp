@@ -25,6 +25,7 @@
 #include "fdbclient/Notified.h"
 #include "fdbclient/SystemData.h"
 #include "fdbclient/Tenant.h"
+#include "fdbserver/AccumulativeChecksumUtil.h"
 #include "fdbserver/ApplyMetadataMutation.h"
 #include "fdbclient/IKeyValueStore.h"
 #include "fdbserver/Knobs.h"
@@ -87,7 +88,8 @@ public:
 	    storageCache(&proxyCommitData_.storageCache), tag_popped(&proxyCommitData_.tag_popped),
 	    tssMapping(&proxyCommitData_.tssMapping), tenantMap(&proxyCommitData_.tenantMap),
 	    tenantNameIndex(&proxyCommitData_.tenantNameIndex), lockedTenants(&proxyCommitData_.lockedTenants),
-	    initialCommit(initialCommit_), provisionalCommitProxy(provisionalCommitProxy_) {
+	    initialCommit(initialCommit_), provisionalCommitProxy(provisionalCommitProxy_),
+	    accumulativeChecksumIndex(getCommitProxyAccumulativeChecksumIndex(proxyCommitData_.commitProxyIndex)) {
 		if (encryptMode.isEncryptionEnabled()) {
 			ASSERT(cipherKeys != nullptr);
 			ASSERT(cipherKeys->count(SYSTEM_KEYSPACE_ENCRYPT_DOMAIN_ID) > 0);
@@ -106,7 +108,8 @@ public:
 	    cipherKeys(cipherKeys_), encryptMode(encryptMode), txnStateStore(resolverData_.txnStateStore),
 	    toCommit(resolverData_.toCommit), confChange(resolverData_.confChanges), logSystem(resolverData_.logSystem),
 	    popVersion(resolverData_.popVersion), keyInfo(resolverData_.keyInfo), storageCache(resolverData_.storageCache),
-	    initialCommit(resolverData_.initialCommit), forResolver(true) {
+	    initialCommit(resolverData_.initialCommit), forResolver(true),
+	    accumulativeChecksumIndex(resolverAccumulativeChecksumIndex) {
 		if (encryptMode.isEncryptionEnabled()) {
 			ASSERT(cipherKeys != nullptr);
 			ASSERT(cipherKeys->count(SYSTEM_KEYSPACE_ENCRYPT_DOMAIN_ID) > 0);
@@ -166,6 +169,9 @@ private:
 
 	// true if called from a provisional commit proxy
 	bool provisionalCommitProxy = false;
+
+	// indicate which commit proxy / resolver applies mutations
+	uint16_t accumulativeChecksumIndex = invalidAccumulativeChecksumIndex;
 
 private:
 	// The following variables are used internally
@@ -258,6 +264,8 @@ private:
 			Tag tag = decodeServerTagValue(
 			    txnStateStore->readValue(serverTagKeyFor(serverKeysDecodeServer(m.param1))).get().get());
 			MutationRef privatized = m;
+			privatized.clearChecksumAndAccumulativeIndex();
+			privatized.setAccumulativeChecksumIndex(accumulativeChecksumIndex);
 			privatized.param1 = m.param1.withPrefix(systemKeys.begin, arena);
 			TraceEvent(SevDebug, "SendingPrivateMutation", dbgid)
 			    .detail("Original", m)
@@ -281,6 +289,8 @@ private:
 
 		if (toCommit) {
 			MutationRef privatized = m;
+			privatized.clearChecksumAndAccumulativeIndex();
+			privatized.setAccumulativeChecksumIndex(accumulativeChecksumIndex);
 			privatized.param1 = m.param1.withPrefix(systemKeys.begin, arena);
 			TraceEvent("ServerTag", dbgid).detail("Server", id).detail("Tag", tag.toString());
 
@@ -324,6 +334,8 @@ private:
 			// This is done to make the storage servers aware of the cached key-ranges
 			if (toCommit) {
 				MutationRef privatized = m;
+				privatized.clearChecksumAndAccumulativeIndex();
+				privatized.setAccumulativeChecksumIndex(accumulativeChecksumIndex);
 				privatized.param1 = m.param1.withPrefix(systemKeys.begin, arena);
 				//TraceEvent(SevDebug, "SendingPrivateMutation", dbgid).detail("Original", m.toString()).detail("Privatized", privatized.toString());
 				cachedRangeInfo[k] = privatized;
@@ -346,6 +358,8 @@ private:
 		// Create a private mutation for cache servers
 		// This is done to make the cache servers aware of the cached key-ranges
 		MutationRef privatized = m;
+		privatized.clearChecksumAndAccumulativeIndex();
+		privatized.setAccumulativeChecksumIndex(accumulativeChecksumIndex);
 		privatized.param1 = m.param1.withPrefix(systemKeys.begin, arena);
 		TraceEvent(SevDebug, "SendingPrivatized_CacheTag", dbgid).detail("M", privatized);
 		toCommit->addTag(cacheTag);
@@ -386,6 +400,8 @@ private:
 		if (toCommit && keyInfo) {
 			KeyRange r = std::get<0>(decodeChangeFeedValue(m.param2));
 			MutationRef privatized = m;
+			privatized.clearChecksumAndAccumulativeIndex();
+			privatized.setAccumulativeChecksumIndex(accumulativeChecksumIndex);
 			privatized.param1 = m.param1.withPrefix(systemKeys.begin, arena);
 			auto ranges = keyInfo->intersectingRanges(r);
 			auto firstRange = ranges.begin();
@@ -450,6 +466,8 @@ private:
 		if (toCommit) {
 			// send private mutation to SS that it now has a TSS pair
 			MutationRef privatized = m;
+			privatized.clearChecksumAndAccumulativeIndex();
+			privatized.setAccumulativeChecksumIndex(accumulativeChecksumIndex);
 			privatized.param1 = m.param1.withPrefix(systemKeys.begin, arena);
 
 			Optional<Value> tagV = txnStateStore->readValue(serverTagKeyFor(ssId)).get();
@@ -482,6 +500,8 @@ private:
 		Optional<Value> tagV = txnStateStore->readValue(serverTagKeyFor(ssi.tssPairID.get())).get();
 		if (tagV.present()) {
 			MutationRef privatized = m;
+			privatized.clearChecksumAndAccumulativeIndex();
+			privatized.setAccumulativeChecksumIndex(accumulativeChecksumIndex);
 			privatized.param1 = m.param1.withPrefix(systemKeys.begin, arena);
 			TraceEvent(SevDebug, "SendingPrivatized_TSSQuarantine", dbgid).detail("M", privatized);
 			toCommit->addTag(decodeServerTagValue(tagV.get()));
@@ -574,6 +594,46 @@ private:
 		    .detail("LogRangeEnd", logRangeEnd);
 	}
 
+	void checkSetConstructKeys(MutationRef m) {
+		if (!SERVER_KNOBS->GENERATE_DATA_ENABLED) {
+			return;
+		}
+		if (!m.param1.startsWith(globalKeysPrefix)) {
+			return;
+		}
+		if (!toCommit) {
+			return;
+		}
+
+		if (m.param1.startsWith(constructDataKey)) {
+			uint64_t valSize, keyCount, seed;
+			Standalone<StringRef> prefix;
+			std::tie(prefix, valSize, keyCount, seed) = decodeConstructKeys(m.param2);
+			if (prefix.size() == 0 || keyCount >= UINT16_MAX || valSize >= CLIENT_KNOBS->VALUE_SIZE_LIMIT) {
+				return;
+			}
+			uint8_t keyBuf[prefix.size() + sizeof(uint16_t)];
+			uint8_t* keyPos = prefix.copyTo(keyBuf);
+			*keyPos = '\xff';
+			StringRef keyEnd(keyBuf, keyPos - keyBuf + 1);
+			std::set<Tag> allTags;
+			for (auto it : keyInfo->intersectingRanges(KeyRangeRef(prefix, keyEnd))) {
+				auto& r = it.value();
+				for (auto info : r.src_info) {
+					allTags.insert(info->tag);
+				}
+				for (auto info : r.dest_info) {
+					allTags.insert(info->tag);
+				}
+			}
+			toCommit->addTags(allTags);
+			TraceEvent(SevInfo, "ConstructDataRequest")
+			    .detail("Prefix", prefix)
+			    .detail("KeyCount", keyCount)
+			    .detail("ValSize", valSize);
+		}
+	}
+
 	void checkSetGlobalKeys(MutationRef m) {
 		if (!m.param1.startsWith(globalKeysPrefix)) {
 			return;
@@ -607,10 +667,23 @@ private:
 		}
 
 		MutationRef privatized = m;
+		privatized.clearChecksumAndAccumulativeIndex();
+		privatized.setAccumulativeChecksumIndex(accumulativeChecksumIndex);
 		privatized.param1 = m.param1.withPrefix(systemKeys.begin, arena);
 		TraceEvent(SevDebug, "SendingPrivatized_GlobalKeys", dbgid).detail("M", privatized);
 		toCommit->addTags(allTags);
 		writeMutation(privatized);
+	}
+
+	void checkClientInfo(MutationRef m) {
+		if (!SERVER_KNOBS->WRITE_CLIENT_LATENCY_TRACEEVENT) {
+			return;
+		}
+		if (!m.param1.startsWith(fdbClientInfoPrefixRange.begin)) {
+			return;
+		}
+
+		TraceEvent("ApplyMetaDataMutationCheckClientInfo").detail("Key", m.param1).detail("ValueSize", m.param2.size());
 	}
 
 	// Generates private mutations for the target storage server, instructing it to create a checkpoint.
@@ -630,6 +703,8 @@ private:
 				}
 				const Tag tag = decodeServerTagValue(tagValue.get());
 				MutationRef privatized = m;
+				privatized.clearChecksumAndAccumulativeIndex();
+				privatized.setAccumulativeChecksumIndex(accumulativeChecksumIndex);
 				privatized.param1 = m.param1.withPrefix(systemKeys.begin, arena);
 				TraceEvent("SendingPrivateMutationCheckpoint", dbgid)
 				    .detail("Original", m)
@@ -743,6 +818,8 @@ private:
 				toCommit->addTags(allTags);
 
 				MutationRef privatized = m;
+				privatized.clearChecksumAndAccumulativeIndex();
+				privatized.setAccumulativeChecksumIndex(accumulativeChecksumIndex);
 				privatized.param1 = m.param1.withPrefix(systemKeys.begin, arena);
 				writeMutation(privatized);
 			}
@@ -861,6 +938,8 @@ private:
 
 				if (toCommit) {
 					MutationRef privatized = m;
+					privatized.clearChecksumAndAccumulativeIndex();
+					privatized.setAccumulativeChecksumIndex(accumulativeChecksumIndex);
 					privatized.param1 = kv.key.withPrefix(systemKeys.begin, arena);
 					privatized.param2 = keyAfter(privatized.param1, arena);
 
@@ -884,6 +963,8 @@ private:
 							Optional<Value> tagV = txnStateStore->readValue(serverTagKeyFor(ssi.tssPairID.get())).get();
 							if (tagV.present()) {
 								MutationRef privatized = m;
+								privatized.clearChecksumAndAccumulativeIndex();
+								privatized.setAccumulativeChecksumIndex(accumulativeChecksumIndex);
 								privatized.param1 = maybeTssRange.begin.withPrefix(systemKeys.begin, arena);
 								privatized.param2 =
 								    keyAfter(maybeTssRange.begin, arena).withPrefix(systemKeys.begin, arena);
@@ -1081,6 +1162,8 @@ private:
 		// send private mutation to SS to notify that it no longer has a tss pair
 		if (Optional<Value> tagV = txnStateStore->readValue(serverTagKeyFor(ssId)).get(); tagV.present()) {
 			MutationRef privatized = m;
+			privatized.clearChecksumAndAccumulativeIndex();
+			privatized.setAccumulativeChecksumIndex(accumulativeChecksumIndex);
 			privatized.param1 = m.param1.withPrefix(systemKeys.begin, arena);
 			privatized.param2 = m.param2.withPrefix(systemKeys.begin, arena);
 			TraceEvent(SevDebug, "SendingPrivatized_ClearTSSMapping", dbgid).detail("M", privatized);
@@ -1108,6 +1191,8 @@ private:
 				    tagV.present()) {
 
 					MutationRef privatized = m;
+					privatized.clearChecksumAndAccumulativeIndex();
+					privatized.setAccumulativeChecksumIndex(accumulativeChecksumIndex);
 					privatized.param1 = m.param1.withPrefix(systemKeys.begin, arena);
 					privatized.param2 = m.param2.withPrefix(systemKeys.begin, arena);
 					TraceEvent(SevDebug, "SendingPrivatized_ClearTSSQuarantine", dbgid).detail("M", privatized);
@@ -1187,6 +1272,8 @@ private:
 				toCommit->addTags(allTags);
 
 				MutationRef privatized;
+				privatized.clearChecksumAndAccumulativeIndex();
+				privatized.setAccumulativeChecksumIndex(accumulativeChecksumIndex);
 				privatized.type = MutationRef::ClearRange;
 				privatized.param1 = systemKeys.begin.withSuffix(std::max(range.begin, subspace.begin), arena);
 				if (range.end < subspace.end) {
@@ -1323,6 +1410,8 @@ public:
 			if (toCommit) {
 				toCommit->addTransactionInfo(spanContext);
 			}
+
+			checkClientInfo(m);
 
 			if (m.type == MutationRef::SetValue && isSystemKey(m.param1)) {
 				checkSetKeyServersPrefix(m);

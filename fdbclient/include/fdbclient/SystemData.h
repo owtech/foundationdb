@@ -38,6 +38,13 @@ FDB_BOOLEAN_PARAM(AssignEmptyRange);
 FDB_BOOLEAN_PARAM(UnassignShard);
 FDB_BOOLEAN_PARAM(EnablePhysicalShardMove);
 
+enum class DataMoveType : uint8_t {
+	LOGICAL = 0,
+	PHYSICAL = 1,
+	PHYSICAL_EXP = 2,
+	NUMBER_OF_TYPES = 3,
+};
+
 // SystemKey is just a Key but with a special type so that instances of it can be found easily throughput the code base
 // and in simulation constructions will verify that no SystemKey is a direct prefix of any other.
 struct SystemKey : Key {
@@ -164,7 +171,7 @@ extern const KeyRef serverKeysPrefix;
 extern const ValueRef serverKeysTrue, serverKeysTrueEmptyRange, serverKeysFalse;
 const UID newDataMoveId(const uint64_t physicalShardId,
                         AssignEmptyRange assignEmptyRange,
-                        EnablePhysicalShardMove enablePSM = EnablePhysicalShardMove::False,
+                        const DataMoveType type,
                         UnassignShard unassignShard = UnassignShard::False);
 const Key serverKeysKey(UID serverID, const KeyRef& keys);
 const Key serverKeysPrefixFor(UID serverID);
@@ -172,10 +179,11 @@ UID serverKeysDecodeServer(const KeyRef& key);
 std::pair<UID, Key> serverKeysDecodeServerBegin(const KeyRef& key);
 bool serverHasKey(ValueRef storedValue);
 const Value serverKeysValue(const UID& id);
+void decodeDataMoveId(const UID& id, bool& assigned, bool& emptyRange, DataMoveType& dataMoveType);
 void decodeServerKeysValue(const ValueRef& value,
                            bool& assigned,
                            bool& emptyRange,
-                           EnablePhysicalShardMove& enablePSM,
+                           DataMoveType& dataMoveType,
                            UID& id);
 bool physicalShardMoveEnabled(const UID& dataMoveId);
 
@@ -470,6 +478,7 @@ extern const KeyRef primaryLocalityKey;
 extern const KeyRef primaryLocalityPrivateKey;
 extern const KeyRef fastLoggingEnabled;
 extern const KeyRef fastLoggingEnabledPrivateKey;
+extern const KeyRef constructDataKey;
 
 extern const KeyRef moveKeysLockOwnerKey, moveKeysLockWriteKey;
 
@@ -508,6 +517,9 @@ Key logRangesEncodeValue(KeyRef keyEnd, KeyRef destPath);
 // Returns a key prefixed with the specified key with
 // the given uid encoded at the end
 Key uidPrefixKey(KeyRef keyPrefix, UID logUid);
+
+extern std::tuple<Standalone<StringRef>, uint64_t, uint64_t, uint64_t> decodeConstructKeys(ValueRef value);
+extern Value encodeConstructValue(StringRef keyStart, uint64_t valSize, uint64_t keyCount, uint64_t seed);
 
 /// Apply mutations constant variables
 
@@ -572,6 +584,9 @@ extern const KeyRangeRef backupLogKeys;
 extern const KeyRangeRef applyLogKeys;
 // Returns true if m is a blog (backup log) or alog (apply log) mutation
 bool isBackupLogMutation(const MutationRef& m);
+
+// Returns true if m is an acs mutation: a mutation carrying accumulative checksum value
+bool isAccumulativeChecksumMutation(const MutationRef& m);
 
 extern const KeyRef backupVersionKey;
 extern const ValueRef backupVersionValue;

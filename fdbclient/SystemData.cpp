@@ -303,6 +303,8 @@ const KeyRangeRef readConflictRangeKeysRange =
 const KeyRangeRef writeConflictRangeKeysRange = KeyRangeRef("\xff\xff/transaction/write_conflict_range/"_sr,
                                                             "\xff\xff/transaction/write_conflict_range/\xff\xff"_sr);
 
+const KeyRef accumulativeChecksumKey = "\xff\xff/accumulativeChecksum"_sr;
+
 const KeyRangeRef auditKeys = KeyRangeRef("\xff/audits/"_sr, "\xff/audits0"_sr);
 const KeyRef auditPrefix = auditKeys.begin;
 const KeyRangeRef auditRanges = KeyRangeRef("\xff/auditRanges/"_sr, "\xff/auditRanges0"_sr);
@@ -518,7 +520,7 @@ const ValueRef serverKeysTrue = "1"_sr, // compatible with what was serverKeysTr
 
 const UID newDataMoveId(const uint64_t physicalShardId,
                         AssignEmptyRange assignEmptyRange,
-                        EnablePhysicalShardMove enablePSM,
+                        const DataMoveType type,
                         UnassignShard unassignShard) {
 	uint64_t split = 0;
 	if (assignEmptyRange) {
@@ -528,11 +530,8 @@ const UID newDataMoveId(const uint64_t physicalShardId,
 	} else {
 		do {
 			split = deterministicRandom()->randomUInt64();
-			if (enablePSM) {
-				split |= 1U;
-			} else {
-				split &= ~1U;
-			}
+			// Set the lowest 8 bits
+			split = ((~0xFF) & split) | static_cast<uint64_t>(type);
 		} while (split == anonymousShardId.second() || split == 0 || split == emptyShardId);
 	}
 	return UID(physicalShardId, split);
@@ -574,8 +573,8 @@ std::pair<UID, Key> serverKeysDecodeServerBegin(const KeyRef& key) {
 bool serverHasKey(ValueRef storedValue) {
 	UID shardId;
 	bool assigned, emptyRange;
-	EnablePhysicalShardMove enablePSM = EnablePhysicalShardMove::False;
-	decodeServerKeysValue(storedValue, assigned, emptyRange, enablePSM, shardId);
+	DataMoveType dataMoveType = DataMoveType::LOGICAL;
+	decodeServerKeysValue(storedValue, assigned, emptyRange, dataMoveType, shardId);
 	return assigned;
 }
 
@@ -589,12 +588,21 @@ const Value serverKeysValue(const UID& id) {
 	return wr.toValue();
 }
 
+void decodeDataMoveId(const UID& id, bool& assigned, bool& emptyRange, DataMoveType& dataMoveType) {
+	dataMoveType = DataMoveType::LOGICAL;
+	assigned = id.second() != 0LL;
+	emptyRange = id.second() == emptyShardId;
+	if (assigned && !emptyRange && id != anonymousShardId) {
+		dataMoveType = static_cast<DataMoveType>(0xFF & id.second());
+	}
+}
+
 void decodeServerKeysValue(const ValueRef& value,
                            bool& assigned,
                            bool& emptyRange,
-                           EnablePhysicalShardMove& enablePSM,
+                           DataMoveType& dataMoveType,
                            UID& id) {
-	enablePSM = EnablePhysicalShardMove::False;
+	dataMoveType = DataMoveType::LOGICAL;
 	if (value.size() == 0) {
 		assigned = false;
 		emptyRange = false;
@@ -615,11 +623,7 @@ void decodeServerKeysValue(const ValueRef& value,
 		BinaryReader rd(value, IncludeVersion());
 		ASSERT(rd.protocolVersion().hasShardEncodeLocationMetaData());
 		rd >> id;
-		assigned = id.second() != 0;
-		emptyRange = id.second() == emptyShardId;
-		if (id.second() & 1U) {
-			enablePSM = EnablePhysicalShardMove::True;
-		}
+		decodeDataMoveId(id, assigned, emptyRange, dataMoveType);
 	}
 }
 
@@ -1156,6 +1160,7 @@ const KeyRef primaryLocalityKey = "\xff/globals/primaryLocality"_sr;
 const KeyRef primaryLocalityPrivateKey = "\xff\xff/globals/primaryLocality"_sr;
 const KeyRef fastLoggingEnabled = "\xff/globals/fastLoggingEnabled"_sr;
 const KeyRef fastLoggingEnabledPrivateKey = "\xff\xff/globals/fastLoggingEnabled"_sr;
+const KeyRef constructDataKey = "\xff/globals/constructData"_sr;
 
 // Whenever configuration changes or DD related system keyspace is changed(e.g.., serverList),
 // actor must grab the moveKeysLockOwnerKey and update moveKeysLockWriteKey.
@@ -1203,6 +1208,9 @@ const KeyRangeRef applyLogKeys("\xff\x02/alog/"_sr, "\xff\x02/alog0"_sr);
 bool isBackupLogMutation(const MutationRef& m) {
 	return isSingleKeyMutation((MutationRef::Type)m.type) &&
 	       (backupLogKeys.contains(m.param1) || applyLogKeys.contains(m.param1));
+}
+bool isAccumulativeChecksumMutation(const MutationRef& m) {
+	return m.type == MutationRef::SetValue && m.param1 == accumulativeChecksumKey;
 }
 // static_assert( backupLogKeys.begin.size() == backupLogPrefixBytes, "backupLogPrefixBytes incorrect" );
 const KeyRef backupVersionKey = "\xff/backupDataFormat"_sr;
@@ -1282,6 +1290,26 @@ Key uidPrefixKey(KeyRef keyPrefix, UID logUid) {
 	bw.serializeBytes(keyPrefix);
 	bw << logUid;
 	return bw.toValue();
+}
+
+std::tuple<Standalone<StringRef>, uint64_t, uint64_t, uint64_t> decodeConstructKeys(ValueRef value) {
+	StringRef keyStart;
+	uint64_t valSize, keyCount, seed;
+	BinaryReader rd(value, Unversioned());
+	rd >> keyStart;
+	rd >> valSize;
+	rd >> keyCount;
+	rd >> seed;
+	return std::make_tuple(keyStart, valSize, keyCount, seed);
+}
+
+Value encodeConstructValue(StringRef keyStart, uint64_t valSize, uint64_t keyCount, uint64_t seed) {
+	BinaryWriter wr(Unversioned());
+	wr << keyStart;
+	wr << valSize;
+	wr << keyCount;
+	wr << seed;
+	return wr.toValue();
 }
 
 // Apply mutations constant variables
@@ -2130,6 +2158,24 @@ TEST_CASE("noSim/SystemData/compat/KeyServers") {
 	decodeAndVerify(v, anonymousShardId, UID());
 
 	printf("ssi serdes test complete\n");
+
+	return Void();
+}
+
+TEST_CASE("noSim/SystemData/DataMoveId") {
+	printf("testing data move ID encoding/decoding\n");
+	const uint64_t physicalShardId = deterministicRandom()->randomUInt64();
+	const DataMoveType type =
+	    static_cast<DataMoveType>(deterministicRandom()->randomInt(0, static_cast<int>(DataMoveType::NUMBER_OF_TYPES)));
+	const UID dataMoveId = newDataMoveId(physicalShardId, AssignEmptyRange(false), type, UnassignShard(false));
+
+	bool assigned, emptyRange;
+	DataMoveType decodeType;
+	decodeDataMoveId(dataMoveId, assigned, emptyRange, decodeType);
+
+	ASSERT(type == decodeType);
+
+	printf("testing data move ID encoding/decoding complete\n");
 
 	return Void();
 }

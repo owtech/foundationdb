@@ -94,7 +94,8 @@ std::pair<const DmReasonPriorityMapping*, const PriorityDmReasonMapping*> buildP
 		{ DataMovementReason::TEAM_0_LEFT, SERVER_KNOBS->PRIORITY_TEAM_0_LEFT },
 		{ DataMovementReason::SPLIT_SHARD, SERVER_KNOBS->PRIORITY_SPLIT_SHARD },
 		{ DataMovementReason::ENFORCE_MOVE_OUT_OF_PHYSICAL_SHARD,
-		  SERVER_KNOBS->PRIORITY_ENFORCE_MOVE_OUT_OF_PHYSICAL_SHARD }
+		  SERVER_KNOBS->PRIORITY_ENFORCE_MOVE_OUT_OF_PHYSICAL_SHARD },
+		{ DataMovementReason::REBALANCE_STORAGE_QUEUE, SERVER_KNOBS->PRIORITY_REBALANCE_STORAGE_QUEUE },
 	};
 
 	static PriorityDmReasonMapping priorityReason;
@@ -110,6 +111,13 @@ std::pair<const DmReasonPriorityMapping*, const PriorityDmReasonMapping*> buildP
 	}
 
 	return std::make_pair(&reasonPriority, &priorityReason);
+}
+
+DataMoveType getDataMoveType(const UID& dataMoveId) {
+	bool assigned, emptyRange;
+	DataMoveType dataMoveType;
+	decodeDataMoveId(dataMoveId, assigned, emptyRange, dataMoveType);
+	return dataMoveType;
 }
 
 int dataMovementPriority(DataMovementReason reason) {
@@ -134,7 +142,8 @@ RelocateData::RelocateData(RelocateShard const& rs)
     dataMoveId(rs.dataMoveId), workFactor(0),
     wantsNewServers(isDataMovementForMountainChopper(rs.moveReason) || isDataMovementForValleyFiller(rs.moveReason) ||
                     rs.moveReason == DataMovementReason::SPLIT_SHARD ||
-                    rs.moveReason == DataMovementReason::TEAM_REDUNDANT),
+                    rs.moveReason == DataMovementReason::TEAM_REDUNDANT ||
+                    rs.moveReason == DataMovementReason::REBALANCE_STORAGE_QUEUE),
     cancellable(true), interval("QueuedRelocation", randomId), dataMove(rs.dataMove) {
 	if (dataMove != nullptr) {
 		this->src.insert(this->src.end(), dataMove->meta.src.begin(), dataMove->meta.src.end());
@@ -275,6 +284,18 @@ public:
 		return sum<double>([](IDataDistributionTeam const& team) { return team.getAverageCPU(); }) / teams.size();
 	}
 
+	Optional<int64_t> getLongestStorageQueueSize() const override {
+		int64_t maxQueueSize = 0;
+		for (const auto& team : teams) {
+			Optional<int64_t> queueSize = team->getLongestStorageQueueSize();
+			if (!queueSize.present()) {
+				return Optional<int64_t>();
+			}
+			maxQueueSize = std::max(maxQueueSize, queueSize.get());
+		}
+		return maxQueueSize;
+	}
+
 	int64_t getMinAvailableSpace(bool includeInFlight = true) const override {
 		int64_t result = std::numeric_limits<int64_t>::max();
 		for (const auto& team : teams) {
@@ -399,8 +420,13 @@ int getSrcWorkFactor(RelocateData const& relocation, int singleRegionTeamSize) {
 		// we want to set PRIORITY_PERPETUAL_STORAGE_WIGGLE to a reasonably large value
 		// to make this parallelism take effect
 		return WORK_FULL_UTILIZATION / SERVER_KNOBS->WIGGLING_RELOCATION_PARALLELISM_PER_SOURCE_SERVER;
-	else // for now we assume that any message at a lower priority can best be assumed to have a full team left for work
+	else if (relocation.priority == SERVER_KNOBS->PRIORITY_MERGE_SHARD)
+		return WORK_FULL_UTILIZATION / SERVER_KNOBS->MERGE_RELOCATION_PARALLELISM_PER_TEAM;
+	else { // for now we assume that any message at a lower priority can best be assumed to have a full team left for
+		   // work
+
 		return WORK_FULL_UTILIZATION / singleRegionTeamSize / SERVER_KNOBS->RELOCATION_PARALLELISM_PER_SOURCE_SERVER;
+	}
 }
 
 int getDestWorkFactor() {
@@ -950,6 +976,18 @@ void DDQueue::launchQueuedWork(RelocateData launchData, const DDEnabledState* dd
 	launchQueuedWork(combined, ddEnabledState);
 }
 
+DataMoveType newDataMoveType() {
+	DataMoveType type = DataMoveType::LOGICAL;
+	if (deterministicRandom()->random01() < SERVER_KNOBS->DD_PHYSICAL_SHARD_MOVE_PROBABILITY) {
+		type = DataMoveType::PHYSICAL;
+	}
+	if (type != DataMoveType::PHYSICAL && SERVER_KNOBS->ENABLE_PHYSICAL_SHARD_MOVE_EXPERIMENT) {
+		type = DataMoveType::PHYSICAL_EXP;
+	}
+
+	return type;
+}
+
 // For each relocateData rd in the queue, check if there exist inflight relocate data whose keyrange is overlapped
 // with rd. If there exist, cancel them by cancelling their actors and reducing the src servers' busyness of those
 // canceled inflight relocateData. Launch the relocation for the rd.
@@ -1062,11 +1100,8 @@ void DDQueue::launchQueuedWork(std::set<RelocateData, std::greater<RelocateData>
 					if (SERVER_KNOBS->ENABLE_DD_PHYSICAL_SHARD) {
 						rrs.dataMoveId = UID();
 					} else {
-						const bool enabled =
-						    deterministicRandom()->random01() <= SERVER_KNOBS->DD_PHYSICAL_SHARD_MOVE_PROBABILITY;
-						rrs.dataMoveId = newDataMoveId(deterministicRandom()->randomUInt64(),
-						                               AssignEmptyRange::False,
-						                               EnablePhysicalShardMove(enabled));
+						rrs.dataMoveId = newDataMoveId(
+						    deterministicRandom()->randomUInt64(), AssignEmptyRange::False, newDataMoveType());
 						TraceEvent(SevInfo, "NewDataMoveWithRandomDestID")
 						    .detail("DataMoveID", rrs.dataMoveId.toString())
 						    .detail("Range", rrs.keys)
@@ -1392,10 +1427,14 @@ ACTOR Future<Void> dataDistributionRelocator(DDQueue* self,
 						} else {
 							destTeamSelect = TeamSelect::ANY;
 						}
+						PreferLowerReadUtil preferLowerReadTeam =
+						    SERVER_KNOBS->DD_PREFER_LOW_READ_UTIL_TEAM || rd.reason == RelocateReason::REBALANCE_READ
+						        ? PreferLowerReadUtil::True
+						        : PreferLowerReadUtil::False;
 						auto req = GetTeamRequest(destTeamSelect,
 						                          PreferLowerDiskUtil::True,
 						                          TeamMustHaveShards::False,
-						                          PreferLowerReadUtil::True,
+						                          preferLowerReadTeam,
 						                          PreferWithinShardLimit::True,
 						                          ForReadBalance(rd.reason == RelocateReason::REBALANCE_READ),
 						                          inflightPenalty,
@@ -1403,6 +1442,7 @@ ACTOR Future<Void> dataDistributionRelocator(DDQueue* self,
 
 						req.src = rd.src;
 						req.completeSources = rd.completeSources;
+						req.storageQueueAware = SERVER_KNOBS->ENABLE_STORAGE_QUEUE_AWARE_TEAM_SELECTION;
 
 						if (enableShardMove && tciIndex == 1) {
 							ASSERT(physicalShardIDCandidate != UID().first() &&
@@ -1606,10 +1646,7 @@ ACTOR Future<Void> dataDistributionRelocator(DDQueue* self,
 					} else {
 						self->moveCreateNewPhysicalShard++;
 					}
-					const bool enabled =
-					    deterministicRandom()->random01() <= SERVER_KNOBS->DD_PHYSICAL_SHARD_MOVE_PROBABILITY;
-					rd.dataMoveId = newDataMoveId(
-					    physicalShardIDCandidate, AssignEmptyRange::False, EnablePhysicalShardMove(enabled));
+					rd.dataMoveId = newDataMoveId(physicalShardIDCandidate, AssignEmptyRange::False, newDataMoveType());
 					TraceEvent(SevInfo, "NewDataMoveWithPhysicalShard")
 					    .detail("DataMoveID", rd.dataMoveId.toString())
 					    .detail("Reason", rd.reason.toString())
@@ -1871,7 +1908,7 @@ ACTOR Future<Void> dataDistributionRelocator(DDQueue* self,
 					    .detail("Reason", rd.reason.toString())
 					    .detail("DataMoveReason", static_cast<int>(rd.dmReason))
 					    .detail("DataMoveID", rd.dataMoveId)
-					    .detail("PhysicalShardMove", physicalShardMoveEnabled(rd.dataMoveId));
+					    .detail("DataMoveType", getDataMoveType(rd.dataMoveId));
 					if (now() - startTime > 600) {
 						TraceEvent(SevWarnAlways, "RelocateShardTooLong")
 						    .detail("Duration", now() - startTime)
@@ -2217,18 +2254,19 @@ ACTOR Future<Void> BgDDLoadRebalance(DDQueue* self, int teamCollectionIndex, Dat
 	state double lastRead = 0;
 	state bool skipCurrentLoop = false;
 	state const bool readRebalance = isDataMovementForReadBalancing(reason);
-	state const char* eventName = isDataMovementForMountainChopper(reason) ? "BgDDMountainChopper" : "BgDDValleyFiller";
+	state const std::string moveType =
+	    isDataMovementForMountainChopper(reason) ? "BgDDMountainChopper" : "BgDDValleyFiller";
 	state int ddPriority = dataMovementPriority(reason);
+	state bool mcMove = isDataMovementForMountainChopper(reason);
+	state PreferLowerReadUtil preferLowerReadTeam = readRebalance || SERVER_KNOBS->DD_PREFER_LOW_READ_UTIL_TEAM
+	                                                    ? PreferLowerReadUtil::True
+	                                                    : PreferLowerReadUtil::False;
 	state double rebalancePollingInterval = 0;
 
 	loop {
 		state bool moved = false;
 		state Reference<IDataDistributionTeam> sourceTeam;
 		state Reference<IDataDistributionTeam> destTeam;
-		state TraceEvent traceEvent(eventName, self->distributorId);
-		traceEvent.suppressFor(5.0)
-		    .detail("PollingInterval", rebalancePollingInterval)
-		    .detail("Rebalance", readRebalance ? "Read" : "Disk");
 
 		// NOTE: the DD throttling relies on DDQueue, so here just trigger the balancer periodically
 		wait(delay(rebalancePollingInterval, TaskPriority::DataDistributionLaunch));
@@ -2237,59 +2275,87 @@ ACTOR Future<Void> BgDDLoadRebalance(DDQueue* self, int teamCollectionIndex, Dat
 				wait(store(skipCurrentLoop, getSkipRebalanceValue(self->txnProcessor, readRebalance)));
 				lastRead = now();
 			}
-			traceEvent.detail("Enabled", !skipCurrentLoop);
 
 			if (skipCurrentLoop) {
 				rebalancePollingInterval =
 				    std::max(rebalancePollingInterval, SERVER_KNOBS->BG_REBALANCE_SWITCH_CHECK_INTERVAL);
+				TraceEvent("DDRebalancePaused", self->distributorId)
+				    .suppressFor(5.0)
+				    .detail("MoveType", moveType)
+				    .detail("Reason", "Disabled");
 				continue;
-			} else {
-				rebalancePollingInterval = SERVER_KNOBS->BG_REBALANCE_POLLING_INTERVAL;
 			}
 
-			traceEvent.detail("QueuedRelocations", self->priority_relocations[ddPriority]);
+			if (self->priority_relocations[ddPriority] >= SERVER_KNOBS->DD_REBALANCE_PARALLELISM) {
+				rebalancePollingInterval =
+				    std::min(rebalancePollingInterval * 2, SERVER_KNOBS->BG_REBALANCE_MAX_POLLING_INTERVAL);
+				TraceEvent("DDRebalancePaused", self->distributorId)
+				    .suppressFor(5.0)
+				    .detail("MoveType", moveType)
+				    .detail("Reason", "DataMoveLimitReached")
+				    .detail("QueuedRelocations", self->priority_relocations[ddPriority])
+				    .detail("PollingInterval", rebalancePollingInterval);
+				continue;
+			}
 
-			if (self->priority_relocations[ddPriority] < SERVER_KNOBS->DD_REBALANCE_PARALLELISM) {
-				bool mcMove = isDataMovementForMountainChopper(reason);
-				GetTeamRequest srcReq = GetTeamRequest(mcMove ? TeamSelect::WANT_TRUE_BEST : TeamSelect::ANY,
-				                                       PreferLowerDiskUtil::False,
-				                                       TeamMustHaveShards::True,
-				                                       PreferLowerReadUtil::False,
-				                                       PreferWithinShardLimit::False,
-				                                       ForReadBalance(readRebalance));
-				GetTeamRequest destReq = GetTeamRequest(!mcMove ? TeamSelect::WANT_TRUE_BEST : TeamSelect::ANY,
-				                                        PreferLowerDiskUtil::True,
-				                                        TeamMustHaveShards::False,
-				                                        PreferLowerReadUtil::True,
-				                                        PreferWithinShardLimit::False,
-				                                        ForReadBalance(readRebalance));
-				state Future<SrcDestTeamPair> getTeamFuture =
-				    self->getSrcDestTeams(teamCollectionIndex, srcReq, destReq, ddPriority, &traceEvent);
-				wait(ready(getTeamFuture));
-				sourceTeam = getTeamFuture.get().first;
-				destTeam = getTeamFuture.get().second;
+			rebalancePollingInterval =
+			    std::max(rebalancePollingInterval / 2, SERVER_KNOBS->BG_REBALANCE_POLLING_INTERVAL);
 
-				// clang-format off
-				if (sourceTeam.isValid() && destTeam.isValid()) {
-					if (readRebalance) {
-						wait(store(moved,self->rebalanceReadLoad( reason, sourceTeam, destTeam, teamCollectionIndex == 0, &traceEvent)));
-					} else {
-						wait(store(moved,self->rebalanceTeams( reason, sourceTeam, destTeam, teamCollectionIndex == 0, &traceEvent)));
-					}
+			state TraceEvent traceEvent(mcMove ? "MountainChopperSample" : "ValleyFillerSample", self->distributorId)
+			    .suppressFor(5.0);
+			GetTeamRequest srcReq = GetTeamRequest(mcMove ? TeamSelect::WANT_TRUE_BEST : TeamSelect::ANY,
+			                                       PreferLowerDiskUtil::False,
+			                                       TeamMustHaveShards::True,
+			                                       PreferLowerReadUtil::False,
+			                                       PreferWithinShardLimit::False,
+			                                       ForReadBalance(readRebalance));
+
+			GetTeamRequest destReq = GetTeamRequest(!mcMove ? TeamSelect::WANT_TRUE_BEST : TeamSelect::ANY,
+			                                        PreferLowerDiskUtil::True,
+			                                        TeamMustHaveShards::False,
+			                                        preferLowerReadTeam,
+			                                        PreferWithinShardLimit::False,
+			                                        ForReadBalance(readRebalance));
+			state Future<SrcDestTeamPair> getTeamFuture =
+			    self->getSrcDestTeams(teamCollectionIndex, srcReq, destReq, ddPriority, &traceEvent);
+			wait(ready(getTeamFuture));
+			sourceTeam = getTeamFuture.get().first;
+			destTeam = getTeamFuture.get().second;
+
+			// clang-format off
+			if (sourceTeam.isValid() && destTeam.isValid()) {
+				if (readRebalance) {
+					wait(store(moved,self->rebalanceReadLoad( reason, sourceTeam, destTeam, teamCollectionIndex == 0, &traceEvent)));
+				} else {
+					wait(store(moved,self->rebalanceTeams( reason, sourceTeam, destTeam, teamCollectionIndex == 0, &traceEvent)));
 				}
-				// clang-format on
-				moved ? resetCount = 0 : resetCount++;
+			}
+			// clang-format on
+			traceEvent.detail("Moved", moved).log();
+
+			if (moved) {
+				resetCount = 0;
+				TraceEvent(mcMove ? "MountainChopperMoved" : "ValleyFillerMoved", self->distributorId)
+				    .suppressFor(5.0)
+				    .detail("QueuedRelocations", self->priority_relocations[ddPriority])
+				    .detail("PollingInterval", rebalancePollingInterval);
+			} else {
+				++resetCount;
+				if (resetCount > 30) {
+					rebalancePollingInterval = SERVER_KNOBS->BG_REBALANCE_MAX_POLLING_INTERVAL;
+				}
+				TraceEvent(mcMove ? "MountainChopperSkipped" : "ValleyFillerSkipped", self->distributorId)
+				    .suppressFor(5.0)
+				    .detail("QueuedRelocations", self->priority_relocations[ddPriority])
+				    .detail("ResetCount", resetCount)
+				    .detail("PollingInterval", rebalancePollingInterval);
 			}
 
-			traceEvent.detail("ResetCount", resetCount);
 		} catch (Error& e) {
 			// Log actor_cancelled because it's not legal to suppress an event that's initialized
-			traceEvent.errorUnsuppressed(e);
+			TraceEvent("RebalanceMoveError", self->distributorId).detail("MoveType", moveType).errorUnsuppressed(e);
 			throw;
 		}
-
-		traceEvent.detail("Moved", moved);
-		traceEvent.log();
 	}
 }
 
