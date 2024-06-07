@@ -132,7 +132,8 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( HEALTH_POLL_TIME,                                      1.0 );
 	init( BEST_TEAM_STUCK_DELAY,                                 1.0 );
 	init( DEST_OVERLOADED_DELAY,                                 0.2 );
-	init( BG_REBALANCE_POLLING_INTERVAL,                        10.0 );
+	init( BG_REBALANCE_POLLING_INTERVAL,                         1.0 );
+	init( BG_REBALANCE_MAX_POLLING_INTERVAL,                    10.0 );
 	init( BG_REBALANCE_SWITCH_CHECK_INTERVAL,                    5.0 ); if (randomize && BUGGIFY) BG_REBALANCE_SWITCH_CHECK_INTERVAL = 1.0;
 	init( DD_QUEUE_LOGGING_INTERVAL,                             5.0 );
 	init( DD_QUEUE_COUNTER_REFRESH_INTERVAL,                    60.0 );
@@ -142,6 +143,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( WIGGLING_RELOCATION_PARALLELISM_PER_SOURCE_SERVER,       2 ); if( randomize && BUGGIFY ) WIGGLING_RELOCATION_PARALLELISM_PER_SOURCE_SERVER = 1;
 	init( RELOCATION_PARALLELISM_PER_SOURCE_SERVER,                2 ); if( randomize && BUGGIFY ) RELOCATION_PARALLELISM_PER_SOURCE_SERVER = 1;
 	init( RELOCATION_PARALLELISM_PER_DEST_SERVER,                 10 ); if( randomize && BUGGIFY ) RELOCATION_PARALLELISM_PER_DEST_SERVER = 1; // Note: if this is smaller than FETCH_KEYS_PARALLELISM, this will artificially reduce performance. The current default of 10 is probably too high but is set conservatively for now.
+	init( MERGE_RELOCATION_PARALLELISM_PER_TEAM,                   6 ); if (randomize && BUGGIFY ) MERGE_RELOCATION_PARALLELISM_PER_TEAM = 1;
 	init( DD_QUEUE_MAX_KEY_SERVERS,                              100 ); // Do not buggify
 	init( DD_REBALANCE_PARALLELISM,                               50 );
 	init( DD_REBALANCE_RESET_AMOUNT,                              30 );
@@ -155,6 +157,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( PRIORITY_REBALANCE_READ_UNDERUTIL_TEAM,                121 );
 	init( PRIORITY_REBALANCE_OVERUTILIZED_TEAM,                  122 );
 	init( PRIORITY_REBALANCE_READ_OVERUTIL_TEAM,                 123 );
+	init( PRIORITY_REBALANCE_STORAGE_QUEUE,                      124 );
 	init( PRIORITY_TEAM_HEALTHY,                                 140 );
 	init( PRIORITY_PERPETUAL_STORAGE_WIGGLE,                     141 );
 	init( PRIORITY_TEAM_CONTAINS_UNDESIRED_SERVER,               150 );
@@ -183,7 +186,8 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( MAX_LARGE_SHARD_BYTES,                          1000000000 ); // 1G
 	init( SHARD_ENCODE_LOCATION_METADATA,                      false ); if( randomize && BUGGIFY )  SHARD_ENCODE_LOCATION_METADATA = true;
 	init( ENABLE_DD_PHYSICAL_SHARD,                            false ); // EXPERIMENTAL; If true, SHARD_ENCODE_LOCATION_METADATA must be true; When true, optimization of data move between DCs is disabled
-	init( DD_PHYSICAL_SHARD_MOVE_PROBABILITY,                    0.0 ); if( isSimulated )   DD_PHYSICAL_SHARD_MOVE_PROBABILITY = 0.5;
+	init( DD_PHYSICAL_SHARD_MOVE_PROBABILITY,                    0.0 ); if( isSimulated )  DD_PHYSICAL_SHARD_MOVE_PROBABILITY = 0.5;
+	init( ENABLE_PHYSICAL_SHARD_MOVE_EXPERIMENT,               false ); if( isSimulated )  ENABLE_PHYSICAL_SHARD_MOVE_EXPERIMENT = deterministicRandom()->coinflip();
 	init( MAX_PHYSICAL_SHARD_BYTES,                         10000000 ); // 10 MB; for ENABLE_DD_PHYSICAL_SHARD; smaller leads to larger number of physicalShard per storage server
  	init( PHYSICAL_SHARD_METRICS_DELAY,                        300.0 ); // 300 seconds; for ENABLE_DD_PHYSICAL_SHARD
 	init( ANONYMOUS_PHYSICAL_SHARD_TRANSITION_TIME,            600.0 ); if( randomize && BUGGIFY )  ANONYMOUS_PHYSICAL_SHARD_TRANSITION_TIME = 0.0; // 600 seconds; for ENABLE_DD_PHYSICAL_SHARD
@@ -319,7 +323,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( DD_EXCLUDE_MIN_REPLICAS,                                 1 );
 	init( DD_VALIDATE_LOCALITY,                                 true ); if( randomize && BUGGIFY ) DD_VALIDATE_LOCALITY = false;
 	init( DD_CHECK_INVALID_LOCALITY_DELAY,                       60  ); if( randomize && BUGGIFY ) DD_CHECK_INVALID_LOCALITY_DELAY = 1 + deterministicRandom()->random01() * 600;
-	init( DD_ENABLE_VERBOSE_TRACING,                           false ); if( randomize && BUGGIFY ) DD_ENABLE_VERBOSE_TRACING = true;
+	init( DD_ENABLE_VERBOSE_TRACING,                            true ); if( randomize && BUGGIFY ) DD_ENABLE_VERBOSE_TRACING = false;
 	init( DD_SS_FAILURE_VERSIONLAG,                        250000000 );
 	init( DD_SS_ALLOWED_VERSIONLAG,                        200000000 ); if( randomize && BUGGIFY ) { DD_SS_FAILURE_VERSIONLAG = deterministicRandom()->randomInt(15000000, 500000000); DD_SS_ALLOWED_VERSIONLAG = 0.75 * DD_SS_FAILURE_VERSIONLAG; }
 	init( DD_SS_STUCK_TIME_LIMIT,                              300.0 ); if( randomize && BUGGIFY ) { DD_SS_STUCK_TIME_LIMIT = 200.0 + deterministicRandom()->random01() * 100.0; }
@@ -340,6 +344,15 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( DD_SHARD_TRACKING_LOG_SEVERITY,                          1 );
 	init( ENFORCE_SHARD_COUNT_PER_TEAM,                        false ); if( randomize && BUGGIFY ) ENFORCE_SHARD_COUNT_PER_TEAM = true;
 	init( DESIRED_MAX_SHARDS_PER_TEAM,                          1000 ); if( randomize && BUGGIFY ) DESIRED_MAX_SHARDS_PER_TEAM = 10;
+	init( ENABLE_STORAGE_QUEUE_AWARE_TEAM_SELECTION,           false ); if( randomize && BUGGIFY ) ENABLE_STORAGE_QUEUE_AWARE_TEAM_SELECTION = true;
+	init( DD_LONG_STORAGE_QUEUE_TEAM_MAJORITY_PERCENTILE,        0.5 ); if( randomize && BUGGIFY ) DD_LONG_STORAGE_QUEUE_TEAM_MAJORITY_PERCENTILE = deterministicRandom()->random01();
+	init( ENABLE_REBALANCE_STORAGE_QUEUE,                      false ); if( randomize && BUGGIFY ) ENABLE_REBALANCE_STORAGE_QUEUE = true;
+ 	init( REBALANCE_STORAGE_QUEUE_LONG_BYTES, TARGET_BYTES_PER_STORAGE_SERVER*0.15); if( randomize && BUGGIFY ) REBALANCE_STORAGE_QUEUE_LONG_BYTES = TARGET_BYTES_PER_STORAGE_SERVER*0.05;
+ 	init( REBALANCE_STORAGE_QUEUE_SHORT_BYTES, TARGET_BYTES_PER_STORAGE_SERVER*0.05); if( randomize && BUGGIFY ) REBALANCE_STORAGE_QUEUE_SHORT_BYTES = TARGET_BYTES_PER_STORAGE_SERVER*0.025;
+ 	init( DD_LONG_STORAGE_QUEUE_TIMESPAN,                       60.0 ); if( isSimulated ) DD_LONG_STORAGE_QUEUE_TIMESPAN = deterministicRandom()->random01() * 10 + 1;
+	init( DD_REBALANCE_STORAGE_QUEUE_TIME_INTERVAL,             30.0 ); if( isSimulated ) DD_REBALANCE_STORAGE_QUEUE_TIME_INTERVAL = 5.0;
+	init( REBALANCE_STORAGE_QUEUE_SHARD_PER_KSEC_MIN, SHARD_MIN_BYTES_PER_KSEC);
+	init( DD_ENABLE_REBALANCE_STORAGE_QUEUE_WITH_LIGHT_WRITE_SHARD, true ); if ( isSimulated ) DD_ENABLE_REBALANCE_STORAGE_QUEUE_WITH_LIGHT_WRITE_SHARD = deterministicRandom()->coinflip();
 
 	// Large teams are disabled when SHARD_ENCODE_LOCATION_METADATA is enabled
 	init( DD_MAX_SHARDS_ON_LARGE_TEAMS,                          100 ); if( randomize && BUGGIFY ) DD_MAX_SHARDS_ON_LARGE_TEAMS = deterministicRandom()->randomInt(0, 3);
@@ -354,6 +367,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( TR_FLAG_DISABLE_SERVER_TEAM_REMOVER,                 false ); if( randomize && BUGGIFY ) TR_FLAG_DISABLE_SERVER_TEAM_REMOVER = deterministicRandom()->random01() < 0.1 ? true : false; // false by default. disable the consistency check when it's true
 	init( TR_REMOVE_SERVER_TEAM_DELAY,                          60.0 ); if( randomize && BUGGIFY ) TR_REMOVE_SERVER_TEAM_DELAY =  deterministicRandom()->random01() * 60.0;
 	init( TR_REMOVE_SERVER_TEAM_EXTRA_DELAY,                     5.0 ); if( randomize && BUGGIFY ) TR_REMOVE_SERVER_TEAM_EXTRA_DELAY =  deterministicRandom()->random01() * 10.0;
+	init( TR_REDUNDANT_TEAM_PERCENTAGE_THRESHOLD,                           .01 ); if (randomize && BUGGIFY) TR_REDUNDANT_TEAM_PERCENTAGE_THRESHOLD = deterministicRandom()->random01() * 0.1;
 
 	init( DD_REMOVE_STORE_ENGINE_DELAY,                         60.0 ); if( randomize && BUGGIFY ) DD_REMOVE_STORE_ENGINE_DELAY =  deterministicRandom()->random01() * 60.0;
 
@@ -430,7 +444,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( ROCKSDB_READER_THREAD_PRIORITY,                          0 );
 	init( ROCKSDB_WRITER_THREAD_PRIORITY,                          0 );
 	init( ROCKSDB_COMPACTION_THREAD_PRIORITY,                      0 );
-	init( ROCKSDB_BACKGROUND_PARALLELISM,                          2 );
+	init( ROCKSDB_BACKGROUND_PARALLELISM,                          3 );
 	init( ROCKSDB_READ_PARALLELISM,                isSimulated? 2: 4 );
 	init( ROCKSDB_CHECKPOINT_READER_PARALLELISM,                   4 );
 	// If true, do not process and store RocksDB logs
@@ -441,14 +455,16 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( ROCKSDB_LEVEL_STYLE_COMPACTION,                       true );
 	init( ROCKSDB_UNSAFE_AUTO_FSYNC,                           false );
 	init( ROCKSDB_PERIODIC_COMPACTION_SECONDS,                     0 );
-	init( ROCKSDB_PREFIX_LEN,                                      0 ); if( randomize && BUGGIFY )  ROCKSDB_PREFIX_LEN = deterministicRandom()->randomInt(1, 20);
+	init( ROCKSDB_PREFIX_LEN,                                     11 ); if( randomize && BUGGIFY )  ROCKSDB_PREFIX_LEN = deterministicRandom()->randomInt(1, 20);
 	init( ROCKSDB_MEMTABLE_PREFIX_BLOOM_SIZE_RATIO,              0.1 );
 	init( ROCKSDB_BLOOM_BITS_PER_KEY,                             10 );
 	init( ROCKSDB_BLOOM_WHOLE_KEY_FILTERING,                   false );
 	init( ROCKSDB_MAX_AUTO_READAHEAD_SIZE,                     65536 );
 	// If rocksdb block cache size is 0, the default 8MB is used.
-	int64_t blockCacheSize = isSimulated ? 16 * 1024 : 2147483648 /* 2GB */;
-	init( ROCKSDB_BLOCK_CACHE_SIZE,                   blockCacheSize );
+	int64_t blockCacheSize = isSimulated ? 16 * 1024 : 4LL * 1024 * 1024 * 1024 /* 4GB */;
+	init( ROCKSDB_BLOCK_CACHE_SIZE,                   blockCacheSize ); /* Datablocks cache + Index&filter blocks cache */
+	init( ROCKSDB_CACHE_HIGH_PRI_POOL_RATIO,                     0.5 ); /* Share of high priority Index&filter blocks in cache */
+	init( ROCKSDB_CACHE_INDEX_AND_FILTER_BLOCKS,                true );
 	init( ROCKSDB_METRICS_DELAY,                                60.0 );
 	// ROCKSDB_READ_VALUE_TIMEOUT, ROCKSDB_READ_VALUE_PREFIX_TIMEOUT, ROCKSDB_READ_RANGE_TIMEOUT knobs:
 	// In simulation, increasing the read operation timeouts to 5 minutes, as some of the tests have
@@ -470,27 +486,25 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( ROCKSDB_READ_RANGE_REUSE_BOUNDED_ITERATORS,          false ); if( randomize && BUGGIFY ) ROCKSDB_READ_RANGE_REUSE_BOUNDED_ITERATORS = deterministicRandom()->coinflip();
 	init( ROCKSDB_READ_RANGE_BOUNDED_ITERATORS_MAX_LIMIT,        200 );
 	// Set to 0 to disable rocksdb write rate limiting. Rate limiter unit: bytes per second.
-	init( ROCKSDB_WRITE_RATE_LIMITER_BYTES_PER_SEC,                0 );
+	init( ROCKSDB_WRITE_RATE_LIMITER_BYTES_PER_SEC,        200000000 );
 	init( ROCKSDB_WRITE_RATE_LIMITER_FAIRNESS,                    10 ); // RocksDB default 10
 	// If true, enables dynamic adjustment of ROCKSDB_WRITE_RATE_LIMITER_BYTES according to the recent demand of background IO.
 	init( ROCKSDB_WRITE_RATE_LIMITER_AUTO_TUNE,                 true );
-	init( DEFAULT_FDB_ROCKSDB_COLUMN_FAMILY,                    "fdb");
+	init( DEFAULT_FDB_ROCKSDB_COLUMN_FAMILY,                   "fdb" );
 	init( ROCKSDB_DISABLE_AUTO_COMPACTIONS,                    false ); // RocksDB default
 
 	init( ROCKSDB_PERFCONTEXT_ENABLE,                          false ); if( randomize && BUGGIFY ) ROCKSDB_PERFCONTEXT_ENABLE = deterministicRandom()->coinflip();
 	init( ROCKSDB_PERFCONTEXT_SAMPLE_RATE,                    0.0001 );
-	init( ROCKSDB_METRICS_SAMPLE_INTERVAL,						  0.0);
-	init( ROCKSDB_MAX_SUBCOMPACTIONS,                              0 );
-	init( ROCKSDB_SOFT_PENDING_COMPACT_BYTES_LIMIT,      64000000000 ); // 64GB, Rocksdb option, Writes will slow down.
-	init( ROCKSDB_HARD_PENDING_COMPACT_BYTES_LIMIT,     100000000000 ); // 100GB, Rocksdb option, Writes will stall.
+	init( ROCKSDB_METRICS_SAMPLE_INTERVAL,						 0.0 );
+	init( ROCKSDB_MAX_SUBCOMPACTIONS,                              3 );
+	init( ROCKSDB_SOFT_PENDING_COMPACT_BYTES_LIMIT,     128000000000 ); // 128GB, Rocksdb option, Writes will slow down.
+	init( ROCKSDB_HARD_PENDING_COMPACT_BYTES_LIMIT,     256000000000 ); // 256GB, Rocksdb option, Writes will stall.
 	init( SHARD_SOFT_PENDING_COMPACT_BYTES_LIMIT,                  0 );
 	init( SHARD_HARD_PENDING_COMPACT_BYTES_LIMIT,                  0 );
-	init( ROCKSDB_CAN_COMMIT_COMPACT_BYTES_LIMIT,        50000000000 ); // 50GB, Commit waits.
+	init( ROCKSDB_CAN_COMMIT_COMPACT_BYTES_LIMIT,       100000000000 ); // 100GB, Commit waits.
+	init( ROCKSDB_CAN_COMMIT_IMMUTABLE_MEMTABLES_LIMIT,            8 ); // INT_MAX disables this feature. This value <= ROCKSDB_MAX_WRITE_BUFFER_NUMBER will enable the feature.
 	// Enabling ROCKSDB_PARANOID_FILE_CHECKS knob will have overhead. Be cautious to enable in prod.
 	init( ROCKSDB_PARANOID_FILE_CHECKS,                        false ); if( randomize && BUGGIFY ) ROCKSDB_PARANOID_FILE_CHECKS = deterministicRandom()->coinflip();
-	// Enable this knob only for experminatal purpose, never enable this in production.
-	// If enabled, all the committed in-memory memtable writes are lost on a crash.
-	init( ROCKSDB_DISABLE_WAL_EXPERIMENTAL,                    false );
 	init( ROCKSDB_WAL_TTL_SECONDS,                                 0 );
 	init( ROCKSDB_WAL_SIZE_LIMIT_MB,                               0 );
 	init( ROCKSDB_LOG_LEVEL_DEBUG,                             false );
@@ -514,55 +528,82 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	// Set ROCKSDB_CAN_COMMIT_DELAY_TIMES_ON_OVERLOAD to 0, to disable
 	init( ROCKSDB_CAN_COMMIT_DELAY_ON_OVERLOAD,                  0.2 );
 	init( ROCKSDB_CAN_COMMIT_DELAY_TIMES_ON_OVERLOAD,             20 );
-	init( ROCKSDB_COMPACTION_READAHEAD_SIZE,                   32768 ); // 32 KB, performs bigger reads when doing compaction.
-	init( ROCKSDB_BLOCK_SIZE,                                  32768 ); // 32 KB, size of the block in rocksdb cache.
+	init( ROCKSDB_COMPACTION_READAHEAD_SIZE,                 2097152 ); // 2 MB, performs bigger reads when doing compaction.
+	init( ROCKSDB_BLOCK_SIZE,                                   8192 ); // 8 KB, size of the block in rocksdb.
 	init( ENABLE_SHARDED_ROCKSDB,                              false );
-	init( ROCKSDB_WRITE_BUFFER_SIZE, isSimulated ? 16 << 20 : 64 << 20 ); // 64 MB
-	init( ROCKSDB_MAX_WRITE_BUFFER_NUMBER,                         6 ); // RocksDB default.
-	init( ROCKSDB_MIN_WRITE_BUFFER_NUMBER_TO_MERGE,                2 ); // RocksDB default.
-	init( ROCKSDB_LEVEL0_FILENUM_COMPACTION_TRIGGER,               2 ); // RocksDB default.
+	init( ROCKSDB_WRITE_BUFFER_SIZE, isSimulated ? 256 << 10 : 64 << 20 ); // 64 MB
+	init( ROCKSDB_MAX_WRITE_BUFFER_NUMBER,                        10 ); // RocksDB default. Changing this will affect ROCKSDB_CAN_COMMIT_IMMUTABLE_MEMTABLES_LIMIT
+	init( ROCKSDB_MIN_WRITE_BUFFER_NUMBER_TO_MERGE,                1 ); // RocksDB default.
+	init( ROCKSDB_LEVEL0_FILENUM_COMPACTION_TRIGGER,               4 ); // RocksDB default.
 	init( ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER,                 20 ); // RocksDB default.
 	init( ROCKSDB_LEVEL0_STOP_WRITES_TRIGGER,                     36 ); // RocksDB default.
-	init( ROCKSDB_MAX_TOTAL_WAL_SIZE,                              0 ); // RocksDB default.
+	init( ROCKSDB_MAX_TOTAL_WAL_SIZE, isSimulated? 256 <<20 : 1 << 30 ); // 1GB.
 	init( ROCKSDB_MAX_BACKGROUND_JOBS,                             2 ); // RocksDB default.
 	init( ROCKSDB_DELETE_OBSOLETE_FILE_PERIOD,                 21600 ); // 6h, RocksDB default.
-	init( ROCKSDB_PHYSICAL_SHARD_CLEAN_UP_DELAY, isSimulated ? 10.0 : 300.0 ); // Delays shard clean up, must be larger than ROCKSDB_READ_VALUE_TIMEOUT to prevent reading deleted shard.
+	init( ROCKSDB_PHYSICAL_SHARD_CLEAN_UP_DELAY, isSimulated ? 300.0 : 15.0 ); // Delays shard clean up, must be larger than ROCKSDB_READ_VALUE_TIMEOUT to prevent reading deleted shard.
 	init( ROCKSDB_EMPTY_RANGE_CHECK,       isSimulated ? true : false);
 	init( ROCKSDB_CREATE_BYTES_SAMPLE_FILE_RETRY_MAX,             50 );
 	init( ROCKSDB_ATOMIC_FLUSH,                                false );
  	init( ROCKSDB_IMPORT_MOVE_FILES,                           false );
  	init( ROCKSDB_CHECKPOINT_REPLAY_MARKER,                    false );
  	init( ROCKSDB_VERIFY_CHECKSUM_BEFORE_RESTORE,               true );
- 	init( ROCKSDB_ENABLE_CHECKPOINT_VALIDATION,                false ); if( randomize && BUGGIFY )   ROCKSDB_ENABLE_CHECKPOINT_VALIDATION = deterministicRandom()->coinflip();
-	init( ROCKSDB_RETURN_OVERLOADED_ON_TIMEOUT,                false ); if ( randomize && BUGGIFY ) ROCKSDB_RETURN_OVERLOADED_ON_TIMEOUT = true;
+ 	init( ROCKSDB_ENABLE_CHECKPOINT_VALIDATION,                false ); if ( randomize && BUGGIFY ) ROCKSDB_ENABLE_CHECKPOINT_VALIDATION = deterministicRandom()->coinflip();
+	init( ROCKSDB_RETURN_OVERLOADED_ON_TIMEOUT,                 true );
 	init( ROCKSDB_COMPACTION_PRI,                                  3 ); // kMinOverlappingRatio, RocksDB default. 
 	init( ROCKSDB_WAL_RECOVERY_MODE,                               2 ); // kPointInTimeRecovery, RocksDB default.
 	init( ROCKSDB_TARGET_FILE_SIZE_BASE,                           0 ); // If 0, pick RocksDB default.
 	init( ROCKSDB_TARGET_FILE_SIZE_MULTIPLIER,                     1 ); // RocksDB default.
-	init( ROCKSDB_MAX_OPEN_FILES,                              50000 ); // Should be smaller than OS's fd limit.
+	init( ROCKSDB_USE_DIRECT_READS,                            false );
+	init( ROCKSDB_USE_DIRECT_IO_FLUSH_COMPACTION,              false );
+	init( ROCKSDB_MAX_OPEN_FILES,                                 -1 ); // RocksDB default.
 	init( ROCKSDB_USE_POINT_DELETE_FOR_SYSTEM_KEYS,            false ); 
 	init( ROCKSDB_CF_RANGE_DELETION_LIMIT,                         0 );
-	init( ROCKSDB_MEMTABLE_MAX_RANGE_DELETIONS,                  100 );
-	init (ROCKSDB_WAIT_ON_CF_FLUSH,                            false );
-	init (ROCKSDB_ALLOW_WRITE_STALL_ON_FLUSH,                  false );
-	init (ROCKSDB_CF_METRICS_DELAY,                            900.0 );
-	init (ROCKSDB_MAX_LOG_FILE_SIZE,                         10485760 ); // 10MB.
-	init (ROCKSDB_KEEP_LOG_FILE_NUM,                             200 ); // Keeps 2GB log per storage server.
-	init (ROCKSDB_SKIP_STATS_UPDATE_ON_OPEN,                    false ); if (isSimulated) ROCKSDB_SKIP_STATS_UPDATE_ON_OPEN = deterministicRandom()->coinflip(); 
-	init (ROCKSDB_SKIP_FILE_SIZE_CHECK_ON_OPEN,                 false ); if (isSimulated) ROCKSDB_SKIP_FILE_SIZE_CHECK_ON_OPEN = deterministicRandom()->coinflip();
-	init (SHARDED_ROCKSDB_VALIDATE_MAPPING_RATIO,                 0.01 ); if (isSimulated) SHARDED_ROCKSDB_VALIDATE_MAPPING_RATIO = deterministicRandom()->random01(); 
-	init (SHARD_METADATA_SCAN_BYTES_LIMIT,                    10485760 ); // 10MB
-	init (ROCKSDB_MAX_MANIFEST_FILE_SIZE,                    100 << 20 ); if (isSimulated) ROCKSDB_MAX_MANIFEST_FILE_SIZE = 500 << 20; // 500MB in simulation
-	init (SHARDED_ROCKSDB_AVERAGE_FILE_SIZE,                    8 << 20 ); // 8MB
-	init (SHARDED_ROCKSDB_COMPACTION_PERIOD,                   isSimulated? 3600 : 2592000 ); // 30d
-	init (SHARDED_ROCKSDB_COMPACTION_ACTOR_DELAY,                  3600 ); // 1h
-	init (SHARDED_ROCKSDB_COMPACTION_SHARD_LIMIT,                    -1 );
-	init( SHARDED_ROCKSDB_WRITE_BUFFER_SIZE,                   16 << 20 ); // 16MB
-	init( SHARDED_ROCKSDB_TOTAL_WRITE_BUFFER_SIZE,              1 << 30 ); // 1GB
-	init( SHARDED_ROCKSDB_MEMTABLE_BUDGET,                      64 << 20); // 64MB
-	init( SHARDED_ROCKSDB_MAX_WRITE_BUFFER_NUMBER,                    6 ); // RocksDB default.
-	init( SHARDED_ROCKSDB_TARGET_FILE_SIZE_BASE,                16 << 20); // 16MB
-	init( SHARDED_ROCKSDB_TARGET_FILE_SIZE_MULTIPLIER,                1 ); // RocksDB default.
+	init( ROCKSDB_MEMTABLE_MAX_RANGE_DELETIONS,                    0 );
+	init( ROCKSDB_WAIT_ON_CF_FLUSH,                            false );
+	init( ROCKSDB_ALLOW_WRITE_STALL_ON_FLUSH,                  false );
+	init( ROCKSDB_CF_METRICS_DELAY,                            900.0 );
+	init( ROCKSDB_MAX_LOG_FILE_SIZE,                        10485760 ); // 10MB.
+	init( ROCKSDB_KEEP_LOG_FILE_NUM,                             100 ); // Keeps 1GB log per storage server.
+	init( ROCKSDB_SKIP_STATS_UPDATE_ON_OPEN,                    true );
+	init( ROCKSDB_SKIP_FILE_SIZE_CHECK_ON_OPEN,                 true );
+	init( ROCKSDB_FULLFILE_CHECKSUM,                           false ); if ( randomize && BUGGIFY ) ROCKSDB_FULLFILE_CHECKSUM = true;
+	// Enabling the below three PROTECTION_BYTES_PER_KEY knobs will have overhead(memory and performance). Be cautious to enable in prod.
+	// Writebatch key-value checksum
+	init( ROCKSDB_WRITEBATCH_PROTECTION_BYTES_PER_KEY,             0 ); if ( randomize && BUGGIFY ) ROCKSDB_WRITEBATCH_PROTECTION_BYTES_PER_KEY = 8; // Default: 0 (disabled). Supported values: 0, 8
+	// Memtable key-value checksum
+	init( ROCKSDB_MEMTABLE_PROTECTION_BYTES_PER_KEY,               0 ); if ( randomize && BUGGIFY ) ROCKSDB_MEMTABLE_PROTECTION_BYTES_PER_KEY = 8; // Default: 0 (disabled). Supported values: 0, 1, 2, 4, 8.
+	// Block cache key-value checksum. Checksum is validated during read, so has non-trivial impact on read performance.
+	init( ROCKSDB_BLOCK_PROTECTION_BYTES_PER_KEY,                  0 ); if ( randomize && BUGGIFY ) ROCKSDB_BLOCK_PROTECTION_BYTES_PER_KEY = 8; // Default: 0 (disabled). Supported values: 0, 1, 2, 4, 8.
+	init( SHARDED_ROCKSDB_VALIDATE_MAPPING_RATIO,               0.01 ); if (isSimulated) SHARDED_ROCKSDB_VALIDATE_MAPPING_RATIO = deterministicRandom()->random01();
+	init( SHARD_METADATA_SCAN_BYTES_LIMIT,                  10485760 ); // 10MB
+	init( ROCKSDB_MAX_MANIFEST_FILE_SIZE,                  100 << 20 ); if (isSimulated) ROCKSDB_MAX_MANIFEST_FILE_SIZE = 500 << 20; // 500MB in simulation
+	init( SHARDED_ROCKSDB_MEMTABLE_MAX_RANGE_DELETIONS,          100 );
+	init( SHARDED_ROCKSDB_AVERAGE_FILE_SIZE,                 8 << 20 ); // 8MB
+	init( SHARDED_ROCKSDB_COMPACTION_PERIOD, isSimulated? 3600 : 2592000 ); // 30d
+	init( SHARDED_ROCKSDB_COMPACTION_ACTOR_DELAY,               3600 ); // 1h
+	init( SHARDED_ROCKSDB_COMPACTION_SHARD_LIMIT,                 -1 );
+	init( SHARDED_ROCKSDB_WRITE_BUFFER_SIZE,                16 << 20 ); // 16MB
+	init( SHARDED_ROCKSDB_TOTAL_WRITE_BUFFER_SIZE,           1 << 30 ); // 1GB
+	init( SHARDED_ROCKSDB_MEMTABLE_BUDGET,                  64 << 20 ); // 64MB
+	init( SHARDED_ROCKSDB_MAX_WRITE_BUFFER_NUMBER,                 6 ); // RocksDB default.
+	init( SHARDED_ROCKSDB_TARGET_FILE_SIZE_BASE,            16 << 20 ); // 16MB
+	init( SHARDED_ROCKSDB_TARGET_FILE_SIZE_MULTIPLIER,             1 ); // RocksDB default.
+	init( SHARDED_ROCKSDB_SUGGEST_COMPACT_CLEAR_RANGE,          true );
+	init( SHARDED_ROCKSDB_MAX_BACKGROUND_JOBS,                     4 );
+	init( SHARDED_ROCKSDB_BLOCK_CACHE_SIZE, isSimulated? 16 * 1024 : 134217728 /* 128MB */);
+	// Set to 0 to disable rocksdb write rate limiting. Rate limiter unit: bytes per second.
+	init( SHARDED_ROCKSDB_WRITE_RATE_LIMITER_BYTES_PER_SEC,        300 << 20 );
+	init( SHARDED_ROCKSDB_RATE_LIMITER_MODE,                       2 );
+	init( SHARDED_ROCKSDB_BACKGROUND_PARALLELISM,                  2 );
+	init( SHARDED_ROCKSDB_MAX_SUBCOMPACTIONS,                      0 );
+	init( SHARDED_ROCKSDB_LEVEL0_FILENUM_COMPACTION_TRIGGER,       4 );
+	init( SHARDED_ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER,         20 ); // RocksDB default.
+	init( SHARDED_ROCKSDB_LEVEL0_STOP_WRITES_TRIGGER,             36 ); // RocksDB default.
+	init( SHARDED_ROCKSDB_MAX_OPEN_FILES,                      50000 ); // Should be smaller than OS's fd limit.
+	init( SHARDED_ROCKSDB_DELAY_COMPACTION_FOR_DATA_MOVE,       false); if (isSimulated) SHARDED_ROCKSDB_DELAY_COMPACTION_FOR_DATA_MOVE = deterministicRandom()->coinflip();
+	init (SHARDED_ROCKSDB_READ_ASYNC_IO,                       false ); if (isSimulated) SHARDED_ROCKSDB_READ_ASYNC_IO = deterministicRandom()->coinflip();
+	init( SHARDED_ROCKSDB_PREFIX_LEN,                              0 ); if( randomize && BUGGIFY )  SHARDED_ROCKSDB_PREFIX_LEN = deterministicRandom()->randomInt(1, 20);
+
 
 	// Leader election
 	bool longLeaderElection = randomize && BUGGIFY;
@@ -590,6 +631,9 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( TENANT_ID_REQUEST_MAX_QUEUE_SIZE,                      1e6 );
 	init( BLOB_GRANULE_LOCATION_MAX_QUEUE_SIZE,                  1e5 ); if ( randomize && BUGGIFY ) BLOB_GRANULE_LOCATION_MAX_QUEUE_SIZE = 100;
 	init( COMMIT_PROXY_LIVENESS_TIMEOUT,                        20.0 );
+
+	// FIXME Remove this when client latency issue is resolved
+	init( WRITE_CLIENT_LATENCY_TRACEEVENT,                      false );
 
 	init( COMMIT_BATCH_RANDOMIZE_INTERVAL,                      false );
 	init( COMMIT_BATCH_MAX_IN_PROGRESS,                             0 );
@@ -801,6 +845,8 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( STORAGE_SHARD_CONSISTENCY_CHECK_INTERVAL,                     0.0); if ( isSimulated ) STORAGE_SHARD_CONSISTENCY_CHECK_INTERVAL = 5.0;
 	init (STORAGE_FETCH_KEYS_DELAY,	                             0.0 ); if ( randomize && BUGGIFY ) { STORAGE_FETCH_KEYS_DELAY = deterministicRandom()->random01() * 5.0; }
 	init (STORAGE_FETCH_KEYS_USE_COMMIT_BUDGET,                false ); if (isSimulated) STORAGE_FETCH_KEYS_USE_COMMIT_BUDGET = deterministicRandom()->coinflip();
+	init (STORAGE_ROCKSDB_LOG_CLEAN_UP_DELAY,               3600 * 2 ); if (isSimulated) STORAGE_ROCKSDB_LOG_CLEAN_UP_DELAY = 20.0;
+	init (STORAGE_ROCKSDB_LOG_TTL,                    3600 * 24 * 15 ); if (isSimulated) STORAGE_ROCKSDB_LOG_TTL = 3600.0;
 
 	//FIXME: Low priority reads are disabled by assigning very high knob values, reduce knobs for 7.0
 	init( LOW_PRIORITY_STORAGE_QUEUE_BYTES,                    775e8 ); if( smallStorageTarget ) LOW_PRIORITY_STORAGE_QUEUE_BYTES = 1750e3;
@@ -878,6 +924,9 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( GLOBAL_TAG_THROTTLING_TRANSACTION_RATE_FOLDING_TIME,   10.0 );
 	init( GLOBAL_TAG_THROTTLING_COST_FOLDING_TIME,               10.0 );
 
+	init( GENERATE_DATA_ENABLED,                                false );
+	init( GENERATE_DATA_PER_VERSION_MAX,                        10000 );
+
 	//Storage Metrics
 	init( STORAGE_METRICS_AVERAGE_INTERVAL,                    120.0 );
 	init( STORAGE_METRICS_AVERAGE_INTERVAL_PER_KSECONDS,        1000.0 / STORAGE_METRICS_AVERAGE_INTERVAL );  // milliHz!
@@ -890,6 +939,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( EMPTY_READ_PENALTY,                                   20 ); // 20 bytes
 	init( DD_SHARD_COMPARE_LIMIT,                               1000 );
 	init( READ_SAMPLING_ENABLED,                                false ); if ( randomize && BUGGIFY ) READ_SAMPLING_ENABLED = true;// enable/disable read sampling
+	init( DD_PREFER_LOW_READ_UTIL_TEAM,                          true );
 	init( DD_TRACE_MOVE_BYTES_AVERAGE_INTERVAL,                   120);
 	init( MOVING_WINDOW_SAMPLE_SIZE,                         10000000); // 10MB
 
@@ -920,7 +970,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( LOGGING_RECENT_STORAGE_COMMIT_SIZE,                     20 );
 	init( LOGGING_COMPLETE_STORAGE_COMMIT_PROBABILITY,         0.001 );
 	init( LOGGING_ROCKSDB_BG_WORK_WHEN_IO_TIMEOUT,              true );
-	init( LOGGING_ROCKSDB_BG_WORK_PERIOD_SEC,                     10 );
+	init( LOGGING_ROCKSDB_BG_WORK_PERIOD_SEC,                    300 );
 	init( LOGGING_ROCKSDB_BG_WORK_PROBABILITY,                 0.001 );
 	init( BUGGIFY_BLOCK_BYTES,                                 10000 );
 	init( STORAGE_RECOVERY_VERSION_LAG_LIMIT,				2 * MAX_READ_TRANSACTION_LIFE_VERSIONS );
@@ -989,8 +1039,9 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	// The enumeration is currently: eager, fetch, low, normal, high
 	init( STORAGESERVER_READTYPE_PRIORITY_MAP,           "0,1,2,3,4" );
 	init( SPLIT_METRICS_MAX_ROWS,                              10000 ); if( randomize && BUGGIFY ) SPLIT_METRICS_MAX_ROWS = 10;
-	init( PHYSICAL_SHARD_MOVE_LOG_SEVERITY,                         1);
-	init( FETCH_SHARD_BUFFER_BYTE_LIMIT,                        20e6 );
+	init( PHYSICAL_SHARD_MOVE_LOG_SEVERITY,                        1 );
+	init( FETCH_SHARD_BUFFER_BYTE_LIMIT,                        20e6 ); if( randomize && BUGGIFY ) FETCH_SHARD_BUFFER_BYTE_LIMIT = 1;
+	init( FETCH_SHARD_UPDATES_BYTE_LIMIT,                    2500000 ); if( randomize && BUGGIFY ) FETCH_SHARD_UPDATES_BYTE_LIMIT = 1;
 
 	//Wait Failure
 	init( MAX_OUTSTANDING_WAIT_FAILURE_REQUESTS,                 250 ); if( randomize && BUGGIFY ) MAX_OUTSTANDING_WAIT_FAILURE_REQUESTS = 2;

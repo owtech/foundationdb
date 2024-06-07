@@ -143,6 +143,7 @@ const KeyRef JSONSchemas::statusSchema = R"statusSchema(
                         "coordinator"
                      ]
                   },
+                  "tss":false,
                   "storage_metadata":{
                      "created_time_datetime":"1970-01-01 00:00:00.000 +0000",
                      "created_time_timestamp": 0,
@@ -160,6 +161,17 @@ const KeyRef JSONSchemas::statusSchema = R"statusSchema(
                      "memory-radixtree-beta",
                      "unknown"
                      ]}
+                  },
+                  "rocksdb_metrics":{
+                     "block_cache_hits":12341234,
+                     "block_cache_misses":12341234,
+                     "pending_compaction_bytes":12341234,
+                     "memtable_bytes":12341234,
+                     "sst_reader_bytes":12341234,
+                     "block_cache_usage":12341234,
+                     "block_cache_limit":12341234,
+                     "throttled_commits":12341234,
+                     "write_stall_microseconds":12341234
                   },
                   "data_version":12341234,
                   "durable_version":12341234,

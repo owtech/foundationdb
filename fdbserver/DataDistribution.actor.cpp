@@ -933,6 +933,7 @@ ACTOR Future<Void> dataDistribution(Reference<DataDistributor> self,
 			ASSERT(self->configuration.storageTeamSize > 0);
 
 			state PromiseStream<Promise<int64_t>> getAverageShardBytes;
+			state PromiseStream<RebalanceStorageQueueRequest> triggerStorageQueueRebalance;
 			state PromiseStream<Promise<int>> getUnhealthyRelocationCount;
 			state PromiseStream<GetMetricsRequest> getShardMetrics;
 			state PromiseStream<GetTopKMetricsRequest> getTopKShardMetrics;
@@ -988,7 +989,8 @@ ACTOR Future<Void> dataDistribution(Reference<DataDistributor> self,
 			                                                                 getShardMetrics.getFuture(),
 			                                                                 getTopKShardMetrics.getFuture(),
 			                                                                 getShardMetricsList.getFuture(),
-			                                                                 getAverageShardBytes.getFuture()),
+			                                                                 getAverageShardBytes.getFuture(),
+			                                                                 triggerStorageQueueRebalance.getFuture()),
 			                                    "DDTracker",
 			                                    self->ddId,
 			                                    &normalDDQueueErrors()));
@@ -1051,7 +1053,8 @@ ACTOR Future<Void> dataDistribution(Reference<DataDistributor> self,
 			    getShardMetrics,
 			    removeFailedServer,
 			    getUnhealthyRelocationCount,
-			    getAverageShardBytes });
+			    getAverageShardBytes,
+			    triggerStorageQueueRebalance });
 			teamCollectionsPtrs.push_back(primaryTeamCollection.getPtr());
 			auto recruitStorage = IAsyncListener<RequestStream<RecruitStorageRequest>>::create(
 			    self->dbInfo, [](auto const& info) { return info.clusterInterface.recruitStorage; });
@@ -1073,7 +1076,8 @@ ACTOR Future<Void> dataDistribution(Reference<DataDistributor> self,
 				                                getShardMetrics,
 				                                removeFailedServer,
 				                                getUnhealthyRelocationCount,
-				                                getAverageShardBytes });
+				                                getAverageShardBytes,
+				                                triggerStorageQueueRebalance });
 				teamCollectionsPtrs.push_back(remoteTeamCollection.getPtr());
 				remoteTeamCollection->teamCollections = teamCollectionsPtrs;
 				actors.push_back(reportErrorsExcept(DDTeamCollection::run(remoteTeamCollection,
@@ -1443,7 +1447,7 @@ ACTOR Future<Void> ddSnapCreateCore(DistributorSnapRequest snapReq, Reference<As
 		// Consequently, we ignore it in simulation tests
 		auto const coordFaultTolerance = std::min<int>(
 		    std::max<int>(0, (coordSnapReqs.size() - 1) / 2),
-		    g_simulator->isSimulated() ? coordSnapReqs.size() : SERVER_KNOBS->MAX_COORDINATOR_SNAPSHOT_FAULT_TOLERANCE);
+		    g_network->isSimulated() ? coordSnapReqs.size() : SERVER_KNOBS->MAX_COORDINATOR_SNAPSHOT_FAULT_TOLERANCE);
 		wait(waitForMost(coordSnapReqs, coordFaultTolerance, snap_coord_failed()));
 
 		TraceEvent("SnapDataDistributor_AfterSnapCoords")
@@ -3126,6 +3130,8 @@ ACTOR Future<Void> doAuditLocationMetadata(Reference<DataDistributor> self,
 						           ssid.toString().c_str());
 						errors.push_back(error);
 						TraceEvent(SevError, "DDDoAuditLocationMetadataError", self->ddId)
+						    .setMaxFieldLength(-1)
+						    .setMaxEventLength(-1)
 						    .detail("AuditId", audit->coreState.id)
 						    .detail("AuditRange", auditRange)
 						    .detail("ClaimRange", claimRange)
@@ -3143,6 +3149,8 @@ ACTOR Future<Void> doAuditLocationMetadata(Reference<DataDistributor> self,
 						           mismatchedRangeByServerKey.toString().c_str());
 						errors.push_back(error);
 						TraceEvent(SevError, "DDDoAuditLocationMetadataError", self->ddId)
+						    .setMaxFieldLength(-1)
+						    .setMaxEventLength(-1)
 						    .detail("AuditId", audit->coreState.id)
 						    .detail("AuditRange", auditRange)
 						    .detail("ClaimRange", claimRange)
@@ -3162,6 +3170,8 @@ ACTOR Future<Void> doAuditLocationMetadata(Reference<DataDistributor> self,
 						           ssid.toString().c_str());
 						errors.push_back(error);
 						TraceEvent(SevError, "DDDoAuditLocationMetadataError", self->ddId)
+						    .setMaxFieldLength(-1)
+						    .setMaxEventLength(-1)
 						    .detail("AuditId", audit->coreState.id)
 						    .detail("AuditRange", auditRange)
 						    .detail("ClaimRange", claimRange)
@@ -3185,6 +3195,8 @@ ACTOR Future<Void> doAuditLocationMetadata(Reference<DataDistributor> self,
 				// Return result
 				if (!errors.empty()) {
 					TraceEvent(SevError, "DDDoAuditLocationMetadataError", self->ddId)
+					    .setMaxFieldLength(-1)
+					    .setMaxEventLength(-1)
 					    .detail("AuditId", audit->coreState.id)
 					    .detail("AuditRange", auditRange)
 					    .detail("NumErrors", errors.size())

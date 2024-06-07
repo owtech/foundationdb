@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Calculate versions
         id: vers
@@ -55,7 +55,7 @@ jobs:
     runs-on: ${{ matrix.run_on }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Set building repo
         run: | 
@@ -102,7 +102,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Download the foundationdb distro
         uses: actions/download-artifact@v3
@@ -141,7 +141,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Download the foundationdb distro
         uses: actions/download-artifact@v3
@@ -168,7 +168,7 @@ jobs:
           ${{github.workspace}}/packaging/docker/build-images-for-owtech.bash \
             ${{needs.calc_ver.outputs.full_ver}} \
             ${{github.workspace}}/bld/linux/packages \
-            ghcr.io/${{ github.repository_owner }}
+            ghcr.io/${GITHUB_REPOSITORY_OWNER@L}
 
   tests:
     needs: [calc_ver, build]
