@@ -29,7 +29,9 @@
 #include "fdbclient/Tracing.h"
 #include "flow/EncryptUtils.h"
 #include "flow/Knobs.h"
+#include "flow/UnitTest.h"
 
+#include "crc32/crc32c.h"
 #include <unordered_set>
 
 // The versioned message has wire format : -1, version, messages
@@ -57,11 +59,17 @@ static const char* typeString[] = { "SetValue",
 	                                "AndV2",
 	                                "CompareAndClear",
 	                                "Reserved_For_SpanContextMessage",
+	                                "Reserved_For_OTELSpanContextMessage",
+	                                "Encrypted",
+	                                "AccumulativeChecksum",
 	                                "MAX_ATOMIC_OP" };
 
 struct MutationRef {
 	static const int OVERHEAD_BYTES = 12; // 12 is the size of Header in MutationList entries
-	enum Type : uint8_t {
+	static const uint8_t CHECKSUM_FLAG_MASK = 128U; // 10000000, the first bit indicates if checksum is set
+	static const uint8_t ACCUMULATIVE_CHECKSUM_INDEX_FLAG_MASK =
+	    64U; // 01000000, the second bit indicates if the acs index is set
+	enum Type : uint8_t { // At most 64 types is available, since the first two bits have been reserved
 		SetValue = 0,
 		ClearRange,
 		AddValue,
@@ -88,16 +96,26 @@ struct MutationRef {
 		Encrypted, /* Represents an encrypted mutation and cannot be used directly before decrypting */
 		MAX_ATOMIC_OP
 	};
-	// This is stored this way for serialization purposes.
+
+	// This is stored this way for serialization purposes. Note: the first bit of `type` is used to indicate whether a
+	// checksum is appended to `param2`, when checksum is enabled, the bit is set during serialization, and reset during
+	// deserialization. The second bit of `type` indicates whether an accumulativeChecksumIndex is appended to `param2`.
 	uint8_t type;
 	StringRef param1, param2;
+	Optional<uint32_t> checksum; // 4 bytes for checksum
+	Optional<uint16_t> accumulativeChecksumIndex; // 2 bytes for indexing accumulative checksum
+	bool corrupted;
 
-	MutationRef() : type(MAX_ATOMIC_OP) {}
-	MutationRef(Type t, StringRef a, StringRef b) : type(t), param1(a), param2(b) {}
-	MutationRef(Arena& to, Type t, StringRef a, StringRef b) : type(t), param1(to, a), param2(to, b) {}
+	MutationRef() : type(MAX_ATOMIC_OP), corrupted(false) {}
+	MutationRef(Type t, StringRef a, StringRef b) : type(t), param1(a), param2(b), corrupted(false) {}
+	MutationRef(Arena& to, Type t, StringRef a, StringRef b)
+	  : type(t), param1(to, a), param2(to, b), corrupted(false) {}
 	MutationRef(Arena& to, const MutationRef& from)
-	  : type(from.type), param1(to, from.param1), param2(to, from.param2) {}
-	int totalSize() const { return OVERHEAD_BYTES + param1.size() + param2.size(); }
+	  : type(from.type), param1(to, from.param1), param2(to, from.param2), corrupted(false) {}
+	int totalSize() const {
+		return OVERHEAD_BYTES + param1.size() + param2.size() + (checksum.present() ? sizeof(uint32_t) + 1 : 1) +
+		       (accumulativeChecksumIndex.present() ? sizeof(uint16_t) + 1 : 1);
+	}
 	int expectedSize() const { return param1.size() + param2.size(); }
 	int weightedTotalSize() const {
 		// AtomicOp can cause more workload to FDB cluster than the same-size set mutation;
@@ -111,27 +129,277 @@ struct MutationRef {
 	}
 
 	std::string toString() const {
-		return format("code: %s param1: %s param2: %s",
-		              type < MutationRef::MAX_ATOMIC_OP ? typeString[(int)type] : "Unset",
+		std::string checksumStr;
+		std::string accumulativeChecksumIndexStr;
+		if (this->checksum.present()) {
+			checksumStr = format("checksum: %s ", std::to_string(this->checksum.get()).c_str());
+			if (this->accumulativeChecksumIndex.present()) {
+				accumulativeChecksumIndexStr = format("accumulativechecksumindex: %s ",
+				                                      std::to_string(this->accumulativeChecksumIndex.get()).c_str());
+			}
+		}
+		uint8_t mType = this->type & ~CHECKSUM_FLAG_MASK;
+		mType = mType & ~ACCUMULATIVE_CHECKSUM_INDEX_FLAG_MASK;
+		return format("%s%scode: %s param1: %s param2: %s",
+		              checksumStr.c_str(),
+		              accumulativeChecksumIndexStr.c_str(),
+		              mType < MutationRef::MAX_ATOMIC_OP ? typeString[(int)mType] : "Unset",
 		              printable(param1).c_str(),
 		              printable(param2).c_str());
 	}
 
+	// Return true if the mutation param2 carries checksum
+	bool withChecksum() const { return this->type & CHECKSUM_FLAG_MASK; }
+
+	// Return true if the mutation param2 carries acs index
+	bool withAccumulativeChecksumIndex() const { return this->type & ACCUMULATIVE_CHECKSUM_INDEX_FLAG_MASK; }
+
+	// Set checksum bit to mutation type
+	uint8_t createTypeWithChecksum(uint8_t inType) const { return inType | CHECKSUM_FLAG_MASK; }
+
+	// Set acs bit to mutation type
+	uint8_t createTypeWithAccumulativeChecksumIndex(uint8_t inType) const {
+		return inType | ACCUMULATIVE_CHECKSUM_INDEX_FLAG_MASK;
+	}
+
 	bool isAtomicOp() const { return (ATOMIC_MASK & (1 << type)) != 0; }
-	bool isValid() const { return type < MAX_ATOMIC_OP; }
+	bool isValid() const {
+		static_assert(MAX_ATOMIC_OP < 64U); // 2 bits have been reserved for checksum and accumulative checksum index
+		return type < MAX_ATOMIC_OP;
+	}
+
+	// If mutation checksum is enabled, we must set accumulative index before serialization
+	// Once accumulative index is set, it cannot change over time
+	void setAccumulativeChecksumIndex(uint16_t index) {
+		if (!CLIENT_KNOBS->ENABLE_ACCUMULATIVE_CHECKSUM) {
+			return;
+		}
+		if (withAccumulativeChecksumIndex()) {
+			TraceEvent(SevError, "MutationRefUnexpectedError")
+			    .setMaxFieldLength(-1)
+			    .setMaxEventLength(-1)
+			    .detail("Reason", "Type already has acsIndex flag when setting acsIndex")
+			    .detail("Mutation", toString());
+			this->corrupted = true;
+		}
+		if (this->accumulativeChecksumIndex.present() && this->accumulativeChecksumIndex.get() != index) {
+			TraceEvent(SevError, "MutationRefUnexpectedError")
+			    .setMaxFieldLength(-1)
+			    .setMaxEventLength(-1)
+			    .detail("Reason", "AcsIndex mismatch existing one when setting a new acsIndex")
+			    .detail("NewAcsIndex", index)
+			    .detail("Mutation", toString());
+			this->corrupted = true;
+		}
+		this->accumulativeChecksumIndex = index;
+		return;
+	}
+
+	// If param2 includes checksum suffix, remove the suffix and set it to this->checksum
+	// Unflag the corresponding bit in type
+	// This operation must be after removing the acs index if exists
+	void offloadChecksum() {
+		if (this->checksum.present()) {
+			TraceEvent(SevError, "MutationRefUnexpectedError")
+			    .setMaxFieldLength(-1)
+			    .setMaxEventLength(-1)
+			    .detail("Reason", "Internal checksum has been set when offloading checksum")
+			    .detail("Mutation", toString());
+			this->corrupted = true;
+		}
+		if (!withChecksum()) {
+			return;
+		}
+		if (withAccumulativeChecksumIndex()) { // Removing checksum must be after removing acs index
+			TraceEvent(SevError, "MutationRefUnexpectedError")
+			    .setMaxFieldLength(-1)
+			    .setMaxEventLength(-1)
+			    .detail("Reason", "Type contains acs index flag when offloading checksum")
+			    .detail("Mutation", toString());
+			this->corrupted = true;
+		}
+		this->type &= ~CHECKSUM_FLAG_MASK;
+		int index = this->param2.size() - 4;
+		this->checksum = *(const uint32_t*)(this->param2.substr(index, 4).begin());
+		this->param2 = this->param2.substr(0, index);
+	}
+
+	// If param2 includes acs index suffix, remove the suffix and set it to this->accumulativeChecksumIndex
+	// Unflag the corresponding bit in type
+	void offloadAccumulativeChecksumIndex() {
+		if (this->accumulativeChecksumIndex.present()) {
+			TraceEvent(SevError, "MutationRefUnexpectedError")
+			    .setMaxFieldLength(-1)
+			    .setMaxEventLength(-1)
+			    .detail("Reason", "Internal acs index has been set when offloading acs index")
+			    .detail("Mutation", this->toString());
+			this->corrupted = true;
+		}
+		if (!withAccumulativeChecksumIndex()) {
+			return;
+		}
+		this->type &= ~ACCUMULATIVE_CHECKSUM_INDEX_FLAG_MASK;
+		int index = this->param2.size() - 2;
+		this->accumulativeChecksumIndex = *(const uint16_t*)(this->param2.substr(index, 2).begin());
+		this->param2 = this->param2.substr(0, index);
+	}
+
+	// Clear checksum and acs index if exist
+	void clearChecksumAndAccumulativeIndex() {
+		this->checksum.reset();
+		this->accumulativeChecksumIndex.reset();
+	}
+
+	// Validate param2 correctness
+	void validateParam2() {
+		if (withChecksum() && withAccumulativeChecksumIndex()) {
+			if (this->param2.size() < 6) { // 4 bytes for checksum, 2 bytes for accumulative index
+				TraceEvent(SevError, "MutationRefUnexpectedError")
+				    .setMaxFieldLength(-1)
+				    .setMaxEventLength(-1)
+				    .detail("Reason", "Param2 size is wrong with both checksum and acs index")
+				    .detail("Param2", this->param2)
+				    .detail("Mutation", toString());
+				this->corrupted = true;
+			}
+		} else if (withChecksum() && !withAccumulativeChecksumIndex()) {
+			if (this->param2.size() < 4) { // 4 bytes for checksum
+				TraceEvent(SevError, "MutationRefUnexpectedError")
+				    .setMaxFieldLength(-1)
+				    .setMaxEventLength(-1)
+				    .detail("Reason", "Param2 size is wrong with checksum and without acs index")
+				    .detail("Param2", this->param2)
+				    .detail("Mutation", toString());
+				this->corrupted = true;
+			}
+		}
+	}
+
+	// Generate 32 bits checksum and set it to this->checksum
+	void populateChecksum() {
+		if (!CLIENT_KNOBS->ENABLE_MUTATION_CHECKSUM) {
+			return;
+		}
+		if (withChecksum()) {
+			TraceEvent(SevError, "MutationRefUnexpectedError")
+			    .setMaxFieldLength(-1)
+			    .setMaxEventLength(-1)
+			    .detail("Reason", "Type already has checksum flag when populating checksum")
+			    .detail("Mutation", toString());
+			this->corrupted = true;
+		}
+		uint32_t crc = static_cast<uint32_t>(this->type);
+		crc = crc32c_append(crc, this->param1.begin(), this->param1.size());
+		crc = crc32c_append(crc, this->param2.begin(), this->param2.size());
+		if (this->checksum.present() && this->checksum.get() != crc) {
+			TraceEvent(SevError, "MutationRefUnexpectedError")
+			    .setMaxFieldLength(-1)
+			    .setMaxEventLength(-1)
+			    .detail("Reason", "Checksum mismatch when populating a new checksum")
+			    .detail("CalculatedChecksum", std::to_string(crc))
+			    .detail("Mutation", this->toString());
+			this->corrupted = true;
+		}
+		this->checksum = crc;
+	}
+
+	// Calculate crc based on type and param1 and param2 and compare the crc with this->checksum
+	bool validateChecksum() const {
+		if (this->corrupted) {
+			TraceEvent(SevError, "MutationRefUnexpectedError")
+			    .setMaxFieldLength(-1)
+			    .setMaxEventLength(-1)
+			    .detail("Reason", "Mutation has been marked as corrupted")
+			    .detail("Mutation", this->toString());
+			return false;
+		}
+		if (!this->checksum.present()) {
+			return true;
+		}
+		uint32_t crc = static_cast<uint32_t>(this->type);
+		crc = crc32c_append(crc, this->param1.begin(), this->param1.size());
+		crc = crc32c_append(crc, this->param2.begin(), this->param2.size());
+		if (crc != static_cast<uint32_t>(this->checksum.get())) {
+			TraceEvent(SevError, "MutationRefUnexpectedError")
+			    .setMaxFieldLength(-1)
+			    .setMaxEventLength(-1)
+			    .detail("Reason", "Mutation checksum mismatch")
+			    .detail("Mutation", this->toString())
+			    .detail("ExistingChecksum", this->checksum.get())
+			    .detail("NewChecksum", crc);
+			return false;
+		} else {
+			return true;
+		}
+	}
 
 	template <class Ar>
 	void serialize(Ar& ar) {
 		if (ar.isSerializing && type == ClearRange && equalsKeyAfter(param1, param2)) {
 			StringRef empty;
-			serializer(ar, type, param2, empty);
+			if (!isEncrypted() && ar.protocolVersion().hasMutationChecksum() &&
+			    CLIENT_KNOBS->ENABLE_MUTATION_CHECKSUM) {
+				// Attach checksum at first, then attach acs index
+				populateChecksum();
+				uint8_t cType = createTypeWithChecksum(this->type);
+				uint32_t cs = this->checksum.get();
+				Standalone<StringRef> cEmpty = empty.withSuffix(StringRef((uint8_t*)&cs, 4));
+				if (CLIENT_KNOBS->ENABLE_ACCUMULATIVE_CHECKSUM && this->accumulativeChecksumIndex.present()) {
+					cType = createTypeWithAccumulativeChecksumIndex(cType);
+					uint16_t acsIdx = this->accumulativeChecksumIndex.get();
+					cEmpty = cEmpty.withSuffix(StringRef((uint8_t*)&acsIdx, 2));
+				}
+				serializer(ar, cType, param2, cEmpty);
+			} else {
+				serializer(ar, type, param2, empty);
+			}
+		} else if (!isEncrypted() && ar.isSerializing && ar.protocolVersion().hasMutationChecksum() &&
+		           CLIENT_KNOBS->ENABLE_MUTATION_CHECKSUM) {
+			// Attach checksum at first, then attach acs index
+			populateChecksum();
+			uint8_t cType = createTypeWithChecksum(this->type);
+			uint32_t cs = this->checksum.get();
+			Standalone<StringRef> cParam2 = param2.withSuffix(StringRef((uint8_t*)&cs, 4));
+			if (CLIENT_KNOBS->ENABLE_ACCUMULATIVE_CHECKSUM && this->accumulativeChecksumIndex.present()) {
+				cType = createTypeWithAccumulativeChecksumIndex(cType);
+				uint16_t acsIdx = this->accumulativeChecksumIndex.get();
+				cParam2 = cParam2.withSuffix(StringRef((uint8_t*)&acsIdx, 2));
+			}
+			serializer(ar, cType, param1, cParam2);
 		} else {
 			serializer(ar, type, param1, param2);
 		}
-		if (ar.isDeserializing && type == ClearRange && param2 == StringRef() && param1 != StringRef()) {
-			ASSERT(param1[param1.size() - 1] == '\x00');
-			param2 = param1;
-			param1 = param2.substr(0, param2.size() - 1);
+
+		if (ar.isDeserializing) {
+			validateParam2();
+			if (withChecksum()) {
+				// Remove acs index at first, then remove checksum
+				if (withAccumulativeChecksumIndex()) {
+					offloadAccumulativeChecksumIndex();
+				}
+				offloadChecksum();
+			}
+			validateParam2();
+			if (type == ClearRange && param2 == StringRef() && param1 != StringRef()) {
+				if (param1[param1.size() - 1] != '\x00') {
+					TraceEvent(SevError, "MutationRefUnexpectedError")
+					    .setMaxFieldLength(-1)
+					    .setMaxEventLength(-1)
+					    .detail("Reason", "Param1 is not end with \\x00 for single key clear range")
+					    .detail("Param1", param1)
+					    .detail("Mutation", toString());
+					this->corrupted = true;
+				}
+				param2 = param1;
+				param1 = param2.substr(0, param2.size() - 1);
+			}
+			if (!validateChecksum()) {
+				TraceEvent(SevError, "MutationRefCorruptionDetected")
+				    .setMaxFieldLength(-1)
+				    .setMaxEventLength(-1)
+				    .detail("Mutation", this->toString());
+				this->corrupted = true;
+			}
 		}
 	}
 
@@ -354,7 +622,7 @@ struct CommitTransactionRef {
 	VectorRef<KeyRangeRef> read_conflict_ranges;
 	VectorRef<KeyRangeRef> write_conflict_ranges;
 	VectorRef<MutationRef> mutations; // metadata mutations
-	// encryptedMutations should be a 1-1 corespondence with mutations field above. That is either
+	// encryptedMutations should be a 1-1 correspondence with mutations field above. That is either
 	// encryptedMutations.size() == 0 or encryptedMutations.size() == mutations.size() and encryptedMutations[i] =
 	// mutations[i].encrypt(). Currently this field is not serialized so clients should NOT set this field during a
 	// usual commit path. It is currently only used during backup mutation log restores.

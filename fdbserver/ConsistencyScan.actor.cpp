@@ -329,7 +329,7 @@ ACTOR Future<int> consistencyCheckReadData(UID myId,
 					// Last value mismatch
 					KeyRef valueMismatchKey;
 
-					// Loop indeces
+					// Loop indexes
 					int currentI = 0;
 					int referenceI = 0;
 					while (currentI < current.data.size() || referenceI < reference.data.size()) {
@@ -547,7 +547,7 @@ ACTOR Future<Void> consistencyScanCore(Database db,
 				systemDB->setOptions(tr);
 
 				// Get the config and store the cs trigger version so we can detect updates later.
-				// Get the ConsistencyScanState config andThe ConsistencyScanState trigger will update when any of its
+				// Get the ConsistencyScanState config and the ConsistencyScanState trigger will update when any of its
 				// configuration members change.
 				wait(store(config, cs.config().getD(tr)));
 				wait(store(configVersion, cs.trigger.get(tr)));
@@ -680,7 +680,7 @@ ACTOR Future<Void> consistencyScanCore(Database db,
 			// reading using the actual amount that we read
 			state int totalReadBytesFromStorageServers = 0;
 
-			// We only want to update initialRoundState with *durable* progess, so if the loop below retries it must
+			// We only want to update initialRoundState with *durable* progress, so if the loop below retries it must
 			// start from the same initial state, so save it here and restore it at the start of the transaction.
 			state ConsistencyScanState::RoundStats savedCurrentRoundState = statsCurrentRound;
 
@@ -930,7 +930,7 @@ ACTOR Future<Void> consistencyScanCore(Database db,
 								// FIXME: increment failed request count if error present
 								ASSERT(failedRequest.get().code() != error_code_operation_cancelled);
 								// don't include replicated bytes this loop in metrics to avoid getting replication
-								// factor wrong, but make sure we stil throttle based on it
+								// factor wrong, but make sure we still throttle based on it
 								totalReadBytesFromStorageServers += 100000;
 								break;
 							}
@@ -1514,11 +1514,17 @@ ACTOR Future<Void> checkDataConsistency(Database cx,
 	    *bytesReadInPrevRound == 0
 	        ? maxRate
 	        : std::min(maxRate, static_cast<int64_t>(ceil(*bytesReadInPrevRound / (float)targetInterval)));
+	TraceEvent("ConsistencyCheck_RateLimitForThisRound")
+	    .detail("RateLimit", rateLimitForThisRound)
+	    .detail("BytesReadInPrevRound", *bytesReadInPrevRound)
+	    .detail("TargetInterval", targetInterval)
+	    .detail("MaxRate", maxRate);
 	ASSERT(rateLimitForThisRound >= 0 && rateLimitForThisRound <= maxRate);
-	TraceEvent("ConsistencyCheck_RateLimitForThisRound").detail("RateLimit", rateLimitForThisRound);
 	state Reference<IRateControl> rateLimiter = Reference<IRateControl>(new SpeedLimit(rateLimitForThisRound, 1));
 	state double rateLimiterStartTime = now();
 	state int64_t bytesReadInthisRound = 0;
+	state double rateLimiterCumulatedWaitTime = 0;
+	state bool decideToRunAtMaxRate = false;
 
 	state double dbSize = 100e12;
 	state int ssCount = 1e6;
@@ -1556,6 +1562,8 @@ ACTOR Future<Void> checkDataConsistency(Database cx,
 	        SystemDBWriteLockedNow(cx.getReference()), allKeys.begin, allKeys.end));
 	state int customReplicatedShards = 0;
 	state int underReplicatedShards = 0;
+	state int64_t numCheckedShard = 0;
+	state int64_t numCheckedReadShard = 0;
 
 	for (; i < ranges.size(); i++) {
 		state int shard = shardOrder[i];
@@ -1573,6 +1581,10 @@ ACTOR Future<Void> checkDataConsistency(Database cx,
 
 		// If the destStorageServers is non-empty, then this shard is being relocated
 		state bool isRelocating = destStorageServers.size() > 0;
+
+		state double shardCheckStartTime = now();
+		state double rateLimiterWaitTimeForThisShard = 0;
+		state double dataConsistencyCheckTimeForThisShard = 0;
 
 		int desiredReplicas = configuration.storageTeamSize;
 		if (ddLargeTeamEnabled()) {
@@ -1657,7 +1669,7 @@ ACTOR Future<Void> checkDataConsistency(Database cx,
 			    .detail("DesiredReplicas", desiredReplicas)
 			    .detail("UsableRegions", configuration.usableRegions)
 			    .detail("SSCount", ssCount);
-			// Record the server reponsible for the problematic shards
+			// Record the server responsible for the problematic shards
 			int k = 0;
 			for (auto& id : sourceStorageServers) {
 				TraceEvent("IncorrectSizeTeamInfo").detail("ServerUID", id).detail("TeamIndex", k++);
@@ -1753,6 +1765,7 @@ ACTOR Future<Void> checkDataConsistency(Database cx,
 
 					state std::vector<Future<ErrorOr<GetKeyValuesReply>>> keyValueFutures;
 					state Optional<int> firstValidServer;
+					state double dataConsistencyCheckBeginTime = now();
 
 					totalReadAmount = 0;
 					int failures = wait(consistencyCheckReadData(UID(),
@@ -1767,6 +1780,7 @@ ACTOR Future<Void> checkDataConsistency(Database cx,
 					if (failures > 0) {
 						testFailure("Data inconsistent", performQuiescentChecks, success, true);
 					}
+					dataConsistencyCheckTimeForThisShard += (now() - dataConsistencyCheckBeginTime);
 
 					// If the data is not available and we aren't relocating this shard
 					for (int i = 0; i < storageServerInterfaces.size(); i++) {
@@ -1863,8 +1877,12 @@ ACTOR Future<Void> checkDataConsistency(Database cx,
 						TraceEvent("ConsistencyCheck_RateLimit")
 						    .detail("RateLimitForThisRound", rateLimitForThisRound)
 						    .detail("TotalAmountRead", totalReadAmount);
+						state double rateLimiterBeforeWaitTime = now();
 						wait(rateLimiter->getAllowance(totalReadAmount));
-						TraceEvent("ConsistencyCheck_AmountRead1").detail("TotalAmountRead", totalReadAmount);
+						double rateLimiterCurrentWaitTime = now() - rateLimiterBeforeWaitTime;
+						rateLimiterWaitTimeForThisShard += rateLimiterCurrentWaitTime;
+						rateLimiterCumulatedWaitTime += rateLimiterCurrentWaitTime;
+						TraceEvent("ConsistencyCheck_AmountRead").detail("TotalAmountRead", totalReadAmount);
 						// Set ratelimit to max allowed if current round has been going on for a while
 						if (now() - rateLimiterStartTime > 1.1 * targetInterval && rateLimitForThisRound != maxRate) {
 							rateLimitForThisRound = maxRate;
@@ -1872,6 +1890,7 @@ ACTOR Future<Void> checkDataConsistency(Database cx,
 							rateLimiterStartTime = now();
 							TraceEvent(SevInfo, "ConsistencyCheck_RateLimitSetMaxForThisRound")
 							    .detail("RateLimit", rateLimitForThisRound);
+							decideToRunAtMaxRate = true;
 						}
 					}
 					bytesReadInRange += totalReadAmount;
@@ -2019,11 +2038,34 @@ ACTOR Future<Void> checkDataConsistency(Database cx,
 		}
 
 		if (bytesReadInRange > 0) {
+			numCheckedReadShard++;
 			TraceEvent("ConsistencyCheck_ReadRange")
 			    .suppressFor(1.0)
 			    .detail("Range", range)
 			    .detail("BytesRead", bytesReadInRange);
 		}
+		numCheckedShard++;
+
+		TraceEvent("ConsistencyCheck_ShardComplete")
+		    .suppressFor(1.0)
+		    .detail("Index", i)
+		    .detail("BytesReadInthisRound", bytesReadInthisRound)
+		    .detail("NumCheckedReadShard", numCheckedReadShard)
+		    .detail("NumCheckedShard", numCheckedShard)
+		    .detail("Range", range)
+		    .detail("BytesRead", bytesReadInRange)
+		    .detail("ShardCheckTime", now() - shardCheckStartTime)
+		    .detail("DataConsistencyCheckTime", dataConsistencyCheckTimeForThisShard)
+		    .detail("RateLimitTime", rateLimiterWaitTimeForThisShard)
+		    .detail("CumulatedRateLimitTime", rateLimiterCumulatedWaitTime)
+		    .detail("DecideToRunAtMaxRate", decideToRunAtMaxRate)
+		    .detail("ClientId", clientId)
+		    .detail("ClientCount", clientCount)
+		    .detail("FirstClient", firstClient)
+		    .detail("Distributed", distributed)
+		    .detail("PerformTSSCheck", performTSSCheck)
+		    .detail("ShardSampleFactor", shardSampleFactor)
+		    .detail("EffectiveClientCount", effectiveClientCount);
 	}
 
 	if (customReplicatedShards > SERVER_KNOBS->DD_MAX_SHARDS_ON_LARGE_TEAMS) {

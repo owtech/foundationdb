@@ -381,7 +381,9 @@ Future<Void> MockStorageServer::waitMetricsTenantAware(const WaitMetricsRequest&
 void MockStorageServer::getStorageMetrics(const GetStorageMetricsRequest& req) {
 	StorageBytes storageBytes(
 	    totalDiskSpace - usedDiskSpace, totalDiskSpace, usedDiskSpace, totalDiskSpace - usedDiskSpace);
-	metrics.getStorageMetrics(req, storageBytes, counters.bytesInput.getRate(), 0, now());
+	metrics.getStorageMetrics(
+	    req, storageBytes, counters.bytesInput.getRate(), 0, now(), 0, counters.bytesInput.getValue());
+	// FIXME: MockStorageServer does not support bytesDurable yet
 }
 
 void MockStorageServer::getSplitMetrics(const SplitMetricsRequest& req) {
@@ -390,6 +392,10 @@ void MockStorageServer::getSplitMetrics(const SplitMetricsRequest& req) {
 
 void MockStorageServer::getHotRangeMetrics(const ReadHotSubRangeRequest& req) {
 	this->metrics.getReadHotRanges(req);
+}
+
+int64_t MockStorageServer::getHotShardsMetrics(const KeyRange& range) {
+	return 0;
 }
 
 Future<Void> MockStorageServer::run() {

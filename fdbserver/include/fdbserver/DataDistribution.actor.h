@@ -54,6 +54,7 @@ public:
 		OTHER = 0,
 		REBALANCE_DISK,
 		REBALANCE_READ,
+		REBALANCE_WRITE,
 		MERGE_SHARD,
 		SIZE_SPLIT,
 		WRITE_SPLIT,
@@ -70,6 +71,8 @@ public:
 			return "RebalanceDisk";
 		case REBALANCE_READ:
 			return "RebalanceRead";
+		case REBALANCE_WRITE:
+			return "RebalanceWrite";
 		case MERGE_SHARD:
 			return "MergeShard";
 		case SIZE_SPLIT:
@@ -91,28 +94,6 @@ private:
 	Value value;
 };
 
-// One-to-one relationship to the priority knobs
-enum class DataMovementReason {
-	INVALID,
-	RECOVER_MOVE,
-	REBALANCE_UNDERUTILIZED_TEAM,
-	REBALANCE_OVERUTILIZED_TEAM,
-	REBALANCE_READ_OVERUTIL_TEAM,
-	REBALANCE_READ_UNDERUTIL_TEAM,
-	PERPETUAL_STORAGE_WIGGLE,
-	TEAM_HEALTHY,
-	TEAM_CONTAINS_UNDESIRED_SERVER,
-	TEAM_REDUNDANT,
-	MERGE_SHARD,
-	POPULATE_REGION,
-	TEAM_UNHEALTHY,
-	TEAM_2_LEFT,
-	TEAM_1_LEFT,
-	TEAM_FAILED,
-	TEAM_0_LEFT,
-	SPLIT_SHARD,
-	ENFORCE_MOVE_OUT_OF_PHYSICAL_SHARD
-};
 extern int dataMovementPriority(DataMovementReason moveReason);
 extern DataMovementReason priorityToDataMovementReason(int priority);
 
@@ -402,7 +383,7 @@ private:
 	// A physical shard is available if the current metric + moveInMetrics <= a threshold
 	PhysicalShardAvailable checkPhysicalShardAvailable(uint64_t physicalShardID, StorageMetrics const& moveInMetrics);
 
-	// Reduce the metics of input physical shard by the input metrics
+	// Reduce the metrics of input physical shard by the input metrics
 	void reduceMetricsForMoveOut(uint64_t physicalShardID, StorageMetrics const& metrics);
 
 	// Add the input metrics to the metrics of input physical shard
@@ -426,7 +407,7 @@ private:
 	// Checks the consistency between the mapping of physical shards and key ranges.
 	void checkKeyRangePhysicalShardMapping();
 
-	// Return a string concating the input IDs interleaving with " "
+	// Return a string concatenating the input IDs interleaving with " "
 	std::string convertIDsToString(std::set<uint64_t> ids);
 
 	// Reset TransitionStartTime
@@ -466,6 +447,18 @@ private:
 	std::map<ShardsAffectedByTeamFailure::Team, std::set<uint64_t>> teamPhysicalShardIDs;
 	bool requireTransition;
 	double lastTransitionStartTime;
+};
+
+struct RebalanceStorageQueueRequest {
+	UID serverId;
+	std::vector<ShardsAffectedByTeamFailure::Team> teams;
+	bool primary;
+
+	RebalanceStorageQueueRequest() {}
+	RebalanceStorageQueueRequest(UID serverId,
+	                             const std::vector<ShardsAffectedByTeamFailure::Team>& teams,
+	                             bool primary)
+	  : serverId(serverId), teams(teams), primary(primary) {}
 };
 
 // DDShardInfo is so named to avoid link-time name collision with ShardInfo within the StorageServer

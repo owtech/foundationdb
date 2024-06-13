@@ -71,7 +71,7 @@ void printDecodeUsage() {
 	             "  -i, --input    FILE\n"
 	             "                 Log file filter, only matched files are decoded.\n"
 	             "  --log          Enables trace file logging for the CLI session.\n"
-	             "  --logdir PATH  Specifes the output directory for trace files. If\n"
+	             "  --logdir PATH  Specifies the output directory for trace files. If\n"
 	             "                 unspecified, defaults to the current directory. Has\n"
 	             "                 no effect unless --log is specified.\n"
 	             "  --loggroup     LOG_GROUP\n"
@@ -687,7 +687,7 @@ public:
 				}
 			}
 
-			self->lfd = open(self->file.fileName.c_str(), O_WRONLY | O_CREAT | O_TRUNC);
+			self->lfd = open(self->file.fileName.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
 			if (self->lfd == -1) {
 				TraceEvent(SevError, "OpenLocalFileFailed").detail("File", self->file.fileName);
 				throw platform_error();
@@ -887,7 +887,7 @@ ACTOR Future<Void> decode_logs(Reference<DecodeParams> params) {
 		// rangeFiles = getRelevantRangeFiles(filteredRangeFiles, params);
 		std::vector<RangeFile> files = wait(getRangeFiles(container, params));
 		rangeFiles = files;
-		printLogFiles("Releavant range files are: ", rangeFiles);
+		printLogFiles("Relevant range files are: ", rangeFiles);
 	}
 
 	TraceEvent("TotalFiles", uid).detail("LogFiles", logFiles.size()).detail("RangeFiles", rangeFiles.size());

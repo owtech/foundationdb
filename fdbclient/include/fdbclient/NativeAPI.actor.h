@@ -164,6 +164,8 @@ struct TransactionOptions {
 	bool skipGrvCache : 1;
 	bool rawAccess : 1;
 	bool bypassStorageQuota : 1;
+	bool enableReplicaConsistencyCheck : 1;
+	int requiredReplicas;
 
 	TransactionPriority priority;
 
@@ -289,7 +291,7 @@ struct TransactionState : ReferenceCounted<TransactionState> {
 	double proxyTagThrottledDuration = 0.0;
 
 	// Special flag to skip prepending tenant prefix to mutations and conflict ranges
-	// when a dummy, internal transaction gets commited. The sole purpose of commitDummyTransaction() is to
+	// when a dummy, internal transaction gets committed. The sole purpose of commitDummyTransaction() is to
 	// resolve the state of earlier transaction that returned commit_unknown_result or request_maybe_delivered.
 	// Therefore, the dummy transaction can simply reuse one conflict range of the earlier commit, if it already has
 	// been prefixed.
@@ -333,6 +335,8 @@ struct TransactionState : ReferenceCounted<TransactionState> {
 	Optional<Reference<Tenant>> const& tenant();
 	bool hasTenant(ResolveDefaultTenant ResolveDefaultTenant = ResolveDefaultTenant::True);
 	int64_t tenantId() const { return tenant_.present() ? tenant_.get()->id() : TenantInfo::INVALID_TENANT; }
+
+	void addClearCost();
 
 	Future<Void> startTransaction(uint32_t readVersionFlags = 0);
 	Future<Version> getReadVersion(uint32_t flags);
@@ -652,7 +656,7 @@ int64_t getMaxKeySize(KeyRef const& key);
 int64_t getMaxReadKeySize(KeyRef const& key);
 
 // Returns the maximum legal size of a key that can be written. If using raw access, writes to normal keys will
-// be allowed to be slighly larger to accommodate the prefix.
+// be allowed to be slightly larger to accommodate the prefix.
 int64_t getMaxWriteKeySize(KeyRef const& key, bool hasRawAccess);
 
 // Returns the maximum legal size of a key that can be cleared. Keys larger than this will be assumed not to exist.

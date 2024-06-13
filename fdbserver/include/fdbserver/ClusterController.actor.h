@@ -18,24 +18,23 @@
  * limitations under the License.
  */
 
-#pragma once
-
 // When actually compiled (NO_INTELLISENSE), include the generated version of this file.  In intellisense use the source
 // version.
-#include "fdbclient/StorageServerInterface.h"
-#include "fdbserver/BlobMigratorInterface.h"
-#include <utility>
-
 #if defined(NO_INTELLISENSE) && !defined(FDBSERVER_CLUSTERCONTROLLER_ACTOR_G_H)
 #define FDBSERVER_CLUSTERCONTROLLER_ACTOR_G_H
 #include "fdbserver/ClusterController.actor.g.h"
 #elif !defined(FDBSERVER_CLUSTERCONTROLLER_ACTOR_H)
 #define FDBSERVER_CLUSTERCONTROLLER_ACTOR_H
+#pragma once
+
+#include <utility>
 
 #include "fdbclient/DatabaseContext.h"
 #include "fdbclient/MetaclusterRegistration.h"
+#include "fdbclient/StorageServerInterface.h"
 #include "fdbrpc/Replication.h"
 #include "fdbrpc/ReplicationUtils.h"
+#include "fdbserver/BlobMigratorInterface.h"
 #include "fdbserver/Knobs.h"
 #include "fdbserver/WorkerInterface.actor.h"
 #include "flow/SystemMonitor.h"
@@ -440,7 +439,7 @@ public:
 		std::set<AddressExclusion> excludedAddresses(req.excludeAddresses.begin(), req.excludeAddresses.end());
 		for (auto& it : id_worker) {
 			// the worker must be available, have the same dcID as CC,
-			// not be one of the excluded addrs from req and have the approriate fitness
+			// not be one of the excluded addrs from req and have the appropiate fitness
 			if (workerAvailable(it.second, false) &&
 			    clusterControllerDcId == it.second.details.interf.locality.dcId() &&
 			    !addressExcluded(excludedAddresses, it.second.details.interf.address()) &&
@@ -3394,12 +3393,18 @@ public:
 	AsyncTrigger updateDBInfo;
 	std::set<Endpoint> updateDBInfoEndpoints;
 	std::set<Endpoint> removedDBInfoEndpoints;
+	std::vector<StorageServerMetaInfo> storageStatusInfos;
 
 	DBInfo db;
 	Database cx;
 	double startTime;
 	Future<Void> goodRecruitmentTime;
 	Future<Void> goodRemoteRecruitmentTime;
+	// Lag between primary and remote log servers.
+	Version dcLogServerVersionDifference;
+	// Lag between primary and remote storage servers.
+	Version dcStorageServerVersionDifference;
+	// Max of "dcLogServerVersionDifference" and "dcStorageServerVersionDifference".
 	Version datacenterVersionDifference;
 	PromiseStream<Future<Void>> addActor;
 	bool versionDifferenceUpdated;
@@ -3466,10 +3471,11 @@ public:
 	    clusterControllerProcessId(locality.processId()), clusterControllerDcId(locality.dcId()), id(ccInterface.id()),
 	    clusterId(clusterId), ac(false), outstandingRequestChecker(Void()), outstandingRemoteRequestChecker(Void()),
 	    startTime(now()), goodRecruitmentTime(Never()), goodRemoteRecruitmentTime(Never()),
-	    datacenterVersionDifference(0), versionDifferenceUpdated(false), remoteDCMonitorStarted(false),
-	    remoteTransactionSystemDegraded(false), recruitDistributor(false), recruitRatekeeper(false),
-	    recruitBlobManager(false), recruitBlobMigrator(false), recruitEncryptKeyProxy(false),
-	    recruitConsistencyScan(false), clusterControllerMetrics("ClusterController", id.toString()),
+	    dcLogServerVersionDifference(0), dcStorageServerVersionDifference(0), datacenterVersionDifference(0),
+	    versionDifferenceUpdated(false), remoteDCMonitorStarted(false), remoteTransactionSystemDegraded(false),
+	    recruitDistributor(false), recruitRatekeeper(false), recruitBlobManager(false), recruitBlobMigrator(false),
+	    recruitEncryptKeyProxy(false), recruitConsistencyScan(false),
+	    clusterControllerMetrics("ClusterController", id.toString()),
 	    openDatabaseRequests("OpenDatabaseRequests", clusterControllerMetrics),
 	    registerWorkerRequests("RegisterWorkerRequests", clusterControllerMetrics),
 	    getWorkersRequests("GetWorkersRequests", clusterControllerMetrics),

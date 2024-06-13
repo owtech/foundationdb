@@ -61,7 +61,7 @@
 #include "fdbrpc/Net2FileSystem.h"
 #include "fdbrpc/Replication.h"
 #include "fdbrpc/ReplicationUtils.h"
-#include "fdbrpc/AsyncFileWriteChecker.h"
+#include "fdbrpc/AsyncFileWriteChecker.actor.h"
 #include "fdbrpc/genericactors.actor.h"
 #include "flow/FaultInjection.h"
 #include "flow/TaskQueue.h"
@@ -655,6 +655,8 @@ int sf_open(const char* filename, int flags, int convFlags, int mode) {
 class SimpleFile : public IAsyncFile, public ReferenceCounted<SimpleFile> {
 public:
 	static void init() {}
+
+	virtual StringRef getClassName() override { return "SimpleFile"_sr; }
 
 	static bool should_poll() { return false; }
 
@@ -2905,6 +2907,7 @@ Future<Reference<IUDPSocket>> Sim2::createUDPSocket(bool isV6) {
 
 void startNewSimulator(bool printSimTime) {
 	ASSERT(!g_network);
+	ASSERT(!g_simulator);
 	g_network = g_simulator = new Sim2(printSimTime);
 	g_simulator->connectionFailuresDisableDuration =
 	    deterministicRandom()->coinflip() ? 0 : DISABLE_CONNECTION_FAILURE_FOREVER;

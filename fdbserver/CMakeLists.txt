@@ -166,10 +166,6 @@ endif()
 if (WITH_SWIFT)
   target_link_libraries(fdbserver PRIVATE swiftCxx swiftCxxStdlib)
 endif()
-
-if (WITH_SWIFT)
-  target_link_libraries(fdbserver PRIVATE swiftCxx swiftCxxStdlib)
-endif()
 # target_compile_definitions(fdbserver PRIVATE -DENABLE_SAMPLING)
 
 if(GPERFTOOLS_FOUND)

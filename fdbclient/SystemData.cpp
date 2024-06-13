@@ -62,7 +62,7 @@ const KeyRangeRef keyServersKeyServersKeys("\xff/keyServers/\xff/keyServers/"_sr
 const KeyRef keyServersKeyServersKey = keyServersKeyServersKeys.begin;
 
 // These constants are selected to be easily recognized during debugging.
-// Note that the last bit of the follwing constants is 0, indicating that physical shard move is disabled.
+// Note that the last bit of the following constants is 0, indicating that physical shard move is disabled.
 const UID anonymousShardId = UID(0x666666, 0x88888888);
 const uint64_t emptyShardId = 0x2222222;
 
@@ -303,6 +303,19 @@ const KeyRangeRef readConflictRangeKeysRange =
 const KeyRangeRef writeConflictRangeKeysRange = KeyRangeRef("\xff\xff/transaction/write_conflict_range/"_sr,
                                                             "\xff\xff/transaction/write_conflict_range/\xff\xff"_sr);
 
+const KeyRef accumulativeChecksumKey = "\xff\xff/accumulativeChecksum"_sr;
+
+const Value accumulativeChecksumValue(const AccumulativeChecksumState& acsState) {
+	return ObjectWriter::toValue(acsState, IncludeVersion());
+}
+
+AccumulativeChecksumState decodeAccumulativeChecksum(const ValueRef& value) {
+	AccumulativeChecksumState acsState;
+	ObjectReader reader(value.begin(), IncludeVersion());
+	reader.deserialize(acsState);
+	return acsState;
+}
+
 const KeyRangeRef auditKeys = KeyRangeRef("\xff/audits/"_sr, "\xff/audits0"_sr);
 const KeyRef auditPrefix = auditKeys.begin;
 const KeyRangeRef auditRanges = KeyRangeRef("\xff/auditRanges/"_sr, "\xff/auditRanges0"_sr);
@@ -518,7 +531,8 @@ const ValueRef serverKeysTrue = "1"_sr, // compatible with what was serverKeysTr
 
 const UID newDataMoveId(const uint64_t physicalShardId,
                         AssignEmptyRange assignEmptyRange,
-                        EnablePhysicalShardMove enablePSM,
+                        const DataMoveType type,
+                        const DataMovementReason reason,
                         UnassignShard unassignShard) {
 	uint64_t split = 0;
 	if (assignEmptyRange) {
@@ -528,11 +542,12 @@ const UID newDataMoveId(const uint64_t physicalShardId,
 	} else {
 		do {
 			split = deterministicRandom()->randomUInt64();
-			if (enablePSM) {
-				split |= 1U;
-			} else {
-				split &= ~1U;
-			}
+			// Clear the lower 16 bits
+			split = (~0xFFFF) & split;
+			// Set DataMoveType to the lower [0, 8) bits
+			split = split | static_cast<uint64_t>(type);
+			// Set DataMovementReason to the lower [8, 16) bits
+			split = split | (static_cast<uint64_t>(reason) << 8);
 		} while (split == anonymousShardId.second() || split == 0 || split == emptyShardId);
 	}
 	return UID(physicalShardId, split);
@@ -574,8 +589,9 @@ std::pair<UID, Key> serverKeysDecodeServerBegin(const KeyRef& key) {
 bool serverHasKey(ValueRef storedValue) {
 	UID shardId;
 	bool assigned, emptyRange;
-	EnablePhysicalShardMove enablePSM = EnablePhysicalShardMove::False;
-	decodeServerKeysValue(storedValue, assigned, emptyRange, enablePSM, shardId);
+	DataMoveType dataMoveType = DataMoveType::LOGICAL;
+	DataMovementReason dataMoveReason = DataMovementReason::INVALID;
+	decodeServerKeysValue(storedValue, assigned, emptyRange, dataMoveType, shardId, dataMoveReason);
 	return assigned;
 }
 
@@ -589,12 +605,62 @@ const Value serverKeysValue(const UID& id) {
 	return wr.toValue();
 }
 
+void decodeDataMoveId(const UID& id,
+                      bool& assigned,
+                      bool& emptyRange,
+                      DataMoveType& dataMoveType,
+                      DataMovementReason& dataMoveReason) {
+	dataMoveType = DataMoveType::LOGICAL;
+	dataMoveReason = DataMovementReason::INVALID;
+	assigned = id.second() != 0LL;
+	emptyRange = id.second() == emptyShardId;
+	if (assigned && !emptyRange && id != anonymousShardId) {
+		dataMoveType = static_cast<DataMoveType>(0xFF & id.second());
+		if (dataMoveType >= DataMoveType::NUMBER_OF_TYPES || dataMoveType < DataMoveType::LOGICAL) {
+			TraceEvent(SevWarnAlways, "DecodeDataMoveIdError")
+			    .detail("Reason", "DataMoveTypeOutScope")
+			    .detail("Value", dataMoveType)
+			    .detail("DataMoveID", id)
+			    .detail("SplitIDToDecode", id.second());
+			dataMoveType = DataMoveType::LOGICAL;
+			// When upgrade from a release 7.3.x where dataMoveType is not encoded in
+			// datamove id, the decoded dataMoveType can be out of scope.
+			// For this case, we set it to DataMoveType::LOGICAL.
+			// It is possible that the new binary decodes a wrong data move type.
+			// However, it only affects whether dest SSes use physical shard move
+			// to get the data from the source server.
+			// When SS decodes a data move type, SS checks whether its KVStore supports
+			// the data move type. If no, SS will use DataMoveType::LOGICAL by default.
+		}
+		dataMoveReason = static_cast<DataMovementReason>(0xFF & (id.second() >> 8));
+		if (dataMoveReason >= DataMovementReason::NUMBER_OF_REASONS || dataMoveReason < DataMovementReason::INVALID) {
+			TraceEvent(SevWarnAlways, "DecodeDataMoveIdError")
+			    .detail("Reason", "DataMoveReasonOutScope")
+			    .detail("Value", dataMoveReason)
+			    .detail("DataMoveID", id)
+			    .detail("SplitIDToDecode", id.second());
+			dataMoveReason = DataMovementReason::INVALID;
+			// When upgrade from release-7.3 where dataMoveReason is not encoded in
+			// datamove id, the decoded reason can be out of scope.
+			// For this case, we set it to DataMovementReason::INVALID.
+			// Currently, this is only used by priority-based fetchKeys throttling.
+			// It is possible that the new binary decodes a wrong data move reason.
+			// However, it only effects the throttling decison made by the fetchKeys.
+			// If the fetchKeys throttling is enabled and it misbehaves after the upgrading
+			// from release-7.3, users can temporarily disable the feature until the old data moves
+			// have been consumed.
+		}
+	}
+}
+
 void decodeServerKeysValue(const ValueRef& value,
                            bool& assigned,
                            bool& emptyRange,
-                           EnablePhysicalShardMove& enablePSM,
-                           UID& id) {
-	enablePSM = EnablePhysicalShardMove::False;
+                           DataMoveType& dataMoveType,
+                           UID& id,
+                           DataMovementReason& dataMoveReason) {
+	dataMoveType = DataMoveType::LOGICAL;
+	dataMoveReason = DataMovementReason::INVALID;
 	if (value.size() == 0) {
 		assigned = false;
 		emptyRange = false;
@@ -615,11 +681,7 @@ void decodeServerKeysValue(const ValueRef& value,
 		BinaryReader rd(value, IncludeVersion());
 		ASSERT(rd.protocolVersion().hasShardEncodeLocationMetaData());
 		rd >> id;
-		assigned = id.second() != 0;
-		emptyRange = id.second() == emptyShardId;
-		if (id.second() & 1U) {
-			enablePSM = EnablePhysicalShardMove::True;
-		}
+		decodeDataMoveId(id, assigned, emptyRange, dataMoveType, dataMoveReason);
 	}
 }
 
@@ -690,7 +752,20 @@ UID decodeTssQuarantineKey(KeyRef const& key) {
 
 const KeyRangeRef tssMismatchKeys("\xff/tssMismatch/"_sr, "\xff/tssMismatch0"_sr);
 
+const KeyRef serverMetadataChangeKey = "\xff\x02/serverMetadataChanges"_sr;
 const KeyRangeRef serverMetadataKeys("\xff/serverMetadata/"_sr, "\xff/serverMetadata0"_sr);
+
+UID decodeServerMetadataKey(const KeyRef& key) {
+	// Key is packed by KeyBackedObjectMap::packKey
+	return TupleCodec<UID>::unpack(key.removePrefix(serverMetadataKeys.begin));
+}
+
+StorageMetadataType decodeServerMetadataValue(const KeyRef& value) {
+	StorageMetadataType type;
+	ObjectReader rd(value.begin(), IncludeVersion());
+	rd.deserialize(type);
+	return type;
+}
 
 const KeyRangeRef serverTagKeys("\xff/serverTag/"_sr, "\xff/serverTag0"_sr);
 
@@ -1141,6 +1216,7 @@ const KeyRef primaryLocalityKey = "\xff/globals/primaryLocality"_sr;
 const KeyRef primaryLocalityPrivateKey = "\xff\xff/globals/primaryLocality"_sr;
 const KeyRef fastLoggingEnabled = "\xff/globals/fastLoggingEnabled"_sr;
 const KeyRef fastLoggingEnabledPrivateKey = "\xff\xff/globals/fastLoggingEnabled"_sr;
+const KeyRef constructDataKey = "\xff/globals/constructData"_sr;
 
 // Whenever configuration changes or DD related system keyspace is changed(e.g.., serverList),
 // actor must grab the moveKeysLockOwnerKey and update moveKeysLockWriteKey.
@@ -1188,6 +1264,9 @@ const KeyRangeRef applyLogKeys("\xff\x02/alog/"_sr, "\xff\x02/alog0"_sr);
 bool isBackupLogMutation(const MutationRef& m) {
 	return isSingleKeyMutation((MutationRef::Type)m.type) &&
 	       (backupLogKeys.contains(m.param1) || applyLogKeys.contains(m.param1));
+}
+bool isAccumulativeChecksumMutation(const MutationRef& m) {
+	return m.type == MutationRef::SetValue && m.param1 == accumulativeChecksumKey;
 }
 // static_assert( backupLogKeys.begin.size() == backupLogPrefixBytes, "backupLogPrefixBytes incorrect" );
 const KeyRef backupVersionKey = "\xff/backupDataFormat"_sr;
@@ -1267,6 +1346,26 @@ Key uidPrefixKey(KeyRef keyPrefix, UID logUid) {
 	bw.serializeBytes(keyPrefix);
 	bw << logUid;
 	return bw.toValue();
+}
+
+std::tuple<Standalone<StringRef>, uint64_t, uint64_t, uint64_t> decodeConstructKeys(ValueRef value) {
+	StringRef keyStart;
+	uint64_t valSize, keyCount, seed;
+	BinaryReader rd(value, Unversioned());
+	rd >> keyStart;
+	rd >> valSize;
+	rd >> keyCount;
+	rd >> seed;
+	return std::make_tuple(keyStart, valSize, keyCount, seed);
+}
+
+Value encodeConstructValue(StringRef keyStart, uint64_t valSize, uint64_t keyCount, uint64_t seed) {
+	BinaryWriter wr(Unversioned());
+	wr << keyStart;
+	wr << valSize;
+	wr << keyCount;
+	wr << seed;
+	return wr.toValue();
 }
 
 // Apply mutations constant variables
@@ -2055,6 +2154,27 @@ TEST_CASE("noSim/SystemData/compat/KeyServers") {
 	decodeAndVerify(v, anonymousShardId, UID());
 
 	printf("ssi serdes test complete\n");
+
+	return Void();
+}
+
+TEST_CASE("noSim/SystemData/DataMoveId") {
+	printf("testing data move ID encoding/decoding\n");
+	const uint64_t physicalShardId = deterministicRandom()->randomUInt64();
+	const DataMoveType type =
+	    static_cast<DataMoveType>(deterministicRandom()->randomInt(0, static_cast<int>(DataMoveType::NUMBER_OF_TYPES)));
+	const DataMovementReason reason = static_cast<DataMovementReason>(
+	    deterministicRandom()->randomInt(1, static_cast<int>(DataMovementReason::NUMBER_OF_REASONS)));
+	const UID dataMoveId = newDataMoveId(physicalShardId, AssignEmptyRange(false), type, reason, UnassignShard(false));
+
+	bool assigned, emptyRange;
+	DataMoveType decodeType;
+	DataMovementReason decodeReason = DataMovementReason::INVALID;
+	decodeDataMoveId(dataMoveId, assigned, emptyRange, decodeType, decodeReason);
+
+	ASSERT(type == decodeType && reason == decodeReason);
+
+	printf("testing data move ID encoding/decoding complete\n");
 
 	return Void();
 }

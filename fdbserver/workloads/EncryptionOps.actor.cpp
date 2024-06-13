@@ -98,18 +98,18 @@ struct WorkloadMetrics {
 // -----------------------
 // Correctness invariants are validated at various steps:
 // 1. Encryption key correctness: as part of performing decryption, BlobCipherKeyCache lookup is done to procure
-//    desired encrytion key based on: {encryptionDomainId, baseCipherId}; the obtained key is validated against
+//    desired encryption key based on: {encryptionDomainId, baseCipherId}; the obtained key is validated against
 //    the encryption key used for encrypting the data.
 // 2. After encryption, generated 'encryption header' fields are validated, encrypted buffer size and contents are
 //    validated.
-// 3. After decryption, the obtained deciphertext is validated against the orginal plaintext payload.
+// 3. After decryption, the obtained deciphertext is validated against the original plaintext payload.
 //
 // Performance metrics:
 // -------------------
 // The workload generator profiles below operations across the iterations and logs the details at the end, they are:
 // 1. Time spent in encryption key fetch (and derivation) operations.
-// 2. Time spent encrypting the buffer (doesn't incude key lookup time); also records the throughput in MB/sec.
-// 3. Time spent decrypting the buffer (doesn't incude key lookup time); also records the throughput in MB/sec.
+// 2. Time spent encrypting the buffer (doesn't include key lookup time); also records the throughput in MB/sec.
+// 3. Time spent decrypting the buffer (doesn't include key lookup time); also records the throughput in MB/sec.
 
 struct EncryptionOpsWorkload : TestWorkload {
 	static constexpr auto NAME = "EncryptionOps";
@@ -308,7 +308,10 @@ struct EncryptionOpsWorkload : TestWorkload {
 
 		// validate encrypted buffer size and contents (not matching with plaintext)
 		ASSERT_EQ(encrypted->getLogicalSize(), len);
-		ASSERT_NE(memcmp(encrypted->begin(), payload, len), 0);
+		if (g_network->isSimulated() && ENABLE_MUTATION_TRACKING_WITH_BLOB_CIPHER)
+			ASSERT_EQ(memcmp(encrypted->begin(), payload, len), 0);
+		else
+			ASSERT_NE(memcmp(encrypted->begin(), payload, len), 0);
 		ASSERT_EQ(header->flags.headerVersion, EncryptBlobCipherAes265Ctr::ENCRYPT_HEADER_VERSION);
 
 		metrics->updateEncryptionTime(std::chrono::duration<double, std::nano>(end - start).count());
@@ -353,7 +356,10 @@ struct EncryptionOpsWorkload : TestWorkload {
 
 		ASSERT_EQ(encrypted.size(), len);
 		ASSERT_EQ(headerRef->flagsVersion(), CLIENT_KNOBS->ENCRYPT_HEADER_FLAGS_VERSION);
-		ASSERT_NE(memcmp(encrypted.begin(), payload, len), 0);
+		if (g_network->isSimulated() && ENABLE_MUTATION_TRACKING_WITH_BLOB_CIPHER)
+			ASSERT_EQ(memcmp(encrypted.begin(), payload, len), 0);
+		else
+			ASSERT_NE(memcmp(encrypted.begin(), payload, len), 0);
 
 		metrics->updateEncryptionTime(std::chrono::duration<double, std::nano>(end - start).count());
 		return encrypted;

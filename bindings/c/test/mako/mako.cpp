@@ -1207,7 +1207,7 @@ void usage() {
 	       "Duration in milliseconds after which a transaction times out in run mode. Set as transaction option");
 }
 
-/* parse benchmark paramters */
+/* parse benchmark parameters */
 int parseArguments(int argc, char* argv[], Arguments& args) {
 	int rc;
 	int c;
@@ -2378,7 +2378,7 @@ int statsProcessMain(Arguments const& args,
 		fmt::fprintf(fp, "\"txntrace\": %d,", args.txntrace);
 		fmt::fprintf(fp, "\"txntagging\": %d,", args.txntagging);
 		fmt::fprintf(fp, "\"txntagging_prefix\": \"%s\",", args.txntagging_prefix);
-		fmt::fprintf(fp, "\"streaming_mode\": %d,", args.streaming_mode);
+		fmt::fprintf(fp, "\"streaming_mode\": %d,", static_cast<int>(args.streaming_mode));
 		fmt::fprintf(fp, "\"disable_ryw\": %d,", args.disable_ryw);
 		fmt::fprintf(fp, "\"transaction_timeout_db\": %d,", args.transaction_timeout_db);
 		fmt::fprintf(fp, "\"transaction_timeout_tx\": %d,", args.transaction_timeout_tx);
@@ -2519,7 +2519,7 @@ int main(int argc, char* argv[]) {
 
 	// set --seconds in case no ending condition has been set
 	if (args.seconds == 0 && args.iteration == 0) {
-		args.seconds = 30; // default value accodring to documentation
+		args.seconds = 30; // default value according to documentation
 	}
 
 	// if no cluster file is passed, fall back to default parameters

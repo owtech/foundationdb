@@ -38,6 +38,7 @@
 #include "flow/ActorCollection.h"
 #include "flow/Error.h"
 #include "flow/FileIdentifier.h"
+#include "flow/IRandom.h"
 #include "flow/Knobs.h"
 #include "flow/ObjectSerializer.h"
 #include "flow/Platform.h"
@@ -1175,6 +1176,7 @@ UpdateWorkerHealthRequest doPeerHealthCheck(const WorkerInterface& interf,
 
 		// If peer->lastLoggedTime == 0, we just started monitor this peer and haven't logged it once yet.
 		double lastLoggedTime = peer->lastLoggedTime <= 0.0 ? peer->lastConnectTime : peer->lastLoggedTime;
+
 		TraceEvent(SevDebug, "PeerHealthMonitor")
 		    .detail("Peer", address)
 		    .detail("Force", enablePrimaryTxnSystemHealthCheck->get())
@@ -1565,11 +1567,12 @@ struct TrackRunningStorage {
 	                    std::unordered_map<UID, StorageDiskCleaner>* storageCleaners)
 	  : self(self), storeType(storeType), locality(locality), filename(filename), runningStorages(runningStorages),
 	    storageCleaners(storageCleaners) {
-		TraceEvent("StorageServerInitProgress", self).detail("Step", "4.AddedItselfToRunningStorageOnSameWorker");
+		TraceEvent("StorageServerAddedToRunningStorage", self);
 		runningStorages->emplace(self, storeType);
 	}
 	~TrackRunningStorage() {
 		runningStorages->erase(std::make_pair(self, storeType));
+		TraceEvent("StorageServerRemoveFromRunningStorage", self);
 
 		// Start a disk cleaner except for tss data store
 		try {
@@ -1604,7 +1607,8 @@ ACTOR Future<Void> storageServerRollbackRebooter(std::set<std::pair<UID, KeyValu
                                                  int64_t memoryLimit,
                                                  IKeyValueStore* store,
                                                  bool validateDataFiles,
-                                                 Promise<Void>* rebootKVStore) {
+                                                 Promise<Void>* rebootKVStore,
+                                                 Reference<GetEncryptCipherKeysMonitor> encryptionMonitor) {
 	state TrackRunningStorage _(id, storeType, locality, filename, runningStorages, storageCleaners);
 	loop {
 		ErrorOr<Void> e = wait(errorOr(prevStorageServer));
@@ -1673,8 +1677,13 @@ ACTOR Future<Void> storageServerRollbackRebooter(std::set<std::pair<UID, KeyValu
 		DUMPTOKEN(recruited.changeFeedVersionUpdate);
 
 		Future<ErrorOr<Void>> storeError = errorOr(store->getError());
-		prevStorageServer =
-		    storageServer(store, recruited, db, folder, Promise<Void>(), Reference<IClusterConnectionRecord>(nullptr));
+		prevStorageServer = storageServer(store,
+		                                  recruited,
+		                                  db,
+		                                  folder,
+		                                  Promise<Void>(),
+		                                  Reference<IClusterConnectionRecord>(nullptr),
+		                                  encryptionMonitor);
 		prevStorageServer = handleIOErrors(prevStorageServer, storeError, id, store->onClosed());
 	}
 }
@@ -2215,7 +2224,7 @@ ACTOR Future<Void> workerServer(Reference<IClusterConnectionRecord> connRecord,
 			state DiskStore s = stores[index];
 			// FIXME: Error handling
 			if (s.storedComponent == DiskStore::Storage) {
-				// Opening multiple KVSs at the same time could make worker run out of mememory. Add delay to allow the
+				// Opening multiple KVSs at the same time could make worker run out of memory. Add delay to allow the
 				// extra storage process to be removed.
 				if (index >= 2 && SERVER_KNOBS->WORKER_START_STORAGE_DELAY > 0.0) {
 					wait(delay(SERVER_KNOBS->WORKER_START_STORAGE_DELAY));
@@ -2223,6 +2232,7 @@ ACTOR Future<Void> workerServer(Reference<IClusterConnectionRecord> connRecord,
 				LocalLineage _;
 				getCurrentLineage()->modify(&RoleLineage::role) = ProcessClass::ClusterRole::Storage;
 
+				Reference<GetEncryptCipherKeysMonitor> encryptionMonitor = makeReference<GetEncryptCipherKeysMonitor>();
 				IKeyValueStore* kv = openKVStore(
 				    s.storeType,
 				    s.filename,
@@ -2236,7 +2246,10 @@ ACTOR Future<Void> workerServer(Reference<IClusterConnectionRecord> connRecord,
 				                s.storeType != KeyValueStoreType::SSD_SHARDED_ROCKSDB &&
 				                deterministicRandom()->coinflip())
 				             : true),
-				    dbInfo);
+				    dbInfo,
+				    Optional<EncryptionAtRestMode>(),
+				    0,
+				    encryptionMonitor);
 				Future<Void> kvClosed =
 				    kv->onClosed() ||
 				    rebootKVSPromise.getFuture() /* clear the onClosed() Future in actorCollection when rebooting */;
@@ -2285,7 +2298,7 @@ ACTOR Future<Void> workerServer(Reference<IClusterConnectionRecord> connRecord,
 
 				Future<ErrorOr<Void>> storeError = errorOr(kv->getError());
 				Promise<Void> recovery;
-				Future<Void> f = storageServer(kv, recruited, dbInfo, folder, recovery, connRecord);
+				Future<Void> f = storageServer(kv, recruited, dbInfo, folder, recovery, connRecord, encryptionMonitor);
 				recoveries.push_back(recovery.getFuture());
 
 				f = handleIOErrors(f, storeError, s.storeID, kvClosed);
@@ -2303,7 +2316,8 @@ ACTOR Future<Void> workerServer(Reference<IClusterConnectionRecord> connRecord,
 				                                  memoryLimit,
 				                                  kv,
 				                                  validateDataFiles,
-				                                  &rebootKVSPromise);
+				                                  &rebootKVSPromise,
+				                                  encryptionMonitor);
 				errorForwarders.add(forwardError(errors, ssRole, recruited.id(), f));
 			} else if (s.storedComponent == DiskStore::TLogData) {
 				LocalLineage _;
@@ -3005,6 +3019,8 @@ ACTOR Future<Void> workerServer(Reference<IClusterConnectionRecord> connRecord,
 					                   folder,
 					                   isTss ? testingStoragePrefix.toString() : fileStoragePrefix.toString(),
 					                   recruited.id());
+					Reference<GetEncryptCipherKeysMonitor> encryptionMonitor =
+					    makeReference<GetEncryptCipherKeysMonitor>();
 					IKeyValueStore* data = openKVStore(
 					    req.storeType,
 					    filename,
@@ -3019,7 +3035,9 @@ ACTOR Future<Void> workerServer(Reference<IClusterConnectionRecord> connRecord,
 					                deterministicRandom()->coinflip())
 					             : true),
 					    dbInfo,
-					    req.encryptMode);
+					    req.encryptMode,
+					    0,
+					    encryptionMonitor);
 					TraceEvent("StorageServerInitProgress", recruited.id())
 					    .detail("ReqID", req.reqId)
 					    .detail("StorageType", req.storeType.toString())
@@ -3041,7 +3059,8 @@ ACTOR Future<Void> workerServer(Reference<IClusterConnectionRecord> connRecord,
 					                               isTss ? req.tssPairIDAndVersion.get().second : 0,
 					                               storageReady,
 					                               dbInfo,
-					                               folder);
+					                               folder,
+					                               encryptionMonitor);
 					s = handleIOErrors(s, storeError, recruited.id(), kvClosed);
 					s = storageCache.removeOnReady(req.reqId, s);
 					s = storageServerRollbackRebooter(&runningStorages,
@@ -3058,7 +3077,8 @@ ACTOR Future<Void> workerServer(Reference<IClusterConnectionRecord> connRecord,
 					                                  memoryLimit,
 					                                  data,
 					                                  false,
-					                                  &rebootKVSPromise2);
+					                                  &rebootKVSPromise2,
+					                                  encryptionMonitor);
 					errorForwarders.add(forwardError(errors, ssRole, recruited.id(), s));
 				} else if (storageCache.exists(req.reqId)) {
 					forwardPromise(req.reply, storageCache.get(req.reqId));
@@ -3777,6 +3797,86 @@ TEST_CASE("/fdbserver/worker/swversion/runNewer") {
 
 	return Void();
 }
+
+namespace {
+KeyValueStoreType randomStoreType() {
+	int type = deterministicRandom()->randomInt(0, (int)KeyValueStoreType::END);
+	if (type == KeyValueStoreType::NONE || type == KeyValueStoreType::SSD_REDWOOD_V1) {
+		type = KeyValueStoreType::SSD_BTREE_V2;
+	}
+#ifndef WITH_ROCKSDB
+	if (type == KeyValueStoreType::SSD_ROCKSDB_V1 || type == KeyValueStoreType::SSD_SHARDED_ROCKSDB) {
+		type = KeyValueStoreType::SSD_BTREE_V2;
+	}
+#endif
+	return KeyValueStoreType((KeyValueStoreType::StoreType)type);
+}
+
+// Test the engine can clear in-flight commits
+TEST_CASE("/fdbserver/storageengine/clearInflightCommits") {
+	state const std::string testDir = "engine-basic-test";
+	platform::eraseDirectoryRecursive(testDir);
+	platform::createDirectory(testDir);
+
+	KeyValueStoreType storeType = randomStoreType();
+	ASSERT(storeType.isValid());
+	fmt::print("Testing engine with store type {}\n", storeType.toString());
+
+	UID uid = deterministicRandom()->randomUniqueID();
+	std::string filename = filenameFromId(storeType, testDir, "", uid);
+	state IKeyValueStore* kvStore = openKVStore(storeType, filename, uid, 1 << 30);
+	wait(kvStore->init());
+
+	// sharded rocksdb needs to be initialized with a shard
+	wait(kvStore->addRange(allKeys, "shard"));
+
+	// Insert keys
+	state StringRef foo = "foo"_sr;
+	state StringRef bar = "bar"_sr;
+	kvStore->set({ foo, foo });
+	kvStore->set({ keyAfter(foo), keyAfter(foo) });
+	kvStore->set({ bar, bar });
+	kvStore->set({ keyAfter(bar), keyAfter(bar) });
+
+	// Note there is no wait() here.  We want to test that the commit is still in flight
+	state Future<Void> commit1 = kvStore->commit(false);
+
+	// Clear keys, so that only keyAfter(foo) will be present
+	kvStore->clear(KeyRangeRef(bar, keyAfter(foo)));
+
+	// Wait for the commit to finish and check that the keys are gone
+	wait(commit1);
+	wait(kvStore->commit(false));
+
+	{
+		Optional<Value> val = wait(kvStore->readValue(bar));
+		ASSERT(!val.present());
+	}
+
+	{
+		Optional<Value> val = wait(kvStore->readValue(keyAfter(bar)));
+		ASSERT(!val.present());
+	}
+
+	{
+		Optional<Value> val = wait(kvStore->readValue(foo));
+		ASSERT(!val.present());
+	}
+
+	{
+		Optional<Value> val = wait(kvStore->readValue(keyAfter(foo)));
+		ASSERT(val.present() and val.get() == keyAfter(foo));
+	}
+
+	Future<Void> closed = kvStore->onClosed();
+	kvStore->dispose();
+	fmt::print("Waiting for engine to close\n");
+	wait(closed);
+
+	platform::eraseDirectoryRecursive(testDir);
+	return Void();
+}
+} // anonymous namespace
 
 ACTOR Future<UID> createAndLockProcessIdFile(std::string folder) {
 	state UID processIDUid;
