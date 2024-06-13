@@ -6,11 +6,9 @@ Swift offers a unique modern type-safe low-ceremony approach taking the best of 
 apps to high-performance systems where previously memory-unsafe languages would be used. It also interoperates 
 seamlessly with C and C++.
 
-Since FoundationDB is largely implemented in C++ and Flow, large pieces of 
-
 ## Building with Swift
 
-Swift is built using the same CMake build as the rest of the project.
+Since FoundationDB is largely implemented in C++ and Flow, large pieces of Swift is built using the same CMake build as the rest of the project.
 
 To configure the build such that `clang` and `swiftc` are used, use the following:
 
@@ -176,13 +174,13 @@ knobs.MAX_VERSION_RATE_MODIFIER
 
 #### Bridging reference types
 
-Some C++ types have reference counting and referencial semantics, i.e. they're passed around using raw or smart pointers that point to an instance. That instance typically has its own reference count, that keeps track of when the instance should be released. Such types can be bridged over to Swift reference types, and Swift's automatic reference counting (ARC) will automatically retain and release them using their C++ reference counting implementation.
+Some C++ types have reference counting and referential semantics, i.e. they're passed around using raw or smart pointers that point to an instance. That instance typically has its own reference count, that keeps track of when the instance should be released. Such types can be bridged over to Swift reference types, and Swift's automatic reference counting (ARC) will automatically retain and release them using their C++ reference counting implementation.
 
 You can use the `SWIFT_CXX_REF` annotation for that. Right now `SWIFT_CXX_REF` does not work (due to https://github.com/apple/swift/issues/61620), so you have to make a custom annotation for each class you want to bridge with reference semantics to Swift. For example, the `MasterData` class receives the following annotation:
 
 ```cpp
 #define SWIFT_CXX_REF_MASTERDATA   \
-    __attribute__((swift_attr("import_as_ref")))   \
+    __attribute__((swift_attr("import_reference")))   \
     __attribute__((swift_attr("retain:addrefMasterData")))   \
     __attribute__((swift_attr("release:delrefMasterData")))
 

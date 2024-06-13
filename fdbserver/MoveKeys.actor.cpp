@@ -51,6 +51,14 @@ struct Shard {
 	UID id;
 };
 
+bool shouldCreateCheckpoint(const UID& dataMoveId) {
+	bool assigned, emptyRange;
+	DataMoveType type;
+	DataMovementReason reason;
+	decodeDataMoveId(dataMoveId, assigned, emptyRange, type, reason);
+	return type == DataMoveType::PHYSICAL || type == DataMoveType::PHYSICAL_EXP;
+}
+
 // Unassigns keyrange `range` from server `ssId`, except ranges in `shards`.
 // Note: krmSetRangeCoalescing() doesn't work in this case since each shard is assigned an ID.
 ACTOR Future<Void> unassignServerKeys(Transaction* tr, UID ssId, KeyRange range, std::vector<Shard> shards, UID logId) {
@@ -164,7 +172,7 @@ ACTOR Future<Void> unassignServerKeys(Transaction* tr, UID ssId, KeyRange range,
 }
 
 ACTOR Future<Void> deleteCheckpoints(Transaction* tr, std::set<UID> checkpointIds, UID dataMoveId) {
-	if (!physicalShardMoveEnabled(dataMoveId)) {
+	if (!shouldCreateCheckpoint(dataMoveId)) {
 		return Void();
 	}
 	TraceEvent(SevDebug, "DataMoveDeleteCheckpoints", dataMoveId).detail("Checkpoints", describe(checkpointIds));
@@ -408,17 +416,20 @@ ACTOR Future<bool> validateRangeAssignment(Database occ,
 		for (int i = 0; i < readResult.size() - 1; i++) {
 			UID shardId;
 			bool assigned, emptyRange;
-			EnablePhysicalShardMove enablePSM = EnablePhysicalShardMove::False;
-			decodeServerKeysValue(readResult[i].value, assigned, emptyRange, enablePSM, shardId);
+			DataMoveType dataMoveType = DataMoveType::LOGICAL;
+			DataMovementReason dataMoveReason = DataMovementReason::INVALID;
+			decodeServerKeysValue(readResult[i].value, assigned, emptyRange, dataMoveType, shardId, dataMoveReason);
 			if (!assigned) {
 				TraceEvent(SevError, "ValidateRangeAssignmentCorruptionDetected")
+				    .setMaxFieldLength(-1)
+				    .setMaxEventLength(-1)
 				    .detail("DataMoveID", dataMoveId)
 				    .detail("Context", context)
 				    .detail("AuditRange", range)
 				    .detail("ErrorMessage", "KeyServers has range but ServerKeys does not have")
 				    .detail("CurrentEmptyRange", emptyRange)
 				    .detail("CurrentAssignment", assigned)
-				    .detail("EnablePSM", enablePSM)
+				    .detail("DataMoveType", static_cast<uint8_t>(dataMoveType))
 				    .detail("ServerID", ssid)
 				    .detail("ShardID", shardId);
 				allCorrect = false;
@@ -1159,10 +1170,6 @@ ACTOR Future<Void> waitForShardReady(StorageServerInterface server,
 		try {
 			GetShardStateReply rep =
 			    wait(server.getShardState.getReply(GetShardStateRequest(keys, mode), TaskPriority::MoveKeys));
-			TraceEvent("GetShardStateReadyDD", server.id())
-			    .detail("RepVersion", rep.first)
-			    .detail("MinVersion", rep.second)
-			    .log();
 			if (rep.first >= minVersion) {
 				return Void();
 			}
@@ -1801,7 +1808,7 @@ ACTOR static Future<Void> startMoveShards(Database occ,
 
 						dataMove.src.insert(src.begin(), src.end());
 
-						if (physicalShardMoveEnabled(dataMoveId)) {
+						if (shouldCreateCheckpoint(dataMoveId)) {
 							const UID checkpointId = UID(deterministicRandom()->randomUInt64(), srcId.first());
 							CheckpointMetaData checkpoint(std::vector<KeyRange>{ rangeIntersectKeys },
 							                              DataMoveRocksCF,
@@ -1811,7 +1818,7 @@ ACTOR static Future<Void> startMoveShards(Database occ,
 							checkpoint.setState(CheckpointMetaData::Pending);
 							tr.set(checkpointKeyFor(checkpointId), checkpointValue(checkpoint));
 							dataMove.checkpoints.insert(checkpointId);
-							TraceEvent(sevDm, "InitiatedCheckpoint")
+							TraceEvent(sevDm, "InitiatedCheckpoint", relocationIntervalId)
 							    .detail("CheckpointID", checkpointId.toString())
 							    .detail("Range", rangeIntersectKeys)
 							    .detail("DataMoveID", dataMoveId)
@@ -1838,12 +1845,12 @@ ACTOR static Future<Void> startMoveShards(Database occ,
 				if (currentKeys.end == keys.end) {
 					dataMove.setPhase(DataMoveMetaData::Running);
 					complete = true;
-					TraceEvent(sevDm, "StartMoveShardsDataMoveComplete", dataMoveId)
+					TraceEvent(sevDm, "StartMoveShardsDataMoveComplete", relocationIntervalId)
 					    .detail("DataMoveID", dataMoveId)
 					    .detail("DataMove", dataMove.toString());
 				} else {
 					dataMove.setPhase(DataMoveMetaData::Prepare);
-					TraceEvent(sevDm, "StartMoveShardsDataMovePartial", dataMoveId)
+					TraceEvent(sevDm, "StartMoveShardsDataMovePartial", relocationIntervalId)
 					    .detail("DataMoveID", dataMoveId)
 					    .detail("CurrentRange", currentKeys)
 					    .detail("DataMoveRange", keys)
@@ -1856,7 +1863,7 @@ ACTOR static Future<Void> startMoveShards(Database occ,
 
 				wait(tr.commit());
 
-				TraceEvent(sevDm, "DataMoveMetaDataCommit", dataMove.id)
+				TraceEvent(sevDm, "DataMoveMetaDataCommit", relocationIntervalId)
 				    .detail("DataMoveID", dataMoveId)
 				    .detail("DataMoveKey", dataMoveKeyFor(dataMoveId))
 				    .detail("CommitVersion", tr.getCommittedVersion())
@@ -1882,7 +1889,7 @@ ACTOR static Future<Void> startMoveShards(Database occ,
 					runPreCheck = false;
 					wait(delay(1));
 				} else {
-					TraceEvent(SevWarn, "StartMoveShardsError", dataMoveId)
+					TraceEvent(SevWarn, "StartMoveShardsError", relocationIntervalId)
 					    .errorUnsuppressed(e)
 					    .detail("DataMoveID", dataMoveId)
 					    .detail("DataMoveRange", keys)
@@ -2246,7 +2253,7 @@ ACTOR static Future<Void> finishMoveShards(Database occ,
 						                          range,
 						                          allKeys,
 						                          destHasServer ? serverKeysValue(dataMoveId) : serverKeysFalse));
-						TraceEvent(sevDm, "FinishMoveShardsSetServerKeyRange", dataMoveId)
+						TraceEvent(sevDm, "FinishMoveShardsSetServerKeyRange", relocationIntervalId)
 						    .detail("StorageServerID", ssId)
 						    .detail("KeyRange", range)
 						    .detail("ShardID", destHasServer ? dataMoveId : UID());
@@ -2258,10 +2265,10 @@ ACTOR static Future<Void> finishMoveShards(Database occ,
 						wait(deleteCheckpoints(&tr, dataMove.checkpoints, dataMoveId));
 						tr.clear(dataMoveKeyFor(dataMoveId));
 						complete = true;
-						TraceEvent(sevDm, "FinishMoveShardsDeleteMetaData", dataMoveId)
+						TraceEvent(sevDm, "FinishMoveShardsDeleteMetaData", relocationIntervalId)
 						    .detail("DataMove", dataMove.toString());
 					} else {
-						TraceEvent(SevInfo, "FinishMoveShardsPartialComplete", dataMoveId)
+						TraceEvent(SevInfo, "FinishMoveShardsPartialComplete", relocationIntervalId)
 						    .detail("DataMoveID", dataMoveId)
 						    .detail("CurrentRange", range)
 						    .detail("NewDataMoveMetaData", dataMove.toString());
@@ -2273,7 +2280,8 @@ ACTOR static Future<Void> finishMoveShards(Database occ,
 
 					// Post validate consistency of update of keyServers and serverKeys
 					if (SERVER_KNOBS->AUDIT_DATAMOVE_POST_CHECK) {
-						wait(auditLocationMetadataPostCheck(occ, range, "finishMoveShards_postcheck", dataMoveId));
+						wait(auditLocationMetadataPostCheck(
+						    occ, range, "finishMoveShards_postcheck", relocationIntervalId));
 					}
 
 					if (complete) {
@@ -2483,6 +2491,7 @@ ACTOR Future<std::pair<Version, Tag>> addStorageServer(Database cx, StorageServe
 
 			StorageMetadataType metadata(StorageMetadataType::currentTime());
 			metadataMap.set(tr, server.id(), metadata);
+			tr->set(serverMetadataChangeKey, deterministicRandom()->randomUniqueID().toString());
 
 			tr->set(serverListKeyFor(server.id()), serverListValue(server));
 			wait(tr->commit());
@@ -2522,8 +2531,9 @@ ACTOR Future<bool> canRemoveStorageServer(Reference<ReadYourWritesTransaction> t
 	// than one result
 	UID shardId;
 	bool assigned, emptyRange;
-	EnablePhysicalShardMove enablePSM = EnablePhysicalShardMove::False;
-	decodeServerKeysValue(keys[0].value, assigned, emptyRange, enablePSM, shardId);
+	DataMoveType dataMoveType = DataMoveType::LOGICAL;
+	DataMovementReason dataMoveReason = DataMovementReason::INVALID;
+	decodeServerKeysValue(keys[0].value, assigned, emptyRange, dataMoveType, shardId, dataMoveReason);
 	TraceEvent(SevVerbose, "CanRemoveStorageServer")
 	    .detail("ServerID", serverID)
 	    .detail("Key1", keys[0].key)
@@ -2639,6 +2649,7 @@ ACTOR Future<Void> removeStorageServer(Database cx,
 				}
 
 				metadataMap.erase(tr, serverID);
+				tr->set(serverMetadataChangeKey, deterministicRandom()->randomUniqueID().toString());
 
 				retry = true;
 				wait(tr->commit());
@@ -2759,8 +2770,10 @@ ACTOR Future<Void> removeKeysFromFailedServer(Database cx,
 							}
 						}
 
-						const UID shardId =
-						    newDataMoveId(deterministicRandom()->randomUInt64(), AssignEmptyRange::True);
+						const UID shardId = newDataMoveId(deterministicRandom()->randomUInt64(),
+						                                  AssignEmptyRange::True,
+						                                  DataMoveType::LOGICAL,
+						                                  DataMovementReason::ASSIGN_EMPTY_RANGE);
 
 						// Assign the shard to teamForDroppedRange in keyServer space.
 						if (SERVER_KNOBS->SHARD_ENCODE_LOCATION_METADATA) {
@@ -3262,6 +3275,7 @@ void seedShardServers(Arena& arena, CommitTransactionRef& tr, std::vector<Storag
 			tr.set(arena, uidRef.withPrefix(tssMappingKeys.begin), uidRef);
 		}
 	}
+	tr.set(arena, serverMetadataChangeKey, deterministicRandom()->randomUniqueID().toString());
 
 	std::vector<Tag> serverTags;
 	std::vector<UID> serverSrcUID;
@@ -3277,7 +3291,11 @@ void seedShardServers(Arena& arena, CommitTransactionRef& tr, std::vector<Storag
 	// to a specific
 	//   key (keyServersKeyServersKey)
 	if (SERVER_KNOBS->SHARD_ENCODE_LOCATION_METADATA) {
-		const UID shardId = deterministicRandom()->randomUniqueID();
+		const UID shardId = newDataMoveId(deterministicRandom()->randomUInt64(),
+		                                  AssignEmptyRange(false),
+		                                  DataMoveType::PHYSICAL,
+		                                  DataMovementReason::SEED_SHARD_SERVER,
+		                                  UnassignShard(false));
 		ksValue = keyServersValue(serverSrcUID, /*dest=*/std::vector<UID>(), shardId, UID());
 		krmSetPreviouslyEmptyRange(tr, arena, keyServersPrefix, KeyRangeRef(KeyRef(), allKeys.end), ksValue, Value());
 

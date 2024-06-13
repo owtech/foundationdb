@@ -37,8 +37,8 @@ void DatabaseConfiguration::resetInternal() {
 	commitProxyCount = grvProxyCount = resolverCount = desiredTLogCount = tLogWriteAntiQuorum = tLogReplicationFactor =
 	    storageTeamSize = desiredLogRouterCount = -1;
 	tLogVersion = TLogVersion::DEFAULT;
-	tLogDataStoreType = storageServerStoreType = testingStorageServerStoreType = perpetualStoreType =
-	    KeyValueStoreType::END;
+	tLogDataStoreType = storageServerStoreType = testingStorageServerStoreType = KeyValueStoreType::END;
+	perpetualStoreType = KeyValueStoreType::NONE;
 	desiredTSSCount = 0;
 	tLogSpillType = TLogSpillType::DEFAULT;
 	autoCommitProxyCount = CLIENT_KNOBS->DEFAULT_AUTO_COMMIT_PROXIES;
@@ -413,7 +413,7 @@ std::string DatabaseConfiguration::configureStringFromJSON(const StatusObject& j
 			result += kv.first + ":=" + format("%d", kv.second.get_int());
 		} else if (kv.second.type() == json_spirit::str_type) {
 			// For string values, some properties can set with a "<name>=<value>" syntax in "configure"
-			// Such properites are listed here:
+			// Such properties are listed here:
 			static std::set<std::string> directSet = {
 				"storage_migration_type", "tenant_mode", "encryption_at_rest_mode",
 				"storage_engine",         "log_engine",  "perpetual_storage_wiggle_engine"
@@ -792,20 +792,6 @@ bool DatabaseConfiguration::isExcludedLocality(const LocalityData& locality) con
 		        .present()) {
 			return true;
 		}
-	}
-
-	return false;
-}
-
-// checks if this machineid of given locality is excluded.
-bool DatabaseConfiguration::isMachineExcluded(const LocalityData& locality) const {
-	if (locality.machineId().present()) {
-		return get(encodeExcludedLocalityKey(LocalityData::ExcludeLocalityKeyMachineIdPrefix.toString() +
-		                                     locality.machineId().get().toString()))
-		           .present() ||
-		       get(encodeFailedLocalityKey(LocalityData::ExcludeLocalityKeyMachineIdPrefix.toString() +
-		                                   locality.machineId().get().toString()))
-		           .present();
 	}
 
 	return false;

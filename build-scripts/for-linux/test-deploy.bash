@@ -11,8 +11,8 @@ set -e
 BASE_DIR="$(readlink -f $(dirname $0))"
 FULL_VERSION="$1"
 DISTR_DIR="$(readlink -f ${2:-bld/linux/packages})"
-RPM_IMAGE=${3:-oraclelinux:8}
-DEB_IMAGE=${4:-debian:10}
+RPM_IMAGE=${3:-oraclelinux:9}
+DEB_IMAGE=${4:-debian:11}
 
 print_usage() {
   echo >&2 "Usage: $0 FullFdbVersion [FdbDistrDir] [RpmImage] [DebImage]"
@@ -35,7 +35,7 @@ fi
 # foundationdb writes to files with 2600 mode
 # but podman under kernel 6.1 or 6.2 does not respect this
 # so test if the writing works and choose an appropriate container engine
-CONTAINER_TEST_IMAGE=debian:10
+CONTAINER_TEST_IMAGE=debian:11
 CONTAINER_TEST_RUNNABLE='bash -c "touch /tmp/file01.tst; chgrp users /tmp/file01.tst; chmod 2600 /tmp/file01.tst; echo test >/tmp/file01.tst"'
 
 test_container_engine() {

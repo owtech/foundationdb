@@ -130,13 +130,17 @@ struct StorageServerMetrics {
 	                       StorageBytes sb,
 	                       double bytesInputRate,
 	                       int64_t versionLag,
-	                       double lastUpdate) const;
+	                       double lastUpdate,
+	                       int64_t bytesDurable,
+	                       int64_t bytesInput) const;
 
 	Future<Void> waitMetrics(WaitMetricsRequest req, Future<Void> delay);
 
 	std::vector<ReadHotRangeWithMetrics> getReadHotRanges(KeyRangeRef shard, int chunkCount, uint8_t splitType) const;
 
 	void getReadHotRanges(ReadHotSubRangeRequest req) const;
+
+	int64_t getHotShards(const KeyRange& range) const;
 
 	std::vector<KeyRef> getSplitPoints(KeyRangeRef range, int64_t chunkSize, Optional<KeyRef> prefixToRemove) const;
 
@@ -228,6 +232,8 @@ public:
 	virtual void getSplitMetrics(const SplitMetricsRequest& req) = 0;
 
 	virtual void getHotRangeMetrics(const ReadHotSubRangeRequest& req) = 0;
+
+	virtual int64_t getHotShardsMetrics(const KeyRange& range) = 0;
 
 	// NOTE: also need to have this function but template can't be a virtual so...
 	// template <class Reply>

@@ -1,5 +1,5 @@
 # Any debian-based image is suitable
-ARG IMAGE=debian:10
+ARG IMAGE=debian:11
 FROM ${IMAGE}
 
 ARG PROJECT_NAME

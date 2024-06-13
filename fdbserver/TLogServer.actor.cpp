@@ -1472,7 +1472,7 @@ ACTOR Future<Void> updateStorage(TLogData* self) {
 			                   : SERVER_KNOBS->TLOG_STORAGE_MIN_UPDATE_INTERVAL,
 			           TaskPriority::UpdateStorage));
 		} else {
-			// recovery wants to commit to persistant data when updatePersistentData is not active, this delay ensures
+			// recovery wants to commit to persistent data when updatePersistentData is not active, this delay ensures
 			// that immediately after updatePersist returns another one has not been started yet.
 			wait(delay(0.0, TaskPriority::UpdateStorage));
 		}
@@ -1622,7 +1622,7 @@ void commitMessages(TLogData* self, Reference<LogData> logData, Version version,
 Version poppedVersion(Reference<LogData> self, Tag tag) {
 	auto tagData = self->getTagData(tag);
 	if (!tagData) {
-		if (tag == txsTag || tag.locality == tagLocalityTxs) {
+		if (tag == txsTag || tag.locality == tagLocalityTxs || tag.locality == tagLocalityLogRouter) {
 			return 0;
 		}
 		return std::max(self->recoveredAt + 1, self->recoveryTxnVersion);
@@ -1725,7 +1725,7 @@ ACTOR Future<std::vector<StringRef>> parseMessagesForTag(StringRef commitBlob, T
 		for (Tag t : tagsAndMessage.tags) {
 			if (t == tag || (tag.locality == tagLocalityLogRouter && t.locality == tagLocalityLogRouter &&
 			                 t.id % logRouters == tag.id)) {
-				// Mutations that are in the partially durable span between known comitted version and
+				// Mutations that are in the partially durable span between known committed version and
 				// recovery version get copied to the new log generation.  These commits might have had more
 				// log router tags than what now exist, so we mod them down to what we have.
 				relevantMessages.push_back(tagsAndMessage.getRawMessage());
@@ -2297,7 +2297,7 @@ ACTOR Future<Void> commitQueue(TLogData* self) {
 		    .detail("LogId", logData->logId)
 		    .detail("Version", logData->version.get())
 		    .detail("Committing", logData->queueCommittingVersion)
-		    .detail("Commmitted", logData->queueCommittedVersion.get());
+		    .detail("Committed", logData->queueCommittedVersion.get());
 		if (logData->committingQueue.canBeSet()) {
 			logData->committingQueue.send(Void());
 		}
@@ -2546,6 +2546,10 @@ ACTOR Future<Void> rejoinClusterController(TLogData* self,
 			    .detail("NewRecoveryCount", inf.recoveryCount)
 			    .detail("MyRecoveryCount", recoveryCount);
 			stoppedPromise.send(Void());
+		}
+
+		if (self->terminated.isSet()) {
+			return Void();
 		}
 
 		if (registerWithCC.isReady()) {
@@ -3629,16 +3633,20 @@ ACTOR Future<Void> tLogStart(TLogData* self, InitializeTLogRequest req, Locality
 					std::vector<Tag> tags;
 					tags.push_back(logData->remoteTag);
 
-					// Force gray failure monitoring during recovery.
-					self->enablePrimaryTxnSystemHealthCheck->set(true);
+					if (SERVER_KNOBS->GRAY_FAILURE_ENABLE_TLOG_RECOVERY_MONITORING) {
+						// Force gray failure monitoring during recovery.
+						self->enablePrimaryTxnSystemHealthCheck->set(true);
+					}
 					wait(pullAsyncData(self, logData, tags, logData->unrecoveredBefore, recoverAt, true) ||
 					     logData->removed || logData->stopCommit.onTrigger());
 					self->enablePrimaryTxnSystemHealthCheck->set(false);
 				} else if (!req.recoverTags.empty()) {
 					ASSERT(logData->unrecoveredBefore > req.knownCommittedVersion);
 
-					// Force gray failure monitoring during recovery.
-					self->enablePrimaryTxnSystemHealthCheck->set(true);
+					if (SERVER_KNOBS->GRAY_FAILURE_ENABLE_TLOG_RECOVERY_MONITORING) {
+						// Force gray failure monitoring during recovery.
+						self->enablePrimaryTxnSystemHealthCheck->set(true);
+					}
 					wait(pullAsyncData(
 					         self, logData, req.recoverTags, req.knownCommittedVersion + 1, recoverAt, false) ||
 					     logData->removed || logData->stopCommit.onTrigger());

@@ -2,6 +2,153 @@
 Release Notes
 #############
 
+7.1.61
+======
+* Same as 7.1.60 release with AVX enabled.
+
+7.1.60
+======
+* Released with AVX disabled.
+* Fixed a DR corruption bug due to a race condition. `(PR #11245) <https://github.com/apple/foundationdb/pull/11245>`_
+* Added Go tenanting support for 7.1. `(PR #11278) <https://github.com/apple/foundationdb/pull/11278>`_
+* Increased visibility of gray failure actions. `(PR #11314) <https://github.com/apple/foundationdb/pull/11314>`_
+* Increase visibility of CommitProxyTerminated events for failed_to_progress errors. `(PR #11316) <https://github.com/apple/foundationdb/pull/11316>`_
+* Fixed an infinite retry of GRV request bug. `(PR #11352) <https://github.com/apple/foundationdb/pull/11352>`_
+* Improved distributed consistency checker to continuously run by default and visibility of recruitment errors. `(PR #11351) <https://github.com/apple/foundationdb/pull/11351>`_
+* Fixed an assertion failure of cluster controller when waiting for recovery. `(PR #11398) <https://github.com/apple/foundationdb/pull/11398>`_
+
+7.1.59
+======
+* Same as 7.1.59 release with AVX enabled.
+
+7.1.58
+======
+* Released with AVX disabled.
+* Fixed a bug in consistency checker urgent mode. `(PR #11230) <https://github.com/apple/foundationdb/pull/11230>`_
+
+7.1.57
+======
+* Same as 7.1.56 release with AVX enabled.
+
+7.1.56
+======
+* Released with AVX disabled.
+* Added a knob DD_REMOVE_MAINTENANCE_ON_FAILURE to remove the maintenance mode if a failure outside of the maintenance zone happens. `(PR #11207) <https://github.com/apple/foundationdb/pull/11207>`_
+* Fixed start failure of single-threaded consistency checker. `(PR #11205) <https://github.com/apple/foundationdb/pull/11205>`_
+* Fixed false alarms of Sev40 TestFailure in consistency checker urgent mode. `(PR #11203) <https://github.com/apple/foundationdb/pull/11203>`_
+* Added a knob ABORT_ON_FAILURE to generate core dumps for failures. `(PR #11191) <https://github.com/apple/foundationdb/pull/11191>`_
+* Upgraded to RocksDB 8.10.0. `(PR #11176) <https://github.com/apple/foundationdb/pull/11176>`_
+* Fixed find toml in release-7.1 to avoid macos pr failures. `(PR #11190) <https://github.com/apple/foundationdb/pull/11190>`_
+
+7.1.55
+======
+* Same as 7.1.54 release with AVX enabled.
+
+7.1.54
+======
+* Released with AVX disabled.
+* Upgraded RocksDB to 8.6.7. `(PR #11160) <https://github.com/apple/foundationdb/pull/11160>`_
+* Enabled data distribution verbose logging by default. `(PR #11158) <https://github.com/apple/foundationdb/pull/11158>`_
+* Added logging for invalid mutations on storage servers. `(PR #11097) <https://github.com/apple/foundationdb/pull/11097>`_
+* Enhanced AsyncFileWriteChecker history.timestamp to have better millisecond precision. `(PR #11155) <https://github.com/apple/foundationdb/pull/11155>`_
+* Fixed checkall debug command to output all inconsistent keys. `(PR #11153) <https://github.com/apple/foundationdb/pull/11153>`_, `(PR #11146) <https://github.com/apple/foundationdb/pull/11146>`_, `(PR #11141) <https://github.com/apple/foundationdb/pull/11141>`_, and `(PR #11138) <https://github.com/apple/foundationdb/pull/11138>`_
+* Fixed unreachable processes in status json due to stale tester interfaces at cluster controller. `(PR #11149) <https://github.com/apple/foundationdb/pull/11149>`_
+
+7.1.53
+======
+* Same as 7.1.52 release with AVX enabled.
+
+7.1.52
+======
+* Released with AVX disabled.
+* Fixed testers from being overloaded by consistency checkers. `(PR #11127) <https://github.com/apple/foundationdb/pull/11127>`_
+
+7.1.51
+======
+* Same as 7.1.50 release with AVX enabled.
+
+7.1.50
+======
+* Released with AVX disabled.
+* Added urgent consistency checker mode that uses multiple tester processes. `(PR #11103) <https://github.com/apple/foundationdb/pull/11103>`_
+* Fixed checkall debug command when shard to check is large. `(PR #11105) <https://github.com/apple/foundationdb/pull/11105>`_
+
+7.1.49
+======
+* Same as 7.1.48 release with AVX enabled.
+
+7.1.48
+======
+* Released with AVX disabled.
+* Added consistency checker urgent mode. `(PR #11102) <https://github.com/apple/foundationdb/pull/11102>`_
+* Increased the number of keys that "fdbcli checkall" command can fetch per GetKeyValueRequest call. `(PR #11098) <https://github.com/apple/foundationdb/pull/11098>`_
+
+7.1.47
+======
+* Same as 7.1.46 release with AVX enabled.
+
+7.1.46
+======
+* Released with AVX disabled.
+* Added range-customizable consistency checker and fixed retriable errors during the check. `(PR #11100) <https://github.com/apple/foundationdb/pull/11100>`_ and `(PR #11096) <https://github.com/apple/foundationdb/pull/11096>`_
+* Added key ranges as filters for fdbdecode. `(PR #11099) <https://github.com/apple/foundationdb/pull/11099>`_
+
+7.1.45
+======
+* Same as 7.1.44 release with AVX enabled.
+
+7.1.44
+======
+* Released with AVX disabled.
+* Added distributed consistency checker. `(PR #11088) <https://github.com/apple/foundationdb/pull/11088>`_
+* Fixed the exclusions of localities that are not matching any process. `(PR #11034) <https://github.com/apple/foundationdb/pull/11034>`_
+
+7.1.43
+======
+* Same as 7.1.42 release with AVX enabled.
+
+7.1.42
+======
+* Released with AVX disabled.
+* Added redistribute fdbcli command to manually split shards. `(PR #10909) <https://github.com/apple/foundationdb/pull/10909>`_, `(PR #10936) <https://github.com/apple/foundationdb/pull/10936>`_, `(PR #10942) <https://github.com/apple/foundationdb/pull/10942>`_, `(PR #10905) <https://github.com/apple/foundationdb/pull/10905>`_, and `(PR #10958) <https://github.com/apple/foundationdb/pull/10958>`_
+* Fixed a MacOS linking issue for go bindings. `(PR #10924) <https://github.com/apple/foundationdb/pull/10924>`_
+* Added knobs to control backup retry delays for blob stores. `(PR #10947) <https://github.com/apple/foundationdb/pull/10947>`_
+* Fixed two use-after-free bugs for backup agents. `(PR #10951) <https://github.com/apple/foundationdb/pull/10951>`_
+* Added automatic range split for hot storage queue. `(PR #10932) <https://github.com/apple/foundationdb/pull/10932>`_
+* Fixed multiple bugs related to locality based exclusions. `(PR #10976) <https://github.com/apple/foundationdb/pull/10976>`_, `(PR #11008) <https://github.com/apple/foundationdb/pull/11008>`_, and `(PR #11025) <https://github.com/apple/foundationdb/pull/11025>`_
+* Fixed compaction rate limiter for RocksDB storage engine. `(PR #10988) <https://github.com/apple/foundationdb/pull/10988>`_
+* Added a perpetual wiggle option to have multiple storage servers in rebalance state during wiggling. `(PR #10995) <https://github.com/apple/foundationdb/pull/10995>`_
+* Fixed exclude status of machines in status json when not all processes are excluded. `(PR #10996) <https://github.com/apple/foundationdb/pull/10996>`_ and `(PR #11006) <https://github.com/apple/foundationdb/pull/11006>`_
+
+7.1.41
+======
+* Same as 7.1.40 release with AVX enabled.
+
+7.1.40
+======
+* Released with AVX disabled.
+* Removed storageWiggleID from storage metadata if the storage server is not wiggling. `(PR #10913) <https://github.com/apple/foundationdb/pull/10913>`_
+* Augmented storage team selection to be aware of storage queue sizes. `(PR #10905) <https://github.com/apple/foundationdb/pull/10905>`_
+* Fixed the proxy setting for backup agents. `(PR #10903) <https://github.com/apple/foundationdb/pull/10903>`_
+* Added an option to set perpetual_storage_wiggle_engine to none. `(PR #10881) <https://github.com/apple/foundationdb/pull/10881>`_
+
+7.1.39
+======
+* Same as 7.1.38 release with AVX enabled.
+
+7.1.38
+======
+* Released with AVX disabled.
+* Added locality check on reading perpetualStorageWiggleIDPrefix key when DD restarts. `(PR #10864) <https://github.com/apple/foundationdb/pull/10864>`_
+* Added perpetual wiggle wait based on data balance of the cluster. `(PR #10865) <https://github.com/apple/foundationdb/pull/10865>`_
+* Added rocksdb options to delete old rocksdb logs. `(PR #10872) <https://github.com/apple/foundationdb/pull/10872>`_
+* Added knob to guard the gray failure rejection during TLog recovery. `(PR #10852) <https://github.com/apple/foundationdb/pull/10852>`_
+* Added knob RESOLVE_PREFER_IPV4_ADDR to prefer IPv4 addresses. `(PR #10826) <https://github.com/apple/foundationdb/pull/10826>`_
+* Added perpetual_storage_wiggle_engine config to support storage migration with perpetual wiggle. `(PR #10790) <https://github.com/apple/foundationdb/pull/10790>`_
+* Fixed the return code for perpetual wiggle configure command. `(PR #10795) <https://github.com/apple/foundationdb/pull/10795>`_
+* Fixed a compatibility issue of s3 backup. `(PR #10774) <https://github.com/apple/foundationdb/pull/10774>`_
+* Added proxy to backup agent via global variable. `(PR #10875) <https://github.com/apple/foundationdb/pull/10875>`_
+
 7.1.37
 ======
 * Same as 7.1.36 release with AVX enabled.

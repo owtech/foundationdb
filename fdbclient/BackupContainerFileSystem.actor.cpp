@@ -242,7 +242,7 @@ public:
 	}
 
 	// For a list of log files specified by their indices (of the same tag),
-	// returns if they are continous in the range [begin, end]. If "tags" is not
+	// returns if they are continuous in the range [begin, end]. If "tags" is not
 	// nullptr, then it will be populated with [begin, end] -> tags, where next
 	// pair's begin <= previous pair's end + 1. On return, the last pair's end
 	// version (inclusive) gives the continuous range from begin.
@@ -324,10 +324,10 @@ public:
 		end = std::min(end, tags.rbegin()->first.second);
 		TraceEvent("ContinuousLogEnd").detail("Partition", 0).detail("EndVersion", end).detail("Begin", begin);
 
-		// for each range in tags, check all partitions from 1 are continouous
+		// for each range in tags, check all partitions from 1 are continuous
 		Version lastEnd = begin;
 		for (const auto& [beginEnd, count] : tags) {
-			Version tagEnd = beginEnd.second; // This range's minimum continous partition version
+			Version tagEnd = beginEnd.second; // This range's minimum continuous partition version
 			for (int i = 1; i < count; i++) {
 				std::map<std::pair<Version, Version>, int> rangeTags;
 				isContinuous(logs, tagIndices[i], beginEnd.first, beginEnd.second, &rangeTags);
@@ -511,7 +511,7 @@ public:
 		state Version scanEnd = std::numeric_limits<Version>::max();
 
 		// Use the known log range if present
-		// Logs are assumed to be contiguious between metaLogBegin and metaLogEnd, so initalize desc accordingly
+		// Logs are assumed to be contiguous between metaLogBegin and metaLogEnd, so initialize desc accordingly
 		if (metaLogBegin.present() && metaLogEnd.present()) {
 			// minLogBegin is the greater of the log begin metadata OR the unreliable end version since we can't count
 			// on log file presence before that version.
@@ -1520,11 +1520,20 @@ Reference<BackupContainerFileSystem> BackupContainerFileSystem::openContainerFS(
 			r = makeReference<BackupContainerLocalDirectory>(url, encryptionKeyFileName);
 		} else if (u.startsWith("blobstore://"_sr)) {
 			std::string resource;
+			Optional<std::string> blobstoreProxy;
+
+			// If no proxy is passed down to the openContainer method, try to fallback to the
+			// fileBackupAgentProxy which is a global variable and will be set for the backup_agent.
+			if (proxy.present()) {
+				blobstoreProxy = proxy.get();
+			} else if (fileBackupAgentProxy.present()) {
+				blobstoreProxy = fileBackupAgentProxy.get();
+			}
 
 			// The URL parameters contain blobstore endpoint tunables as well as possible backup-specific options.
 			S3BlobStoreEndpoint::ParametersT backupParams;
 			Reference<S3BlobStoreEndpoint> bstore =
-			    S3BlobStoreEndpoint::fromString(url, proxy, &resource, &lastOpenError, &backupParams);
+			    S3BlobStoreEndpoint::fromString(url, blobstoreProxy, &resource, &lastOpenError, &backupParams);
 
 			if (resource.empty())
 				throw backup_invalid_url();

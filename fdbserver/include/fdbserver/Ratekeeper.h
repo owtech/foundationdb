@@ -90,6 +90,8 @@ public:
 	double getSmoothInputBytesRate() const { return smoothInputBytes.smoothRate(); }
 	double getVerySmoothDurableBytesRate() const { return verySmoothDurableBytes.smoothRate(); }
 
+	Version getLatestVersion() const { return lastReply.version; }
+
 	// Determine the ratio (limit / current throughput) for throttling based on write queue size
 	Optional<double> getTagThrottlingRatio(int64_t storageTargetBytes, int64_t storageSpringBytes) const;
 };
@@ -208,6 +210,7 @@ class Ratekeeper {
 	Deque<std::pair<double, Version>> blobWorkerVersionHistory;
 	bool anyBlobRanges;
 	Optional<Key> remoteDC;
+	Optional<UID> ssHighWriteQueue;
 
 	double getRecoveryDuration(Version ver) const {
 		auto it = version_recovery.lower_bound(ver);
@@ -239,6 +242,9 @@ class Ratekeeper {
 	void tryAutoThrottleTag(StorageQueueInfo&, int64_t storageQueue, int64_t storageDurabilityLag);
 	Future<Void> monitorThrottlingChanges();
 	Future<Void> monitorBlobWorkers(Reference<AsyncVar<ServerDBInfo> const> dbInfo);
+	Future<Void> monitorHotShards(Reference<AsyncVar<ServerDBInfo> const> dbInfo);
+
+	void getSSVersionLag(Version& maxSSPrimaryVersion, Version& maxSSRemoteVersion);
 
 public:
 	static Future<Void> run(RatekeeperInterface rkInterf, Reference<AsyncVar<ServerDBInfo> const> dbInfo);

@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Calculate versions
         id: vers
@@ -30,12 +30,12 @@ jobs:
       - name: Create Draft Release
         if: ${{ steps.vers.outputs.release_flag == 'ON' }}
         id: create_release
-        uses: actions/create-release@v1
+        uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: "${{ steps.vers.outputs.full_ver }}"
-          release_name: "v${{ steps.vers.outputs.full_ver }}"
+          name: "v${{ steps.vers.outputs.full_ver }}"
           draft: true
           prerelease: false
 
@@ -50,17 +50,16 @@ jobs:
             prepare: "debian-based"
             build_on: linux
             parallel: 5
-            image: foundationdb-build:7.4.0-1.ow.build
-            owner: owtech
+            image: foundationdb-build:7.4.0-6.ow.build
 
     runs-on: ${{ matrix.run_on }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Set building repo
-        run: | 
-          echo "use_image=ghcr.io/${{matrix.owner}}/${{matrix.image}}" >> "$GITHUB_ENV"
+        run: |
+          echo "use_image=ghcr.io/${GITHUB_REPOSITORY_OWNER@L}/${{matrix.image}}" >> "$GITHUB_ENV"
 
       - name: Build
         run: |
@@ -86,7 +85,7 @@ jobs:
       #  run: ctest --output-on-failure -V
 
       - name: Upload result
-        uses: nanoufo/action-upload-artifacts-and-release-assets@v1.8
+        uses: nanoufo/action-upload-artifacts-and-release-assets@v2
         with:
           path: |
             ${{github.workspace}}/bld/linux/packages/*${{needs.calc_ver.outputs.full_ver}}*
@@ -98,15 +97,15 @@ jobs:
     needs: [calc_ver, build]
     runs-on: ubuntu-latest
     env:
-      RPM_IMAGE: oraclelinux:8
-      DEB_IMAGE: debian:10
+      RPM_IMAGE: oraclelinux:9
+      DEB_IMAGE: debian:11
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Download the foundationdb distro
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: ${{github.workspace}}/bld/download
 
@@ -142,10 +141,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Download the foundationdb distro
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: ${{github.workspace}}/bld/download
 
@@ -169,7 +168,7 @@ jobs:
           ${{github.workspace}}/packaging/docker/build-images-for-owtech.bash \
             ${{needs.calc_ver.outputs.full_ver}} \
             ${{github.workspace}}/bld/linux/packages \
-            ghcr.io/${{ github.repository_owner }}
+            ghcr.io/${GITHUB_REPOSITORY_OWNER@L}
 
   tests:
     needs: [calc_ver, build]
@@ -205,7 +204,7 @@ jobs:
           pip3 install 'foundationdb==${{ env.JOSHUA_DB_VER }}'
 
       - name: Download the correctness package
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         id: download_correctness
         with:
           name: correctness-${{needs.calc_ver.outputs.full_ver}}.tar.gz

@@ -12,8 +12,10 @@ if (FLOW_USE_ZSTD)
 endif()
 
 # Remove files with `main` defined so we can create a link test executable.
+list(REMOVE_ITEM FLOW_SRCS LinkTest.cpp)
 list(REMOVE_ITEM FLOW_SRCS TLSTest.cpp)
 list(REMOVE_ITEM FLOW_SRCS MkCertCli.cpp)
+list(REMOVE_ITEM FLOW_SRCS acac.cpp)
 
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
     list(APPEND FLOW_SRCS aarch64/memcmp.S aarch64/memcpy.S)
@@ -28,15 +30,35 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/ApiVersion.h.cmake ${CMAKE_CURRENT_BI
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/SourceVersion.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/include/flow/SourceVersion.h)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/include/flow/config.h)
 
+set(PROTOCOL_VERSION_PYTHON_EXECUTABLE "${Python3_EXECUTABLE}")
+
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+find_package(Jinja2)
+if(NOT Jinja2_FOUND)
+  message(STATUS "Jinja2 not found, setting up virtual environment for protocol_version.py")
+  set(PROTOCOL_VERSION_VENV_DIR "${CMAKE_BINARY_DIR}/protocol_version-venv")
+  execute_process(COMMAND "${Python3_EXECUTABLE}" -m venv ${PROTOCOL_VERSION_VENV_DIR})
+  find_program(
+    VENV_Python3_EXECUTABLE
+    NAMES python3 python3.exe
+    PATHS ${PROTOCOL_VERSION_VENV_DIR}/Scripts ${PROTOCOL_VERSION_VENV_DIR}/bin REQUIRED
+    NO_DEFAULT_PATH NO_CACHE
+    DOC "Checking Python3 executable in virtual environment")
+  execute_process(COMMAND "${VENV_Python3_EXECUTABLE}" -m ensurepip COMMAND_ERROR_IS_FATAL ANY)
+  execute_process(COMMAND "${VENV_Python3_EXECUTABLE}" -m pip install --upgrade pip COMMAND_ERROR_IS_FATAL ANY)
+  execute_process(COMMAND "${VENV_Python3_EXECUTABLE}" -m pip install -r "${CMAKE_CURRENT_SOURCE_DIR}/protocolversion/requirements.txt" COMMAND_ERROR_IS_FATAL ANY)
+  set(PROTOCOL_VERSION_PYTHON_EXECUTABLE "${VENV_Python3_EXECUTABLE}")
+endif()
+
 set(FDB_PROTOCOL_VERSION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/ProtocolVersions.cmake" CACHE STRING "Protocol version cmake file." FORCE)
 set(FDB_PROTOCOL_VERSION_HEADER_FILE "${CMAKE_CURRENT_BINARY_DIR}/include/flow/ProtocolVersion.h")
 set(FDB_PROTOCOL_VERSION_JAVA_FILE "${CMAKE_CURRENT_BINARY_DIR}/include/flow/ProtocolVersion.java")
 set(FDB_PROTOCOL_VERSION_PYTHON_FILE "${CMAKE_CURRENT_BINARY_DIR}/include/flow/protocol_version.py")
 add_custom_command(
 	OUTPUT ${FDB_PROTOCOL_VERSION_HEADER_FILE}
-	COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/protocolversion/protocol_version.py --source ${FDB_PROTOCOL_VERSION_FILE} --generator cpp --output ${FDB_PROTOCOL_VERSION_HEADER_FILE}
-	COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/protocolversion/protocol_version.py --source ${FDB_PROTOCOL_VERSION_FILE} --generator java --output ${FDB_PROTOCOL_VERSION_JAVA_FILE}
-	COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/protocolversion/protocol_version.py --source ${FDB_PROTOCOL_VERSION_FILE} --generator python --output ${FDB_PROTOCOL_VERSION_PYTHON_FILE}
+	COMMAND ${PROTOCOL_VERSION_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/protocolversion/protocol_version.py --source ${FDB_PROTOCOL_VERSION_FILE} --generator cpp --output ${FDB_PROTOCOL_VERSION_HEADER_FILE}
+	COMMAND ${PROTOCOL_VERSION_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/protocolversion/protocol_version.py --source ${FDB_PROTOCOL_VERSION_FILE} --generator java --output ${FDB_PROTOCOL_VERSION_JAVA_FILE}
+	COMMAND ${PROTOCOL_VERSION_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/protocolversion/protocol_version.py --source ${FDB_PROTOCOL_VERSION_FILE} --generator python --output ${FDB_PROTOCOL_VERSION_PYTHON_FILE}
 	DEPENDS
 		${CMAKE_CURRENT_SOURCE_DIR}/protocolversion/protocol_version.py
 		${CMAKE_CURRENT_SOURCE_DIR}/protocolversion/ProtocolVersion.h.template
@@ -71,13 +93,23 @@ if(APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
 endif()
 
 foreach(ft flow flow_sampling flowlinktest)
-    target_include_directories(${ft} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include" "${CMAKE_CURRENT_BINARY_DIR}/include")
+    target_include_directories(
+		${ft}
+		PUBLIC
+		"${CMAKE_CURRENT_SOURCE_DIR}/include"
+		"${CMAKE_CURRENT_BINARY_DIR}/include"
+		"${CMAKE_SOURCE_DIR}/contrib/libb64/include"
+	)
+
     if (FLOW_USE_ZSTD)
         target_include_directories(${ft} PRIVATE SYSTEM ${ZSTD_LIB_INCLUDE_DIR})
     endif()
+    if (USE_JEMALLOC)
+        target_include_directories(${ft} PRIVATE ${jemalloc_INCLUDE_DIRS})
+    endif()
 
     target_link_libraries(${ft} PRIVATE stacktrace)
-    target_link_libraries(${ft} PUBLIC fmt::fmt SimpleOpt crc32)
+    target_link_libraries(${ft} PUBLIC fmt::fmt SimpleOpt crc32 libb64)
     if(UNIX AND NOT APPLE)
         target_link_libraries(${ft} PRIVATE folly_memcpy)
         target_compile_definitions(${ft} PRIVATE WITH_FOLLY_MEMCPY)
@@ -102,19 +134,27 @@ foreach(ft flow flow_sampling flowlinktest)
     if(USE_VALGRIND)
         target_link_libraries(${ft} PUBLIC Valgrind)
     endif()
+
     target_link_libraries(${ft} PUBLIC OpenSSL::SSL)
     target_link_libraries(${ft} PUBLIC Threads::Threads ${CMAKE_DL_LIBS})
     target_link_libraries(${ft} PUBLIC boost_target)
-    if(USE_VALGRIND)
-        target_link_libraries(${ft} PUBLIC Valgrind)
-    endif()
 
     if(APPLE)
         find_library(IO_KIT IOKit)
         find_library(CORE_FOUNDATION CoreFoundation)
         target_link_libraries(${ft} PRIVATE ${IO_KIT} ${CORE_FOUNDATION})
     endif()
+    find_package(Coroutines COMPONENTS Experimental Final REQUIRED)
+    target_link_libraries(${ft} PUBLIC std::coroutines)
 endforeach()
+
+if(OPEN_FOR_IDE)
+	# AcAC requires actor transpiler
+    add_library(acac OBJECT acac.cpp)
+else()
+    add_executable(acac acac.cpp)
+endif()
+target_link_libraries(acac PUBLIC flow boost_target_program_options)
 
 target_compile_definitions(flow_sampling PRIVATE -DENABLE_SAMPLING)
 if(WIN32)
@@ -218,7 +258,7 @@ if (WITH_SWIFT)
     -Xcc -std=c++20 -Xcc -DNO_INTELLISENSE -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/flow/include/headeroverlay.yaml
     )
 
-    add_dependencies(flow_swift_checked_continuation_header flow_actors boost_target)
+    add_dependencies(flow_swift_checked_continuation_header flow_actors boost_target ProtocolVersion)
     add_dependencies(flow_swift_header flow_swift_checked_continuation_header)
     add_dependencies(flow_swift flow_swift_header)
 
@@ -229,3 +269,4 @@ if (WITH_SWIFT)
     add_dependencies(flow flow_swift)
     add_dependencies(flow_sampling flow_swift)
 endif() # WITH SWIFT
+

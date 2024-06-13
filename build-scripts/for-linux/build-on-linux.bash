@@ -6,8 +6,6 @@
 # $4 - Paralllel threads
 # $5 - Source Dir. If not set then relative to the script dir
 
-#!/bin/bash
-
 get_oldest_java_path()
 {
   if [ -x "$(command -v update-java-alternatives)" ]

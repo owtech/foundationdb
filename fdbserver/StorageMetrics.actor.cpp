@@ -154,7 +154,7 @@ void StorageServerMetrics::notify(const Key& key, StorageMetrics& metrics) {
 }
 
 // Due to the fact that read sampling will be called on all reads, use this specialized function to avoid overhead
-// around branch misses and unnecessary stack allocation which eventually addes up under heavy load.
+// around branch misses and unnecessary stack allocation which eventually adds up under heavy load.
 void StorageServerMetrics::notifyBytesReadPerKSecond(const Key& key, int64_t in) {
 	double expire = now() + SERVER_KNOBS->STORAGE_METRICS_AVERAGE_INTERVAL;
 	int64_t bytesReadPerKSecond =
@@ -284,6 +284,7 @@ KeyRef StorageServerMetrics::getSplitKey(int64_t remaining,
 
 void StorageServerMetrics::splitMetrics(SplitMetricsRequest req) const {
 	int minSplitBytes = req.minSplitBytes.present() ? req.minSplitBytes.get() : SERVER_KNOBS->MIN_SHARD_BYTES;
+	int minSplitWriteTraffic = SERVER_KNOBS->SHARD_SPLIT_BYTES_PER_KSEC;
 	try {
 		SplitMetricsReply reply;
 		KeyRef lastKey = req.keys.begin;
@@ -294,7 +295,8 @@ void StorageServerMetrics::splitMetrics(SplitMetricsRequest req) const {
 		//TraceEvent("SplitMetrics").detail("Begin", req.keys.begin).detail("End", req.keys.end).detail("Remaining", remaining.bytes).detail("Used", used.bytes).detail("MinSplitBytes", minSplitBytes);
 
 		while (true) {
-			if (remaining.bytes < 2 * minSplitBytes)
+			if (remaining.bytes < 2 * minSplitBytes && (!SERVER_KNOBS->ENABLE_WRITE_BASED_SHARD_SPLIT ||
+			                                            remaining.bytesWrittenPerKSecond < minSplitWriteTraffic))
 				break;
 			KeyRef key = req.keys.end;
 			bool hasUsed = used.bytes != 0 || used.bytesWrittenPerKSecond != 0 || used.iosPerKSecond != 0;
@@ -362,7 +364,9 @@ void StorageServerMetrics::getStorageMetrics(GetStorageMetricsRequest req,
                                              StorageBytes sb,
                                              double bytesInputRate,
                                              int64_t versionLag,
-                                             double lastUpdate) const {
+                                             double lastUpdate,
+                                             int64_t bytesDurable,
+                                             int64_t bytesInput) const {
 	GetStorageMetricsReply rep;
 
 	// SOMEDAY: make bytes dynamic with hard disk space
@@ -391,6 +395,9 @@ void StorageServerMetrics::getStorageMetrics(GetStorageMetricsRequest req,
 
 	rep.versionLag = versionLag;
 	rep.lastUpdate = lastUpdate;
+
+	rep.bytesDurable = bytesDurable;
+	rep.bytesInput = bytesInput;
 
 	req.reply.send(rep);
 }
@@ -516,6 +523,12 @@ std::vector<ReadHotRangeWithMetrics> StorageServerMetrics::_getReadHotRanges(
 		    byteSample.sample.index(byteSample.sample.sumTo(byteSample.sample.lower_bound(beginKey)) + baseChunkSize);
 	}
 	return toReturn;
+}
+
+int64_t StorageServerMetrics::getHotShards(const KeyRange& range) const {
+	auto bytesWrittenPerKSecond =
+	    bytesWriteSample.getEstimate(range) * SERVER_KNOBS->STORAGE_METRICS_AVERAGE_INTERVAL_PER_KSECONDS;
+	return bytesWrittenPerKSecond;
 }
 
 void StorageServerMetrics::getReadHotRanges(ReadHotSubRangeRequest req) const {

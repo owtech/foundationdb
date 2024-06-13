@@ -37,7 +37,7 @@ enum class MoveInPhase {
 	Error = 7,
 };
 
-// MoveInShardMetaData contains all the necessary infomation to start/resume fetching a physical
+// MoveInShardMetaData contains all the necessary information to start/resume fetching a physical
 // shard by a destination storage server.
 struct MoveInShardMetaData {
 	constexpr static FileIdentifier file_identifier = 3804366;
@@ -84,7 +84,8 @@ struct MoveInShardMetaData {
 		return "MoveInShardMetaData: [Range]: " + describe(this->ranges) +
 		       " [DataMoveID]: " + this->dataMoveId.toString() +
 		       " [ShardCreateVersion]: " + std::to_string(this->createVersion) + " [ID]: " + this->id.toString() +
-		       " [State]: " + std::to_string(static_cast<int>(this->phase));
+		       " [State]: " + std::to_string(static_cast<int>(this->phase)) +
+		       " [HighWatermark]: " + std::to_string(this->highWatermark);
 	}
 
 	template <class Ar>
@@ -93,9 +94,29 @@ struct MoveInShardMetaData {
 	}
 };
 
+class ThroughputLimiter {
+public:
+	ThroughputLimiter(int64_t cap);
+
+	Future<Void> ready();
+	void addBytes(int64_t bytes);
+	void settle();
+
+private:
+	int64_t cap;
+	int64_t bytes;
+	double lastSettleSec;
+	double nextAvailableSec;
+	Future<Void> readyFuture;
+};
+
 KeyRange persistMoveInShardsKeyRange();
 
 KeyRange persistUpdatesKeyRange(const UID& id);
+
+Key persistUpdatesKey(const UID& id, const Version version);
+
+Version decodePersistUpdateVersion(KeyRef versionKey);
 
 Key persistMoveInShardKey(const UID& id);
 

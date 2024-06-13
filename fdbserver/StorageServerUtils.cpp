@@ -28,6 +28,36 @@ const KeyRangeRef persistMoveInShardKeys =
 const KeyRef persistMoveInUpdatesPrefix = PERSIST_PREFIX "MoveInShardUpdates/"_sr;
 } // namespace
 
+ThroughputLimiter::ThroughputLimiter(int64_t cap)
+  : cap(cap), bytes(0), lastSettleSec(now()), nextAvailableSec(now()), readyFuture(Void()) {}
+
+Future<Void> ThroughputLimiter::ready() {
+	if (cap <= 0 || now() >= nextAvailableSec) {
+		return Void();
+	}
+	return delay(nextAvailableSec - now());
+}
+
+void ThroughputLimiter::addBytes(int64_t bytes) {
+	this->bytes += bytes;
+}
+
+void ThroughputLimiter::settle() {
+	if (cap <= 0) {
+		return;
+	}
+	const double ts = now();
+	if (ts < this->nextAvailableSec) {
+		return;
+	}
+
+	const double delta = static_cast<double>(this->bytes) / cap;
+	this->nextAvailableSec = delta + this->lastSettleSec;
+
+	this->bytes = 0;
+	this->lastSettleSec = ts;
+}
+
 KeyRange persistMoveInShardsKeyRange() {
 	return persistMoveInShardKeys;
 }
@@ -38,6 +68,24 @@ KeyRange persistUpdatesKeyRange(const UID& id) {
 	wr << id;
 	wr.serializeBytes("/"_sr);
 	return prefixRange(wr.toValue());
+}
+
+Key persistUpdatesKey(const UID& id, const Version version) {
+	BinaryWriter wr(Unversioned());
+	wr.serializeBytes(persistMoveInUpdatesPrefix);
+	wr << id;
+	wr.serializeBytes("/"_sr);
+
+	// Big-endian ensures the keys are ordered by version.
+	wr << bigEndian64(static_cast<uint64_t>(version));
+	return wr.toValue();
+}
+
+Version decodePersistUpdateVersion(KeyRef versionKey) {
+	BinaryReader rd(versionKey, Unversioned());
+	uint64_t uv;
+	rd >> uv;
+	return static_cast<Version>(fromBigEndian64(uv));
 }
 
 Key persistMoveInShardKey(const UID& id) {
