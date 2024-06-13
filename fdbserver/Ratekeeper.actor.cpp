@@ -158,17 +158,28 @@ public:
 	ACTOR static Future<Void> trackStorageServerQueueInfo(ActorWeakSelfRef<Ratekeeper> self,
 	                                                      StorageServerInterface ssi) {
 		self->storageQueueInfo.insert(mapPair(ssi.id(), StorageQueueInfo(self->id, ssi.id(), ssi.locality)));
-		TraceEvent("RkTracking", self->id)
+		self->healthMetrics.storageStats[ssi.id()] = HealthMetrics::StorageStats();
+		TraceEvent("RkTrackStorageStart", self->id)
 		    .detail("StorageServer", ssi.id())
 		    .detail("Locality", ssi.locality.toString());
-		try {
-			loop {
+
+		loop {
+			try {
 				ErrorOr<StorageQueuingMetricsReply> reply = wait(ssi.getQueuingMetrics.getReplyUnlessFailedFor(
 				    StorageQueuingMetricsRequest(), 0, 0)); // SOMEDAY: or tryGetReply?
 				Map<UID, StorageQueueInfo>::iterator myQueueInfo = self->storageQueueInfo.find(ssi.id());
+				ASSERT(myQueueInfo != self->storageQueueInfo.end());
 				if (reply.present()) {
 					myQueueInfo->value.update(reply.get(), self->smoothTotalDurableBytes);
 					myQueueInfo->value.acceptingRequests = ssi.isAcceptingRequests();
+
+					// Update health stats.
+					auto ssMetrics = self->healthMetrics.storageStats.find(ssi.id());
+					ASSERT(ssMetrics != self->healthMetrics.storageStats.end());
+					ssMetrics->second.storageQueue = myQueueInfo->value.getStorageQueueBytes();
+					ssMetrics->second.storageDurabilityLag = myQueueInfo->value.getDurabilityLag();
+					ssMetrics->second.cpuUsage = reply.get().cpuUsage;
+					ssMetrics->second.diskUsage = reply.get().diskUsage;
 				} else {
 					if (myQueueInfo->value.valid) {
 						TraceEvent("RkStorageServerDidNotRespond", self->id).detail("StorageServer", ssi.id());
@@ -179,13 +190,21 @@ public:
 				wait(delayJittered(SERVER_KNOBS->METRIC_UPDATE_RATE) &&
 				     IFailureMonitor::failureMonitor().onStateEqual(ssi.getQueuingMetrics.getEndpoint(),
 				                                                    FailureStatus(false)));
+			} catch (Error& e) {
+				if (e.code() == error_code_actor_cancelled) {
+					self->storageQueueInfo.erase(ssi.id());
+					self->healthMetrics.storageStats.erase(ssi.id());
+					throw;
+				}
+				// Do no stop tracking storage server. The error might be recoverable.
+				Map<UID, StorageQueueInfo>::iterator myQueueInfo = self->storageQueueInfo.find(ssi.id());
+				ASSERT(myQueueInfo != self->storageQueueInfo.end());
+				myQueueInfo->value.valid = false;
+				TraceEvent("RkTrackStorageError", self->id)
+				    .detail("StorageServer", ssi.id())
+				    .detail("Locality", ssi.locality.toString())
+				    .errorUnsuppressed(e);
 			}
-		} catch (...) {
-			// including cancellation
-			self->storageQueueInfo.erase(ssi.id());
-			self->storageServerInterfaces.erase(ssi.id());
-			self->healthMetrics.storageStats.erase(ssi.id());
-			throw;
 		}
 	}
 
@@ -221,6 +240,13 @@ public:
 					    .detail("MetricSize", metricSize)
 					    .log();
 				}
+
+				// Storage related stats should be consistent.
+				for (const auto& [id, _] : self->storageServerInterfaces) {
+					ASSERT(self->storageQueueInfo.find(id) != self->storageQueueInfo.end());
+					ASSERT(self->healthMetrics.storageStats.find(id) != self->healthMetrics.storageStats.end());
+				}
+
 				// wait for monitorServerListChange to remove the interface
 				wait(delay(SERVER_KNOBS->RATEKEEPER_MONITOR_SS_DELAY));
 				tr = Transaction(self->db);
@@ -234,13 +260,14 @@ public:
 	ACTOR static Future<Void> trackTLogQueueInfo(Ratekeeper* self, TLogInterface tli) {
 		self->tlogQueueInfo.insert(mapPair(tli.id(), TLogQueueInfo(tli.id())));
 		state Map<UID, TLogQueueInfo>::iterator myQueueInfo = self->tlogQueueInfo.find(tli.id());
-		TraceEvent("RkTracking", self->id).detail("TransactionLog", tli.id());
+		TraceEvent("RkTrackTlog", self->id).detail("TransactionLog", tli.id());
 		try {
 			loop {
 				ErrorOr<TLogQueuingMetricsReply> reply = wait(tli.getQueuingMetrics.getReplyUnlessFailedFor(
 				    TLogQueuingMetricsRequest(), 0, 0)); // SOMEDAY: or tryGetReply?
 				if (reply.present()) {
 					myQueueInfo->value.update(reply.get(), self->smoothTotalDurableBytes);
+					myQueueInfo->value.valid = true;
 				} else {
 					if (myQueueInfo->value.valid) {
 						TraceEvent("RkTLogDidNotRespond", self->id).detail("TransactionLog", tli.id());
@@ -252,9 +279,12 @@ public:
 				     IFailureMonitor::failureMonitor().onStateEqual(tli.getQueuingMetrics.getEndpoint(),
 				                                                    FailureStatus(false)));
 			}
-		} catch (...) {
+		} catch (Error& e) {
 			// including cancellation
 			self->tlogQueueInfo.erase(myQueueInfo);
+			if (e.code() != error_code_actor_cancelled) {
+				TraceEvent("RkTrackTlogError", self->id).detail("TransactionLog", tli.id()).errorUnsuppressed(e);
+			}
 			throw;
 		}
 	}
@@ -283,8 +313,6 @@ public:
 				} else {
 					storageServerTrackers.erase(id);
 					self->storageServerInterfaces.erase(id);
-					self->storageQueueInfo.erase(id); // remove the entry if an old storage server is absent
-					self->healthMetrics.storageStats.erase(id);
 				}
 			}
 			when(wait(err.getFuture())) {}
@@ -305,6 +333,50 @@ public:
 				return !anyData.empty();
 			} catch (Error& e) {
 				wait(tr.onError(e));
+			}
+		}
+	}
+
+	ACTOR static Future<Void> monitorHotShards(Ratekeeper* self, Reference<AsyncVar<ServerDBInfo> const> dbInfo) {
+		loop {
+			wait(delay(SERVER_KNOBS->HOT_SHARD_MONITOR_FREQUENCY));
+			if (!self->ssHighWriteQueue.present()) {
+				continue;
+			}
+
+			state UID ssi = self->ssHighWriteQueue.get();
+			state SetThrottledShardRequest setReq;
+
+			// TraceEvent(SevDebug, "SendGetHotShardsRequest");
+			try {
+				GetHotShardsRequest getReq;
+				GetHotShardsReply reply = wait(self->storageServerInterfaces[ssi].getHotShards.getReply(getReq));
+
+				// Backup's restore range can't be throttled, otherwise restore would fail,
+				// i.e., "ApplyMutationsError".
+				KeyRangeRef applyMutationRange("\xfe\xff\xfe"_sr, "\xfe\xff\xff\xff"_sr);
+				for (const auto& shard : reply.hotShards) {
+					if (!shard.intersects(applyMutationRange)) {
+						setReq.throttledShards.push_back(shard);
+					} else {
+						TraceEvent("IgnoreHotShard").detail("Shard", shard);
+					}
+				}
+			} catch (Error& e) {
+				TraceEvent(SevWarn, "CannotMonitorHotShardForSS").detail("SS", ssi);
+				continue;
+			}
+			if (!setReq.throttledShards.size()) {
+				continue;
+			}
+			setReq.expirationTime = now() + SERVER_KNOBS->HOT_SHARD_THROTTLING_EXPIRE_AFTER;
+			for (auto& shard : setReq.throttledShards) {
+				TraceEvent(SevInfo, "SendRequestThrottleHotShard")
+				    .detail("Shard", shard)
+				    .detail("DelayUntil", setReq.expirationTime);
+			}
+			for (const auto& cpi : dbInfo->get().client.commitProxies) {
+				cpi.setThrottledShard.send(setReq);
 			}
 		}
 	}
@@ -430,6 +502,11 @@ public:
 		if (SERVER_KNOBS->BW_THROTTLING_ENABLED) {
 			self.addActor.send(self.monitorBlobWorkers(dbInfo));
 		}
+
+		if (SERVER_KNOBS->HOT_SHARD_THROTTLING_ENABLED) {
+			self.addActor.send(self.monitorHotShards(dbInfo));
+		}
+
 		self.addActor.send(self.refreshStorageServerCommitCosts());
 
 		TraceEvent("RkTLogQueueSizeParameters", rkInterf.id())
@@ -596,6 +673,11 @@ public:
 					self.updateCommitCostEstimation(req.ssTrTagCommitCost);
 					req.reply.send(Void());
 				}
+				when(GetSSVersionLagRequest req = waitNext(rkInterf.getSSVersionLag.getFuture())) {
+					GetSSVersionLagReply reply;
+					self.getSSVersionLag(reply.maxPrimarySSVersion, reply.maxRemoteSSVersion);
+					req.reply.send(reply);
+				}
 				when(wait(err.getFuture())) {}
 				when(wait(dbInfo->onChange())) {
 					if (!recovering && dbInfo->get().recoveryState < RecoveryState::ACCEPTING_COMMITS) {
@@ -676,6 +758,10 @@ Future<Void> Ratekeeper::monitorThrottlingChanges() {
 	return tagThrottler->monitorThrottlingChanges();
 }
 
+Future<Void> Ratekeeper::monitorHotShards(Reference<AsyncVar<ServerDBInfo> const> dbInfo) {
+	return RatekeeperImpl::monitorHotShards(this, dbInfo);
+}
+
 Future<Void> Ratekeeper::monitorBlobWorkers(Reference<AsyncVar<ServerDBInfo> const> dbInfo) {
 	return RatekeeperImpl::monitorBlobWorkers(this, dbInfo);
 }
@@ -727,6 +813,20 @@ void Ratekeeper::updateCommitCostEstimation(
 	}
 }
 
+static std::string getIgnoredZonesReasons(
+    std::set<Optional<Standalone<StringRef>>>& ignoredMachines,
+    std::map<Optional<Standalone<StringRef>>, std::set<limitReason_t>>& zoneReasons) {
+	std::string ignoredZoneReasons;
+	for (auto zone : ignoredMachines) {
+		ignoredZoneReasons += zone.get().toString() + " [";
+		for (auto reason : zoneReasons[zone]) {
+			ignoredZoneReasons += std::to_string(reason) + " ";
+		}
+		ignoredZoneReasons += "] ";
+	}
+	return ignoredZoneReasons.length() ? ignoredZoneReasons : "None";
+}
+
 void Ratekeeper::updateRate(RatekeeperLimits* limits) {
 	// double controlFactor = ;  // dt / eFoldingTime
 
@@ -752,6 +852,7 @@ void Ratekeeper::updateRate(RatekeeperLimits* limits) {
 	std::multimap<int64_t, StorageQueueInfo const*> storageDurabilityLagReverseIndex;
 
 	std::map<UID, limitReason_t> ssReasons;
+	std::map<Optional<Standalone<StringRef>>, std::set<limitReason_t>> zoneReasons;
 
 	bool printRateKeepLimitReasonDetails =
 	    SERVER_KNOBS->RATEKEEPER_PRINT_LIMIT_REASON &&
@@ -770,8 +871,8 @@ void Ratekeeper::updateRate(RatekeeperLimits* limits) {
 		int64_t minFreeSpace = std::max(SERVER_KNOBS->MIN_AVAILABLE_SPACE,
 		                                (int64_t)(SERVER_KNOBS->MIN_AVAILABLE_SPACE_RATIO * ss.getSmoothTotalSpace()));
 
-		worstFreeSpaceStorageServer =
-		    std::min(worstFreeSpaceStorageServer, (int64_t)ss.getSmoothFreeSpace() - minFreeSpace);
+		worstFreeSpaceStorageServer = std::min(worstFreeSpaceStorageServer,
+		                                       std::max((int64_t)ss.getSmoothFreeSpace() - minFreeSpace, (int64_t)0));
 
 		int64_t springBytes = std::max<int64_t>(
 		    1, std::min<int64_t>(limits->storageSpringBytes, (ss.getSmoothFreeSpace() - minFreeSpace) * 0.2));
@@ -802,12 +903,6 @@ void Ratekeeper::updateRate(RatekeeperLimits* limits) {
 		worstDurabilityLag = std::max(worstDurabilityLag, storageDurabilityLag);
 
 		storageDurabilityLagReverseIndex.insert(std::make_pair(-1 * storageDurabilityLag, &ss));
-
-		auto& ssMetrics = healthMetrics.storageStats[ss.id];
-		ssMetrics.storageQueue = storageQueue;
-		ssMetrics.storageDurabilityLag = storageDurabilityLag;
-		ssMetrics.cpuUsage = ss.lastReply.cpuUsage;
-		ssMetrics.diskUsage = ss.lastReply.diskUsage;
 
 		double targetRateRatio = std::min((storageQueue - targetBytes + springBytes) / (double)springBytes, 2.0);
 
@@ -895,6 +990,7 @@ void Ratekeeper::updateRate(RatekeeperLimits* limits) {
 		}
 
 		ssReasons[ss.id] = ssLimitReason;
+		zoneReasons[ss.locality.zoneId()].insert(ssLimitReason);
 	}
 
 	tagThrottler->updateThrottling(storageQueueInfo);
@@ -1161,7 +1257,8 @@ void Ratekeeper::updateRate(RatekeeperLimits* limits) {
 		int64_t minFreeSpace = std::max(SERVER_KNOBS->MIN_AVAILABLE_SPACE,
 		                                (int64_t)(SERVER_KNOBS->MIN_AVAILABLE_SPACE_RATIO * tl.getSmoothTotalSpace()));
 
-		worstFreeSpaceTLog = std::min(worstFreeSpaceTLog, (int64_t)tl.getSmoothFreeSpace() - minFreeSpace);
+		worstFreeSpaceTLog =
+		    std::min(worstFreeSpaceTLog, std::max((int64_t)tl.getSmoothFreeSpace() - minFreeSpace, (int64_t)0));
 
 		int64_t springBytes = std::max<int64_t>(
 		    1, std::min<int64_t>(limits->logSpringBytes, (tl.getSmoothFreeSpace() - minFreeSpace) * 0.2));
@@ -1336,6 +1433,7 @@ void Ratekeeper::updateRate(RatekeeperLimits* limits) {
 		    .detail("LimitingStorageServerVersionLag", limitingVersionLag)
 		    .detail("WorstStorageServerDurabilityLag", worstDurabilityLag)
 		    .detail("LimitingStorageServerDurabilityLag", limitingDurabilityLag)
+		    .detail("IgnoredZonesReasons", getIgnoredZonesReasons(ignoredMachines, zoneReasons))
 		    .detail("TagsAutoThrottled", tagThrottler->autoThrottleCount())
 		    .detail("TagsAutoThrottledBusyRead", tagThrottler->busyReadTagCount())
 		    .detail("TagsAutoThrottledBusyWrite", tagThrottler->busyWriteTagCount())
@@ -1343,10 +1441,29 @@ void Ratekeeper::updateRate(RatekeeperLimits* limits) {
 		    .detail("AutoThrottlingEnabled", tagThrottler->isAutoThrottlingEnabled())
 		    .trackLatest(name);
 	}
+	ssHighWriteQueue.reset();
+	if (limitReason == limitReason_t::storage_server_write_queue_size) {
+		ssHighWriteQueue = reasonID;
+	}
 }
 
 Future<Void> Ratekeeper::refreshStorageServerCommitCosts() {
 	return RatekeeperImpl::refreshStorageServerCommitCosts(this);
+}
+
+void Ratekeeper::getSSVersionLag(Version& maxSSPrimaryVersion, Version& maxSSRemoteVersion) {
+	maxSSPrimaryVersion = maxSSRemoteVersion = invalidVersion;
+	for (auto i = storageQueueInfo.begin(); i != storageQueueInfo.end(); ++i) {
+		auto const& ss = i->value;
+		if (!ss.valid || !ss.acceptingRequests)
+			continue;
+
+		if (remoteDC.present() && ss.locality.dcId() == remoteDC) {
+			maxSSRemoteVersion = std::max(ss.getLatestVersion(), maxSSRemoteVersion);
+		} else {
+			maxSSPrimaryVersion = std::max(ss.getLatestVersion(), maxSSPrimaryVersion);
+		}
+	}
 }
 
 ACTOR Future<Void> ratekeeper(RatekeeperInterface rkInterf, Reference<AsyncVar<ServerDBInfo> const> dbInfo) {
@@ -1403,20 +1520,31 @@ UpdateCommitCostRequest StorageQueueInfo::refreshCommitCost(double elapsed) {
 	busiestWriteTags.clear();
 	TransactionTag busiestTag;
 	TransactionCommitCostEstimation maxCost;
-	double maxRate = 0, maxBusyness = 0;
+	double maxRate = 0;
+	std::priority_queue<BusyTagInfo, std::vector<BusyTagInfo>, std::greater<BusyTagInfo>> topKWriters;
 	for (const auto& [tag, cost] : tagCostEst) {
 		double rate = cost.getCostSum() / elapsed;
+		double busyness = static_cast<double>(maxCost.getCostSum()) / totalWriteCosts;
+		if (rate < SERVER_KNOBS->MIN_TAG_WRITE_PAGES_RATE * CLIENT_KNOBS->TAG_THROTTLING_PAGE_SIZE) {
+			continue;
+		}
+		if (topKWriters.size() < SERVER_KNOBS->SS_THROTTLE_TAGS_TRACKED) {
+			topKWriters.emplace(tag, rate, busyness);
+		} else if (topKWriters.top().rate < rate) {
+			topKWriters.pop();
+			topKWriters.emplace(tag, rate, busyness);
+		}
+
 		if (rate > maxRate) {
 			busiestTag = tag;
 			maxRate = rate;
 			maxCost = cost;
 		}
 	}
-	if (maxRate > SERVER_KNOBS->MIN_TAG_WRITE_PAGES_RATE * CLIENT_KNOBS->TAG_THROTTLING_PAGE_SIZE) {
-		// TraceEvent("RefreshSSCommitCost").detail("TotalWriteCost", totalWriteCost).detail("TotalWriteOps",totalWriteOps);
-		ASSERT_GT(totalWriteCosts, 0);
-		maxBusyness = double(maxCost.getCostSum()) / totalWriteCosts;
-		busiestWriteTags.emplace_back(busiestTag, maxRate, maxBusyness);
+
+	while (!topKWriters.empty()) {
+		busiestWriteTags.push_back(std::move(topKWriters.top()));
+		topKWriters.pop();
 	}
 
 	UpdateCommitCostRequest updateCommitCostRequest{ ratekeeperID,

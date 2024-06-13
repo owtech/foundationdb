@@ -133,6 +133,9 @@ public:
 	bool FAST_ALLOC_ALLOW_GUARD_PAGES;
 	double HUGE_ARENA_LOGGING_BYTES;
 	double HUGE_ARENA_LOGGING_INTERVAL;
+	// This setting allows to let the fdbserver abort instead of exit to generate coredumps
+	// in case of a failure.
+	bool ABORT_ON_FAILURE;
 
 	double MEMORY_USAGE_CHECK_INTERVAL;
 
@@ -249,6 +252,10 @@ public:
 	double NON_DURABLE_MAX_WRITE_DELAY;
 	double MAX_PRIOR_MODIFICATION_DELAY;
 
+	// AsyncFileWriteChecker
+	double ASYNC_FILE_WRITE_CHEKCER_LOGGING_INTERVAL;
+	double ASYNC_FILE_WRITE_CHEKCER_CHECKING_DELAY;
+
 	// GenericActors
 	double BUGGIFY_FLOW_LOCK_RELEASE_DELAY;
 	int LOW_PRIORITY_DELAY_COUNT;
@@ -286,6 +293,7 @@ public:
 	int MIN_PACKET_BUFFER_FREE_BYTES;
 	int FLOW_TCP_NODELAY;
 	int FLOW_TCP_QUICKACK;
+	bool RESOLVE_PREFER_IPV4_ADDR;
 
 	// Sim2
 	// FIMXE: more parameters could be factored out
@@ -363,6 +371,9 @@ public:
 	bool LOAD_BALANCE_TSS_MISMATCH_VERIFY_SS;
 	bool LOAD_BALANCE_TSS_MISMATCH_TRACE_FULL;
 	int TSS_LARGE_TRACE_SIZE;
+	double LOAD_BALANCE_FETCH_REPLICA_TIMEOUT;
+	bool ENABLE_REPLICA_CONSISTENCY_CHECK_ON_READS;
+	int CONSISTENCY_CHECK_REQUIRED_REPLICAS;
 
 	// Health Monitor
 	int FAILURE_DETECTION_DELAY;

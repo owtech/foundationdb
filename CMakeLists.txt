@@ -53,6 +53,15 @@ endif()
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/lib)
 
+option(WITH_ACAC "Enable actor stack recording" OFF)
+if (WITH_ACAC)
+  message(STATUS "Build FoundationDB with AcAC support")
+  if (FDB_RELEASE OR FDB_RELEASE_CANDIDATE)
+	message(FATAL_ERROR "ACAC will cause severe slowdown of the system and SHOULD not be enabled in Release.")
+  endif()
+  add_compile_definitions(WITH_ACAC)
+endif()
+
 ################################################################################
 # Packages used for bindings
 ################################################################################
@@ -129,7 +138,7 @@ message(STATUS "FDB_PATCH is ${FDB_PATCH}")
 
 set(FDB_CURRENT_VERSION ${PROJECT_VERSION})
 set(FDB_FUTURE_VERSION "7.5.0")
-set(FDB_PREV_RELEASE_VERSION "7.3.3")
+set(FDB_PREV_RELEASE_VERSION "7.3.41")
 set(FDB_PREV2_RELEASE_VERSION "7.1.33")
 set(FDB_PREV3_RELEASE_VERSION "7.0.0")
 
@@ -223,6 +232,7 @@ if(WITH_PYTHON AND WITH_C_BINDING)
 endif()
 if(WITH_DOCUMENTATION)
   add_subdirectory(documentation)
+  add_dependencies(html CopyJavadoc)
 endif()
 
 if(WIN32)
@@ -249,7 +259,9 @@ if (CMAKE_EXPORT_COMPILE_COMMANDS AND WITH_PYTHON)
   add_custom_target(processed_compile_commands ALL DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/compile_commands.json ${CMAKE_CURRENT_BINARY_DIR}/compile_commands.json)
 
   # A prebuild target ensures that all actors, Swift-generated headers, and Swift modules are built.
-  add_custom_target(prebuild_for_ide ALL DEPENDS fdbserver_swift processed_compile_commands)
+  if (WITH_SWIFT)
+     add_custom_target(prebuild_for_ide ALL DEPENDS fdbserver_swift processed_compile_commands)
+  endif()
 endif()
 
 ################################################################################
@@ -259,3 +271,5 @@ endif()
 print_components()
 
 message(STATUS "CPACK_COMPONENTS_ALL ${CPACK_COMPONENTS_ALL}")
+
+

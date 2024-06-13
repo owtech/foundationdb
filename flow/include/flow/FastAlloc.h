@@ -22,7 +22,6 @@
 #define FLOW_FASTALLOC_H
 #pragma once
 
-#include "flow/Error.h"
 #include "flow/Platform.h"
 #include "flow/config.h"
 
@@ -77,7 +76,7 @@ extern std::map<const char*, AllocInstrInfo> allocInstr;
 
 // extern std::map<uint32_t, uint64_t> stackAllocations;
 
-// maps from an address to the hash of the backtrace and the size of the alloction
+// maps from an address to the hash of the backtrace and the size of the allocation
 extern std::unordered_map<int64_t, std::pair<uint32_t, size_t>> memSample;
 
 struct BackTraceAccount {

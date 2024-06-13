@@ -71,7 +71,7 @@ ERROR( shutdown_in_progress, 1043, "Operation no longer supported due to shutdow
 ERROR( serialization_failed, 1044, "Failed to deserialize an object" )
 ERROR( connection_unreferenced, 1048, "No peer references for connection" )
 ERROR( connection_idle, 1049, "Connection closed after idle timeout" )
-ERROR( disk_adapter_reset, 1050, "The disk queue adpater reset" )
+ERROR( disk_adapter_reset, 1050, "The disk queue adapter reset" )
 ERROR( batch_transaction_throttled, 1051, "Batch GRV request rate limit exceeded")
 ERROR( dd_cancelled, 1052, "Data distribution components cancelled")
 ERROR( dd_not_found, 1053, "Data distributor not found")
@@ -106,6 +106,7 @@ ERROR( storage_engine_not_initialized, 1081, "Storage engine was never successfu
 ERROR( unknown_storage_engine, 1082, "Storage engine type is not recognized." )
 ERROR( duplicate_snapshot_request, 1083, "A duplicate snapshot request has been sent, the old request is discarded.")
 ERROR( dd_config_changed, 1084, "DataDistribution configuration changed." )
+ERROR( consistency_check_urgent_task_failed, 1085, "Consistency check urgent task is failed")
 
 ERROR( broken_promise, 1100, "Broken promise" )
 ERROR( operation_cancelled, 1101, "Asynchronous operation cancelled" )
@@ -148,6 +149,10 @@ ERROR( persist_new_audit_metadata_error, 1230, "Persist new audit metadata error
 ERROR( cancel_audit_storage_failed, 1231, "Failed to cancel an audit" )
 ERROR( audit_storage_cancelled, 1232, "Audit has been cancelled" )
 ERROR( location_metadata_corruption, 1233, "Found location metadata corruption" )
+ERROR( audit_storage_task_outdated, 1234, "Audit task is scheduled by an outdated DD" )
+ERROR( transaction_throttled_hot_shard, 1235, "Transaction throttled due to hot shard" )
+ERROR( storage_replica_comparison_error, 1236, "Storage replicas not consistent" )
+ERROR( unreachable_storage_replica, 1237, "Storage replica cannot be reached" )
 
 // 15xx Platform errors
 ERROR( platform_error, 1500, "Platform error" )

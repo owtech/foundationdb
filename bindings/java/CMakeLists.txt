@@ -164,7 +164,7 @@ if(NOT WIN32 AND NOT APPLE AND NOT OPEN_FOR_IDE)
 endif()
 
 target_include_directories(fdb_java PRIVATE ${JNI_INCLUDE_DIRS})
-# libfdb_java.so is loaded by fdb-java.jar and doesn't need to depened on jvm shared libraries.
+# libfdb_java.so is loaded by fdb-java.jar and doesn't need to depend on jvm shared libraries.
 target_link_libraries(fdb_java PRIVATE fdb_c)
 target_link_libraries(fdb_java PRIVATE fdb_java_native)
 if(APPLE)
@@ -208,6 +208,17 @@ file(WRITE ${MANIFEST_FILE} ${MANIFEST_TEXT})
 add_jar(fdb-java ${JAVA_BINDING_SRCS} ${GENERATED_JAVA_FILES} ${CMAKE_SOURCE_DIR}/LICENSE ${GENERATED_JAVA_DIR}/ApiVersion.java
   OUTPUT_DIR ${PROJECT_BINARY_DIR}/lib VERSION ${FDB_VERSION} MANIFEST ${MANIFEST_FILE} GENERATE_NATIVE_HEADERS fdb_java_native)
 add_dependencies(fdb-java fdb_java_options)
+
+create_javadoc(fdb
+               FILES ${JAVA_BINDING_SRCS} ${GENERATED_JAVA_FILES} ${GENERATED_JAVA_DIR}/ApiVersion.java
+               VERSION ${FDB_VERSION}
+               )
+add_dependencies(fdb_javadoc fdb_java_options) 
+
+add_custom_target(CopyJavadoc
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_BINARY_DIR}/javadoc/fdb ${CMAKE_CURRENT_BINARY_DIR}/../../documentation/html/javadoc
+)
+add_dependencies(CopyJavadoc fdb_javadoc)
 
 if(NOT OPEN_FOR_IDE)
   set(FAT_JAR_BINARIES "NOTFOUND" CACHE STRING

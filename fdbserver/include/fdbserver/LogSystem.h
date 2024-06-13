@@ -529,7 +529,7 @@ struct ILogSystem {
 	// Waits for the version number of the bundle (in this epoch) to be prevVersion (i.e. for all pushes ordered
 	// earlier) Puts the given messages into the bundle, each with the given tags, and with message versions (version,
 	// 0) - (version, N) Changes the version number of the bundle to be version (unblocking the next push) Returns when
-	// the preceding changes are durable.  (Later we will need multiple return signals for diffferent durability levels)
+	// the preceding changes are durable.  (Later we will need multiple return signals for different durability levels)
 	// If the current epoch has ended, push will not return, and the pushed messages will not be visible in any
 	// subsequent epoch (but may become visible in this epoch)
 
@@ -774,12 +774,6 @@ struct LogPushData : NonCopyable {
 		writtenTLogs.insert(msg_locations.begin(), msg_locations.end());
 	}
 
-	void getLocations(const std::vector<Tag>& vtags, std::set<uint16_t>& writtenTLogs) {
-		std::vector<int> msg_locations;
-		logSystem->getPushLocations(vtags, msg_locations, false /*allLocations*/);
-		writtenTLogs.insert(msg_locations.begin(), msg_locations.end());
-	}
-
 	// store tlogs as represented by index
 	void saveLocations(std::set<uint16_t>& writtenTLogs) {
 		writtenTLogs.insert(msg_locations.begin(), msg_locations.end());
@@ -806,8 +800,8 @@ struct LogPushData : NonCopyable {
 	// MUST be called after getMessages() and recordEmptyMessage().
 	float getEmptyMessageRatio() const;
 
-	// Returns the total number of mutations.
-	uint32_t getMutationCount() const { return subsequence; }
+	// Returns the total number of mutations. Subsequence is initialized to 1, so subtract 1 to get count.
+	uint32_t getMutationCount() const { return subsequence - 1; }
 
 	// Sets mutations for all internal writers. "mutations" is the output from
 	// getAllMessages() and is used before writing any other mutations.

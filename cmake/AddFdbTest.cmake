@@ -7,7 +7,7 @@
 #   an error if there are any .txt files in the test directory that do not
 #   correspond to a test or are not ignore by a pattern
 # - IGNORE_PATTERNS regular expressions. All files that match any of those
-#   experessions don't need to be associated with a test
+#   expressions don't need to be associated with a test
 function(configure_testing)
   set(options ERROR_ON_ADDITIONAL_FILES)
   set(oneValueArgs TEST_DIRECTORY)
@@ -230,8 +230,8 @@ function(stage_correctness_package)
                             ${STAGE_OUT_DIR}/bin/coverage.fdbclient.xml
                             ${STAGE_OUT_DIR}/bin/coverage.fdbrpc.xml
                             ${STAGE_OUT_DIR}/bin/coverage.flow.xml
-                            ${STAGE_OUT_DIR}/bin/TestHarness.exe
-                            ${STAGE_OUT_DIR}/bin/TraceLogHelper.dll
+                            # ${STAGE_OUT_DIR}/bin/TestHarness.exe
+                            # ${STAGE_OUT_DIR}/bin/TraceLogHelper.dll
                             ${STAGE_OUT_DIR}/CMakeCache.txt
     )
 
@@ -243,16 +243,16 @@ function(stage_correctness_package)
             ${CMAKE_BINARY_DIR}/lib/coverage.fdbclient.xml
             ${CMAKE_BINARY_DIR}/lib/coverage.fdbrpc.xml
             ${CMAKE_BINARY_DIR}/lib/coverage.flow.xml
-            ${CMAKE_BINARY_DIR}/packages/bin/TestHarness.exe
-            ${CMAKE_BINARY_DIR}/packages/bin/TraceLogHelper.dll
+            # ${CMAKE_BINARY_DIR}/packages/bin/TestHarness.exe
+            # ${CMAKE_BINARY_DIR}/packages/bin/TraceLogHelper.dll
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/CMakeCache.txt ${STAGE_OUT_DIR}
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/packages/bin/fdbserver
                                      ${CMAKE_BINARY_DIR}/bin/coverage.fdbserver.xml
                                      ${CMAKE_BINARY_DIR}/lib/coverage.fdbclient.xml
                                      ${CMAKE_BINARY_DIR}/lib/coverage.fdbrpc.xml
                                      ${CMAKE_BINARY_DIR}/lib/coverage.flow.xml
-                                     ${CMAKE_BINARY_DIR}/packages/bin/TestHarness.exe
-                                     ${CMAKE_BINARY_DIR}/packages/bin/TraceLogHelper.dll
+                                     # ${CMAKE_BINARY_DIR}/packages/bin/TestHarness.exe
+                                     # ${CMAKE_BINARY_DIR}/packages/bin/TraceLogHelper.dll
                                      ${STAGE_OUT_DIR}/bin
     COMMENT "Copying files for ${STAGE_CONTEXT} package"
     )
@@ -565,7 +565,8 @@ string(APPEND test_venv_cmd "${Python3_EXECUTABLE} -m venv ${test_venv_dir} ")
 string(APPEND test_venv_cmd "&& ${test_venv_activate} ")
 string(APPEND test_venv_cmd "&& pip install --upgrade pip ")
 string(APPEND test_venv_cmd "&& pip install -r ${CMAKE_SOURCE_DIR}/tests/TestRunner/requirements.txt")
-string(APPEND test_venv_cmd "&& (cd ${CMAKE_BINARY_DIR}/bindings/python && python3 setup.py install) ")
+# NOTE: At this stage we are in the virtual environment and Python3_EXECUTABLE is not available anymore
+string(APPEND test_venv_cmd "&& (cd ${CMAKE_BINARY_DIR}/bindings/python && python3 -m pip install .) ")
 add_test(
   NAME test_venv_setup
   COMMAND bash -c ${test_venv_cmd}

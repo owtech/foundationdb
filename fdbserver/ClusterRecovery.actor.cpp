@@ -200,11 +200,13 @@ ACTOR Future<Void> newCommitProxies(Reference<ClusterRecoveryData> self, Recruit
 		req.recoveryTransactionVersion = self->recoveryTransactionVersion;
 		req.firstProxy = i == 0;
 		req.encryptMode = getEncryptionAtRest(self->configuration);
+		req.commitProxyIndex = i;
 		TraceEvent("CommitProxyReplies", self->dbgid)
 		    .detail("WorkerID", recr.commitProxies[i].id())
 		    .detail("RecoveryTxnVersion", self->recoveryTransactionVersion)
 		    .detail("EncryptMode", req.encryptMode.toString())
-		    .detail("FirstProxy", req.firstProxy ? "True" : "False");
+		    .detail("FirstProxy", req.firstProxy ? "True" : "False")
+		    .detail("CommitProxyIndex", req.commitProxyIndex);
 		initializationReplies.push_back(
 		    transformErrors(throwErrorOr(recr.commitProxies[i].commitProxy.getReplyUnlessFailedFor(
 		                        req, SERVER_KNOBS->TLOG_TIMEOUT, SERVER_KNOBS->MASTER_FAILURE_SLOPE_DURING_RECOVERY)),
@@ -1090,7 +1092,7 @@ ACTOR Future<Void> readTransactionSystemState(Reference<ClusterRecoveryData> sel
 	// Sets self->configuration to the configuration (FF/conf/ keys) at self->lastEpochEnd
 
 	// Recover transaction state store
-	// If it's the first recovery the encrypt mode is not yet avilable so create the txn state store with encryption
+	// If it's the first recovery the encrypt mode is not yet available so create the txn state store with encryption
 	// disabled. This is fine since we will not write any data to disk using this txn store.
 	state bool enableEncryptionForTxnStateStore = false;
 	if (self->controllerData->encryptionAtRestMode.getFuture().isReady()) {

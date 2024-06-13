@@ -54,7 +54,7 @@ struct AuditStorageState {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		serializer(ar, id, auditServerId, range, type, phase, error, ddId);
+		serializer(ar, id, auditServerId, range, type, phase, error, ddId, engineType);
 	}
 
 	inline void setType(AuditType type) { this->type = static_cast<uint8_t>(type); }
@@ -86,6 +86,7 @@ struct AuditStorageState {
 	KeyRange range;
 	uint8_t type;
 	uint8_t phase;
+	KeyValueStoreType engineType;
 	std::string error;
 };
 
@@ -120,8 +121,8 @@ struct TriggerAuditRequest {
 	constexpr static FileIdentifier file_identifier = 1384445;
 
 	TriggerAuditRequest() = default;
-	TriggerAuditRequest(AuditType type, KeyRange range)
-	  : type(static_cast<uint8_t>(type)), range(range), cancel(false) {}
+	TriggerAuditRequest(AuditType type, KeyRange range, KeyValueStoreType engineType)
+	  : type(static_cast<uint8_t>(type)), range(range), cancel(false), engineType(engineType) {}
 
 	TriggerAuditRequest(AuditType type, UID id) : type(static_cast<uint8_t>(type)), id(id), cancel(true) {}
 
@@ -130,12 +131,13 @@ struct TriggerAuditRequest {
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		serializer(ar, type, range, id, cancel, reply);
+		serializer(ar, type, range, id, cancel, reply, engineType);
 	}
 
 	UID id;
 	uint8_t type;
 	KeyRange range;
+	KeyValueStoreType engineType;
 	bool cancel;
 	ReplyPromise<UID> reply;
 };

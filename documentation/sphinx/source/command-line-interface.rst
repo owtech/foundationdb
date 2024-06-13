@@ -49,6 +49,13 @@ The ``clear`` command clears a key from the database. Its syntax is ``clear <KEY
 
 Note that :ref:`characters can be escaped <cli-escaping>` when specifying keys (or values) in ``fdbcli``.
 
+clearknob
+---------
+
+The ``clearknob`` command can be used to clear knobs set in the configuration database. Its syntax is ``clearknob <KNOBNAME> [CONFIGCLASS]``. If not present in a ``begin\commit`` block, the CLI will prompt for a description of the change.
+
+Note that :ref:`characters can be escaped <cli-escaping>` when specifying keys (or values) in ``fdbcli``.
+
 clearrange
 ----------
 
@@ -416,7 +423,7 @@ flow
 
 ``profile flow run <DURATION> <FILENAME> <PROCESS...>``
 
-Enables flow profiling on the specifed processes for ``DURATION`` seconds. Profiling output will be stored at the specified filename relative to the fdbserver process's trace log directory. To profile all processes, use ``all`` for the ``PROCESS`` parameter.
+Enables flow profiling on the specified processes for ``DURATION`` seconds. Profiling output will be stored at the specified filename relative to the fdbserver process's trace log directory. To profile all processes, use ``all`` for the ``PROCESS`` parameter.
 
 heap
 ^^^^

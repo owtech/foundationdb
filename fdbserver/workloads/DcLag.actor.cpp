@@ -40,8 +40,8 @@
 // for sending packets to the remote data center's log routers. This will cause these
 // log routers to fail to progress, and causing data center lag, i.e., lag between the
 // primary and remote DC's tlogs. With changes to log routers, they can detect that the
-// peek is taking a long time (> LOG_ROUTER_PEEK_SWITCH_DC_TIME) and swith to use
-// another DC to get data, thus recoverying from the data center lag.
+// peek is taking a long time (> LOG_ROUTER_PEEK_SWITCH_DC_TIME) and switch to use
+// another DC to get data, thus recovering from the data center lag.
 struct DcLagWorkload : TestWorkload {
 	static constexpr auto NAME = "DcLag";
 	bool enabled;
@@ -75,8 +75,7 @@ struct DcLagWorkload : TestWorkload {
 		std::vector<IPAddress> ips; // all remote process IPs
 		for (const auto& process : g_simulator->getAllProcesses()) {
 			const auto& ip = process->address.ip;
-			if (process->locality.dcId().present() && g_simulator->remoteDcId.present() &&
-			    process->locality.dcId().get() == g_simulator->remoteDcId.get()) {
+			if (process->locality.dcId().present() && process->locality.dcId() == g_simulator->remoteDcId) {
 				ips.push_back(ip);
 			}
 		}
