@@ -74,7 +74,7 @@ struct SpecialKeySpaceCorrectnessWorkload : TestWorkload {
 		// In particular, the test aims to test special keys' functions on monitoring and managing the cluster.
 		// It expects the FDB cluster is healthy and not doing unexpected configuration changes.
 		// All changes should come from special keys' operations' outcome.
-		// Consequently, we disable all failure injection workloads in backgroud for this test
+		// Consequently, we disable all failure injection workloads in background for this test
 		out.insert("all");
 	}
 
@@ -121,7 +121,8 @@ struct SpecialKeySpaceCorrectnessWorkload : TestWorkload {
 	ACTOR Future<Void> _start(Database cx, SpecialKeySpaceCorrectnessWorkload* self) {
 		testRywLifetime(cx);
 		wait(timeout(self->testSpecialKeySpaceErrors(cx, self) && self->getRangeCallActor(cx, self) &&
-		                 testConflictRanges(cx, /*read*/ true, self) && testConflictRanges(cx, /*read*/ false, self),
+		                 testConflictRanges(cx, /*read*/ true, self) && testConflictRanges(cx, /*read*/ false, self) &&
+		                 self->metricsApiCorrectnessActor(cx, self),
 		             self->testDuration,
 		             Void()));
 		// Only use one client to avoid potential conflicts on changing cluster configuration
@@ -307,7 +308,7 @@ struct SpecialKeySpaceCorrectnessWorkload : TestWorkload {
 		    1, keysCount.getValue() * (keyBytes + (rangeCount + 1) + valBytes + 8) + 1);
 
 		auto limit = GetRangeLimits(rowLimits, byteLimits);
-		// minRows is always initilized to 1
+		// minRows is always initialized to 1
 		if (limit.rows == 0)
 			limit.minRows = 0;
 		return limit;
@@ -913,7 +914,7 @@ struct SpecialKeySpaceCorrectnessWorkload : TestWorkload {
 					Optional<Value> res = wait(tx->get(coordinatorsKey));
 					ASSERT(res.present()); // Otherwise, database is in a bad state
 					ClusterConnectionString csNew(res.get().toString());
-					// verify the cluster decription
+					// verify the cluster description
 					ASSERT(!changeCoordinatorsSucceeded ||
 					       new_cluster_description == csNew.clusterKeyName().toString());
 					ASSERT(!changeCoordinatorsSucceeded ||
@@ -1166,6 +1167,22 @@ struct SpecialKeySpaceCorrectnessWorkload : TestWorkload {
 					wait(tx->onError(e));
 				}
 			}
+		}
+		return Void();
+	}
+
+	ACTOR Future<Void> metricsApiCorrectnessActor(Database cx_, SpecialKeySpaceCorrectnessWorkload* self) {
+		state Database cx = cx_->clone();
+		state Reference<ReadYourWritesTransaction> tx = makeReference<ReadYourWritesTransaction>(cx);
+		tx->setOption(FDBTransactionOptions::READ_SYSTEM_KEYS);
+		{
+			Optional<Value> metrics = wait(tx->get("fault_tolerance_metrics_json"_sr.withPrefix(
+			    SpecialKeySpace::getModuleRange(SpecialKeySpace::MODULE::METRICS).begin)));
+			ASSERT(metrics.present());
+			auto metricsObj = readJSONStrictly(metrics.get().toString()).get_obj();
+			auto schema = readJSONStrictly(JSONSchemas::faultToleranceStatusSchema.toString()).get_obj();
+			std::string errorStr;
+			ASSERT(schemaMatch(schema, metricsObj, errorStr, SevError, true));
 		}
 		return Void();
 	}

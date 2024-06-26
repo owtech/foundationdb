@@ -172,7 +172,7 @@ void WorkloadBase::error(const std::string& msg) {
 	fmt::print(stderr, "[{}] ERROR: {}\n", workloadId, msg);
 	numErrors++;
 	if (numErrors > maxErrors && !failed) {
-		fmt::print(stderr, "[{}] ERROR: Stopping workload after {} errors\n", workloadId, numErrors);
+		fmt::print(stderr, "[{}] ERROR: Stopping workload after {} errors\n", workloadId, numErrors.load());
 		failed = true;
 	}
 }
@@ -226,7 +226,7 @@ void WorkloadManager::run() {
 	if (failed()) {
 		fmt::print(stderr, "{} workloads failed\n", numWorkloadsFailed);
 	} else {
-		fprintf(stderr, "All workloads succesfully completed\n");
+		fprintf(stderr, "All workloads successfully completed\n");
 	}
 }
 

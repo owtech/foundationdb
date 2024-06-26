@@ -32,7 +32,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"runtime"
 	"sync"
 	"unsafe"
 )
@@ -194,15 +193,24 @@ func MustGetAPIVersion() int {
 
 var apiVersion int
 var networkStarted bool
-var networkMutex sync.Mutex
+var networkMutex sync.RWMutex
 
-var openDatabases map[string]Database
-
-func init() {
-	openDatabases = make(map[string]Database)
-}
+var openDatabases sync.Map
 
 func startNetwork() error {
+	networkMutex.RLock()
+	if networkStarted {
+		networkMutex.RUnlock()
+		return nil
+	}
+	// release read lock and acquire write lock
+	networkMutex.RUnlock()
+	networkMutex.Lock()
+	defer networkMutex.Unlock()
+	if networkStarted {
+		return nil
+	}
+
 	if e := C.fdb_setup_network(); e != 0 {
 		return Error{int(e)}
 	}
@@ -223,9 +231,6 @@ func startNetwork() error {
 // StartNetwork initializes the FoundationDB client networking engine. StartNetwork
 // must not be called more than once.
 func StartNetwork() error {
-	networkMutex.Lock()
-	defer networkMutex.Unlock()
-
 	if apiVersion == 0 {
 		return errAPIVersionUnset
 	}
@@ -265,19 +270,22 @@ func MustOpenDefault() Database {
 // clusters simultaneously, with each invocation requiring its own cluster file.
 // To connect to multiple clusters running at different, incompatible versions,
 // the multi-version client API must be used.
+// Caller must call Close() to release resources.
 func OpenDatabase(clusterFile string) (Database, error) {
 	if err := ensureNetworkIsStarted(); err != nil {
 		return Database{}, err
 	}
 
-	db, ok := openDatabases[clusterFile]
-	if !ok {
+	var db Database
+	var okDb bool
+	anyy, exist := openDatabases.Load(clusterFile)
+	if db, okDb = anyy.(Database); !exist || !okDb {
 		var e error
 		db, e = createDatabase(clusterFile)
 		if e != nil {
 			return Database{}, e
 		}
-		openDatabases[clusterFile] = db
+		openDatabases.Store(clusterFile, db)
 	}
 
 	return db, nil
@@ -285,18 +293,11 @@ func OpenDatabase(clusterFile string) (Database, error) {
 
 // ensureNetworkIsStarted starts the network if not already done and ensures that the API version is set.
 func ensureNetworkIsStarted() error {
-	networkMutex.Lock()
-	defer networkMutex.Unlock()
-
 	if apiVersion == 0 {
 		return errAPIVersionUnset
 	}
 
-	if !networkStarted {
-		return startNetwork()
-	}
-
-	return nil
+	return startNetwork()
 }
 
 // MustOpenDatabase is like OpenDatabase but panics if the default database cannot
@@ -328,6 +329,8 @@ func MustOpen(clusterFile string, dbName []byte) Database {
 	return db
 }
 
+// createDatabase is the internal function used to create a database.
+// Caller must call Close() to release resources.
 func createDatabase(clusterFile string) (Database, error) {
 	var cf *C.char
 
@@ -342,14 +345,14 @@ func createDatabase(clusterFile string) (Database, error) {
 	}
 
 	db := &database{outdb}
-	runtime.SetFinalizer(db, (*database).destroy)
 
-	return Database{clusterFile, true, db}, nil
+	return Database{clusterFile: clusterFile, isCached: true, database: db}, nil
 }
 
 // OpenWithConnectionString returns a database handle to the FoundationDB cluster identified
 // by the provided connection string. This method can be useful for scenarios where you want to connect
 // to the database only for a short time e.g. to test different connection strings.
+// Caller must call Close() to release resources.
 func OpenWithConnectionString(connectionString string) (Database, error) {
 	if err := ensureNetworkIsStarted(); err != nil {
 		return Database{}, err
@@ -370,7 +373,6 @@ func OpenWithConnectionString(connectionString string) (Database, error) {
 	}
 
 	db := &database{outdb}
-	runtime.SetFinalizer(db, (*database).destroy)
 
 	return Database{"", false, db}, nil
 }

@@ -441,9 +441,13 @@ TEST_CASE("/flow/network/ipV6Preferred") {
 		addresses.push_back(NetworkAddress::parse(s));
 	}
 	// Confirm IPv6 is always preferred.
-	ASSERT(INetworkConnections::pickOneAddress(addresses).toString() == ipv6);
+	ASSERT((INetworkConnections::pickOneAddress(addresses).toString() == ipv6) ==
+	       !FLOW_KNOBS->RESOLVE_PREFER_IPV4_ADDR);
 
 	return Void();
 }
 
 NetworkInfo::NetworkInfo() : handshakeLock(new FlowLock(FLOW_KNOBS->TLS_HANDSHAKE_LIMIT)) {}
+NetworkInfo::~NetworkInfo() {
+	delete handshakeLock;
+}

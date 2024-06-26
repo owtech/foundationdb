@@ -1979,6 +1979,9 @@ std::string epochsToGMTString(double epochs) {
 }
 
 std::vector<std::string> getEnvironmentKnobOptions() {
+#if defined(__FreeBSD__)
+	extern char** environ;
+#endif
 	constexpr const size_t ENVKNOB_PREFIX_LEN = sizeof(ENVIRONMENT_KNOB_OPTION_PREFIX) - 1;
 	std::vector<std::string> knobOptions;
 #if defined(_WIN32)
@@ -1994,7 +1997,7 @@ std::vector<std::string> getEnvironmentKnobOptions() {
 	}
 #else
 	char** e = nullptr;
-#ifdef __linux__
+#if defined(__linux__) || defined(__FreeBSD__)
 	e = environ;
 #elif defined(__APPLE__)
 	e = *_NSGetEnviron();
@@ -2221,7 +2224,7 @@ void* numaAllocate(size_t size) {
 		char* p = (char*)thePtr + i*nVAPages/nodes*vaPageSize;
 		char* e = (char*)thePtr + (i+1)*nVAPages/nodes*vaPageSize;
 		//printf("  %p + %lld\n", p, e-p);
-		// SOMEDAY: removed NUMA extensions for compatibity with Windows Server 2003 -- make execution dynamic
+		// SOMEDAY: removed NUMA extensions for compatibility with Windows Server 2003 -- make execution dynamic
 		if (!VirtualAlloc/*ExNuma*/(/*GetCurrentProcess(),*/ p, e-p, MEM_COMMIT|MEM_RESERVE|MEM_LARGE_PAGES, PAGE_READWRITE/*, i*/)) {
 			Error e = platform_error();
 			TraceEvent(e, "VirtualAlloc").GetLastError();
@@ -3010,6 +3013,24 @@ int64_t fileSize(std::string const& filename) {
 #endif
 }
 
+time_t fileModifiedTime(const std::string& filename) {
+#ifdef _WIN32
+	struct _stati64 file_status;
+	if (_stati64(filename.c_str(), &file_status) != 0)
+		return 0;
+	else
+		return file_status.st_mtime;
+#elif (defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__))
+	struct stat file_status;
+	if (stat(filename.c_str(), &file_status) != 0)
+		return 0;
+	else
+		return file_status.st_mtime;
+#else
+#error Port me!
+#endif
+}
+
 size_t readFileBytes(std::string const& filename, uint8_t* buff, size_t len) {
 	std::fstream ifs(filename, std::fstream::in | std::fstream::binary);
 	if (!ifs.good()) {
@@ -3221,10 +3242,10 @@ void outOfMemory() {
 	    .detail("BackTraces", traceCounts.size());
 
 	for (auto i = traceCounts.begin(); i != traceCounts.end(); ++i) {
-		char buf[1024];
 		std::vector<void*>* frames = i->second.backTrace;
 		std::string backTraceStr;
 #if defined(_WIN32)
+		char buf[1024];
 		for (int j = 1; j < frames->size(); j++) {
 			_snprintf(buf, 1024, "%p ", frames->at(j));
 			backTraceStr += buf;
@@ -3351,9 +3372,9 @@ void TmpFile::write(const uint8_t* buff, size_t len) {
 bool TmpFile::destroyFile() {
 	bool deleted = deleteFile(filename);
 	if (deleted) {
-		TraceEvent("TmpFileDestory_Success").detail("Filename", filename);
+		TraceEvent("TmpFileDestroy_Success").detail("Filename", filename);
 	} else {
-		TraceEvent("TmpFileDestory_Failed").detail("Filename", filename);
+		TraceEvent("TmpFileDestroy_Failed").detail("Filename", filename);
 	}
 	return deleted;
 }
@@ -3396,6 +3417,13 @@ extern "C" void flushAndExit(int exitCode) {
 	// to the crashAndDie call below.
 	TerminateProcess(GetCurrentProcess(), exitCode);
 #else
+	// Send a signal to allow the Kernel to generate a coredump for this process.
+	// See: https://man7.org/linux/man-pages/man5/core.5.html
+	// The abort method will send a SIGABRT, which causes the kernel to collect a coredump.
+	// See: https://man7.org/linux/man-pages/man3/abort.3.html.
+	if (exitCode != FDB_EXIT_SUCCESS && FLOW_KNOBS->ABORT_ON_FAILURE)
+		abort();
+	// In the success case exit the process gracefully.
 	_exit(exitCode);
 #endif
 	// should never reach here, but you never know

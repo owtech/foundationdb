@@ -199,6 +199,7 @@ struct DDTeamCollectionInitParams {
 	Promise<UID> removeFailedServer;
 	PromiseStream<Promise<int>> getUnhealthyRelocationCount;
 	PromiseStream<Promise<int64_t>> getAverageShardBytes;
+	PromiseStream<RebalanceStorageQueueRequest> triggerStorageQueueRebalance;
 };
 
 class DDTeamCollection : public ReferenceCounted<DDTeamCollection> {
@@ -237,6 +238,7 @@ protected:
 	Reference<AsyncVar<bool>> processingWiggle; // track whether wiggling relocation is being processed
 	PromiseStream<StorageWiggleValue> nextWiggleInfo;
 	PromiseStream<Promise<int64_t>> getAverageShardBytes;
+	PromiseStream<RebalanceStorageQueueRequest> triggerStorageQueueRebalance;
 
 	std::vector<Reference<TCTeamInfo>> badTeams;
 	std::vector<Reference<TCTeamInfo>> largeTeams;
@@ -486,6 +488,11 @@ protected:
 	// average load of each storage server is less than smallLoadThreshold, return 1 always.
 	double loadBytesBalanceRatio(int64_t smallLoadThreshold) const;
 
+	// calculate number of Storage Servers that are yet need to be balanced(disk bytes). Balanced here means the Storage
+	// Serves which are having the ratio of loadBytes / avgLoadBytes less than the
+	// PERPETUAL_WIGGLE_MIN_BYTES_BALANCE_RATIO.
+	int numSSToBeLoadBytesBalanced(int64_t smallLoadThreshold) const;
+
 	// Create a transaction updating `perpetualStorageWiggleIDPrefix` to the next serverID according to a sorted
 	// wiggle_pq maintained by the wiggler.
 	Future<Void> updateNextWigglingStorageID();
@@ -686,7 +693,7 @@ public:
 
 	void removeLaggingStorageServer(Key zoneId);
 
-	// whether server is under wiggling proces, but wiggle is paused for some healthy compliance.
+	// whether server is under wiggling process, but wiggle is paused for some healthy compliance.
 	bool isWigglePausedServer(const UID& server) const;
 
 	// Returns a random healthy team, which does not contain excludeServer.

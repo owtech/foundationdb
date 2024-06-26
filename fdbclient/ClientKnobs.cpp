@@ -176,6 +176,7 @@ void ClientKnobs::initialize(Randomize randomize) {
 	init( BACKUP_TASKS_PER_AGENT,                   10 );
 	init( BACKUP_POLL_PROGRESS_SECONDS,             10 );
 	init( VERSIONS_PER_SECOND,                     1e6 ); // Must be the same as SERVER_KNOBS->VERSIONS_PER_SECOND
+	init( MAX_WRITE_TRANSACTION_LIFE_VERSIONS, 5 * VERSIONS_PER_SECOND);  // Must be the same as SERVER_KNOBS->MAX_WRITE_TRANSACTION_LIFE_VERSIONS
 	init( SIM_BACKUP_TASKS_PER_AGENT,               10 );
 	init( BACKUP_RANGEFILE_BLOCK_SIZE,      1024 * 1024);
 	init( BACKUP_LOGFILE_BLOCK_SIZE,        1024 * 1024);
@@ -196,6 +197,8 @@ void ClientKnobs::initialize(Randomize randomize) {
 	init( RESTORE_RANGES_READ_BATCH,             10000 );
 	init( BLOB_GRANULE_RESTORE_CHECK_INTERVAL,      10 );
 	init( BACKUP_CONTAINER_LOCAL_ALLOW_RELATIVE_PATH, false );
+	init( ENABLE_REPLICA_CONSISTENCY_CHECK_ON_BACKUP_READS, true );
+	init( CONSISTENCY_CHECK_REQUIRED_REPLICAS,      -2 ); // Do consistency check based on all available storage replicas
 
 	// Configuration
 	init( DEFAULT_AUTO_COMMIT_PROXIES,               3 );
@@ -242,6 +245,9 @@ void ClientKnobs::initialize(Randomize randomize) {
 	init( BLOBSTORE_MAX_SEND_BYTES_PER_SECOND,      1e9 );
 	init( BLOBSTORE_MAX_RECV_BYTES_PER_SECOND,      1e9 );
 
+	init( BLOBSTORE_MAX_DELAY_RETRYABLE_ERROR,      60  );
+	init( BLOBSTORE_MAX_DELAY_CONNECTION_FAILED,    10  );
+
 	init( BLOBSTORE_LIST_REQUESTS_PER_SECOND,       200 );
 	init( BLOBSTORE_WRITE_REQUESTS_PER_SECOND,       50 );
 	init( BLOBSTORE_READ_REQUESTS_PER_SECOND,       100 );
@@ -264,6 +270,17 @@ void ClientKnobs::initialize(Randomize randomize) {
 
 	init( CONSISTENCY_CHECK_RATE_LIMIT_MAX,        50e6 ); // Limit in per sec
 	init( CONSISTENCY_CHECK_ONE_ROUND_TARGET_COMPLETION_TIME,	7 * 24 * 60 * 60 ); // 7 days
+	init( CONSISTENCY_CHECK_URGENT_NEXT_WAIT_TIME,         600 );
+	init( CONSISTENCY_CHECK_URGENT_BATCH_SHARD_COUNT,       10 ); if( randomize && BUGGIFY ) CONSISTENCY_CHECK_URGENT_BATCH_SHARD_COUNT = 2;
+	init( CONSISTENCY_CHECK_URGENT_RETRY_DEPTH_MAX,         10 ); if( randomize && BUGGIFY ) CONSISTENCY_CHECK_URGENT_RETRY_DEPTH_MAX = 1;
+	init( CONSISTENCY_CHECK_URGENT_RANGE_BEGIN_0,           "" ); if( randomize && BUGGIFY ) CONSISTENCY_CHECK_URGENT_RANGE_BEGIN_0 = "";
+	init( CONSISTENCY_CHECK_URGENT_RANGE_END_0,   "\\xff\\xff" ); if( randomize && BUGGIFY ) CONSISTENCY_CHECK_URGENT_RANGE_END_0 = "\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x33\\x66\\x63\\x36";
+	init( CONSISTENCY_CHECK_URGENT_RANGE_BEGIN_1,           "" );
+	init( CONSISTENCY_CHECK_URGENT_RANGE_END_1,             "" );
+	init( CONSISTENCY_CHECK_URGENT_RANGE_BEGIN_2,           "" );
+	init( CONSISTENCY_CHECK_URGENT_RANGE_END_2,             "" );
+	init( CONSISTENCY_CHECK_URGENT_RANGE_BEGIN_3,           "" ); if( randomize && BUGGIFY ) CONSISTENCY_CHECK_URGENT_RANGE_BEGIN_3 = "\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x33\\x66\\x65\\x34\\x63\\x62";
+	init( CONSISTENCY_CHECK_URGENT_RANGE_END_3,             "" ); if( randomize && BUGGIFY ) CONSISTENCY_CHECK_URGENT_RANGE_END_3 = "\\xff\\xff";
 
 	//fdbcli
 	init( CLI_CONNECT_PARALLELISM,                  400 );
@@ -317,10 +334,14 @@ void ClientKnobs::initialize(Randomize randomize) {
 	init( ENCRYPT_HEADER_AES_CTR_NO_AUTH_VERSION,       1 );
 	init( ENCRYPT_HEADER_AES_CTR_AES_CMAC_AUTH_VERSION, 1 );
 	init( ENCRYPT_HEADER_AES_CTR_HMAC_SHA_AUTH_VERSION, 1 );
+	init( ENCRYPT_GET_CIPHER_KEY_LONG_REQUEST_THRESHOLD, 6.0);
 
 	init( REST_KMS_ALLOW_NOT_SECURE_CONNECTION,     false ); if ( randomize && BUGGIFY ) REST_KMS_ALLOW_NOT_SECURE_CONNECTION = !REST_KMS_ALLOW_NOT_SECURE_CONNECTION;
 	init( SIM_KMS_VAULT_MAX_KEYS,                    4096 );
 
+	init( ENABLE_MUTATION_CHECKSUM,                  true ); if ( randomize && BUGGIFY ) ENABLE_MUTATION_CHECKSUM = deterministicRandom()->coinflip(); // Enable this after deserialiser is ported to 7.3.
+	init( ENABLE_ACCUMULATIVE_CHECKSUM,              true ); if ( randomize && BUGGIFY ) ENABLE_ACCUMULATIVE_CHECKSUM = deterministicRandom()->coinflip(); // Enable this after deserialiser is ported to 7.3.
+	init( ENABLE_ACCUMULATIVE_CHECKSUM_LOGGING,     false );
 	// clang-format on
 }
 

@@ -66,7 +66,7 @@ class LogParser:
         elif not self.result or self.aggregationPolicy == "ALL":
             self.out.write(txt)
         else:
-            self.outStream.wite(txt)
+            self.outStream.write(txt)
 
     def fail(self):
         self.result = False
@@ -329,7 +329,7 @@ class RestartTestPolicy:
             [old_binary, "--version"]
         ).decode("utf-8")
         match = re.match(
-            "FoundationDB.*\(v([0-9]+\.[0-9]+\.[0-9]+)(-0\.[0-9a-f]{40}\.PRERELEASE|-[0-9]+\.ow.*)?\)", old_binary_version_raw
+            "FoundationDB.*\(v([0-9]+\.[0-9]+\.[0-9]+)\)", old_binary_version_raw
         )
         assert match, old_binary_version_raw
         old_binary_version = tuple(map(int, match.group(1).split(".")))

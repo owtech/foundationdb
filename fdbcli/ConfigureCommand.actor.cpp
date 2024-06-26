@@ -190,11 +190,6 @@ ACTOR Future<bool> configureCommandActor(Reference<IDatabase> db,
 	case ConfigurationResult::DATABASE_CREATED:
 		printf("Database created\n");
 		break;
-	case ConfigurationResult::DATABASE_CREATED_WARN_ROCKSDB_EXPERIMENTAL:
-		printf("Database created\n");
-		fprintf(stderr,
-		        "WARN: RocksDB storage engine type is still in experimental stage, not yet production tested.\n");
-		break;
 	case ConfigurationResult::DATABASE_CREATED_WARN_SHARDED_ROCKSDB_EXPERIMENTAL:
 		printf("Database created\n");
 		fprintf(
@@ -260,11 +255,6 @@ ACTOR Future<bool> configureCommandActor(Reference<IDatabase> db,
 		        "Type `configure perpetual_storage_wiggle=1' to enable the perpetual wiggle, or `configure "
 		        "storage_migration_type=gradual' to set the gradual migration type.\n");
 		break;
-	case ConfigurationResult::SUCCESS_WARN_ROCKSDB_EXPERIMENTAL:
-		printf("Configuration changed\n");
-		fprintf(stderr,
-		        "WARN: RocksDB storage engine type is still in experimental stage, not yet production tested.\n");
-		break;
 	case ConfigurationResult::SUCCESS_WARN_SHARDED_ROCKSDB_EXPERIMENTAL:
 		printf("Configuration changed\n");
 		fprintf(
@@ -277,6 +267,10 @@ ACTOR Future<bool> configureCommandActor(Reference<IDatabase> db,
 		break;
 	case ConfigurationResult::ENCRYPTION_AT_REST_MODE_ALREADY_SET:
 		fprintf(stderr, "ERROR: A cluster cannot change its encryption_at_rest state after database creation.\n");
+		ret = false;
+		break;
+	case ConfigurationResult::INVALID_STORAGE_TYPE:
+		fprintf(stderr, "ERROR: Invalid storage type for storage or TLog.\n");
 		ret = false;
 		break;
 	default:
@@ -302,7 +296,7 @@ void configureGenerator(const char* text,
 		                   "memory",
 		                   "memory-1",
 		                   "memory-2",
-		                   "memory-radixtree-beta",
+		                   "memory-radixtree",
 		                   "commit_proxies=",
 		                   "grv_proxies=",
 		                   "logs=",
@@ -323,7 +317,7 @@ CommandFactory configureFactory(
     "configure",
     CommandHelp(
         "configure [new|tss]"
-        "<single|double|triple|three_data_hall|three_datacenter|ssd|memory|memory-radixtree-beta|proxies=<PROXIES>|"
+        "<single|double|triple|three_data_hall|three_datacenter|ssd|memory|memory-radixtree|proxies=<PROXIES>|"
         "commit_proxies=<COMMIT_PROXIES>|grv_proxies=<GRV_PROXIES>|logs=<LOGS>|resolvers=<RESOLVERS>>*|"
         "count=<TSS_COUNT>|perpetual_storage_wiggle=<WIGGLE_SPEED>|perpetual_storage_wiggle_locality="
         "<<LOCALITY_KEY>:<LOCALITY_VALUE>|0>|storage_migration_type={disabled|gradual|aggressive}"

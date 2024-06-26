@@ -20,28 +20,26 @@
 
 # FoundationDB Python API
 
+import atexit
 import ctypes
 import ctypes.util
-import datetime
 import functools
 import inspect
 import multiprocessing
 import os
 import platform
+import struct
 import sys
 import threading
 import traceback
-
 import weakref
+
 import fdb
 from fdb import six
-from fdb.tuple import pack, unpack
+from fdb.tuple import pack
 
 from fdb import fdboptions as _opts
-import types
-import struct
 
-import atexit
 
 _network_thread = None
 _network_thread_reentrant_lock = threading.RLock()
@@ -223,7 +221,7 @@ make_enum("ConflictRangeType")
 
 
 def transactional(*tr_args, **tr_kwargs):
-    """Decorate a funcation as transactional.
+    """Decorate a function as transactional.
 
     The decorator looks for a named argument (default "tr") and takes
     one of two actions, depending on the type of the parameter passed

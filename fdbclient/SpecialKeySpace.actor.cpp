@@ -747,6 +747,7 @@ ACTOR Future<RangeResult> ddMetricsGetRangeActor(ReadYourWritesTransaction* ryw,
 				// Use json string encoded in utf-8 to encode the values, easy for adding more fields in the future
 				json_spirit::mObject statsObj;
 				statsObj["shard_bytes"] = ddMetricsRef.shardBytes;
+				statsObj["shard_bytes_per_ksecond"] = ddMetricsRef.shardBytesPerKSecond;
 				std::string statsString =
 				    json_spirit::write_string(json_spirit::mValue(statsObj), json_spirit::Output_options::raw_utf8);
 				ValueRef bytes(result.arena(), statsString);
@@ -1007,7 +1008,7 @@ ACTOR Future<bool> checkExclusion(Database db,
 	state int64_t totalKvStoreUsedBytes = 0;
 	state int64_t totalKvStoreUsedBytesNotExcluded = 0;
 	state int64_t totalKvStoreAvailableBytes = 0;
-	// Keep track if we exclude any storage process with the provided adddresses
+	// Keep track if we exclude any storage process with the provided addresses
 	state bool excludedAddressesContainsStorageRole = false;
 
 	try {
@@ -1129,7 +1130,7 @@ void includeServers(ReadYourWritesTransaction* ryw) {
 	// CAUSAL_WRITE_RISKY
 	ryw->setOption(FDBTransactionOptions::CAUSAL_WRITE_RISKY);
 	std::string versionKey = deterministicRandom()->randomUniqueID().toString();
-	// for exluded servers
+	// for excluded servers
 	auto ranges =
 	    ryw->getSpecialKeySpaceWriteMap().containedRanges(SpecialKeySpace::getManagementApiCommandRange("exclude"));
 	auto iter = ranges.begin();
@@ -1218,7 +1219,12 @@ ACTOR Future<RangeResult> ExclusionInProgressActor(ReadYourWritesTransaction* ry
 	tr.setOption(FDBTransactionOptions::PRIORITY_SYSTEM_IMMEDIATE); // necessary?
 	tr.setOption(FDBTransactionOptions::LOCK_AWARE);
 
-	state std::vector<AddressExclusion> excl = wait((getAllExcludedServers(&tr)));
+	state Future<std::vector<AddressExclusion>> fExclusions = getAllExcludedServers(&tr);
+	state Future<std::vector<std::string>> fExcludedLocalities = getAllExcludedLocalities(&tr);
+
+	wait(success(fExclusions) && success(fExcludedLocalities));
+
+	state std::vector<AddressExclusion> excl = fExclusions.get();
 	state std::set<AddressExclusion> exclusions(excl.begin(), excl.end());
 	state std::set<NetworkAddress> inProgressExclusion;
 	// Just getting a consistent read version proves that a set of tlogs satisfying the exclusions has completed
@@ -1226,18 +1232,48 @@ ACTOR Future<RangeResult> ExclusionInProgressActor(ReadYourWritesTransaction* ry
 	state RangeResult serverList = wait(tr.getRange(serverListKeys, CLIENT_KNOBS->TOO_MANY));
 	ASSERT(!serverList.more && serverList.size() < CLIENT_KNOBS->TOO_MANY);
 
+	// We have to make use of the localities here to verify if a server is still in the server list,
+	// even if it might be missing in the workers as the server is not running anymore.
+	state std::vector<std::string> excludedLocalities = fExcludedLocalities.get();
+	// Decode the excluded localities to check if any server is excluded by locality.
+	state std::vector<std::pair<std::string, std::string>> decodedExcludedLocalities;
+	for (auto& excludedLocality : excludedLocalities) {
+		decodedExcludedLocalities.push_back(decodeLocality(excludedLocality));
+	}
+
 	for (auto& s : serverList) {
-		auto addresses = decodeServerListValue(s.value).getKeyValues.getEndpoint().addresses;
+		auto decodedServer = decodeServerListValue(s.value);
+		auto addresses = decodedServer.getKeyValues.getEndpoint().addresses;
 		if (addressExcluded(exclusions, addresses.address)) {
 			inProgressExclusion.insert(addresses.address);
 		}
+
 		if (addresses.secondaryAddress.present() && addressExcluded(exclusions, addresses.secondaryAddress.get())) {
 			inProgressExclusion.insert(addresses.secondaryAddress.get());
+		}
+
+		// Check if the server is excluded based on a locality.
+		for (auto& excludedLocality : decodedExcludedLocalities) {
+			if (!decodedServer.locality.isPresent(excludedLocality.first)) {
+				continue;
+			}
+
+			if (decodedServer.locality.get(excludedLocality.first) != excludedLocality.second) {
+				continue;
+			}
+
+			inProgressExclusion.insert(addresses.address);
+			if (addresses.secondaryAddress.present()) {
+				inProgressExclusion.insert(addresses.secondaryAddress.get());
+			}
 		}
 	}
 
 	Optional<Standalone<StringRef>> value = wait(tr.get(logsKey));
 	ASSERT(value.present());
+	// TODO(jscheuermann): The logs key range doesn't hold any information about localities. This is a limitation
+	// for locality based exclusions. The problematic edge case here is a log server that still has mutation on it
+	// but is currently not part of the worker list, e.g. because it was shutdown or is partitioned.
 	auto logs = decodeLogsValue(value.get());
 	for (auto const& log : logs.first) {
 		if (log.second == NetworkAddress() || addressExcluded(exclusions, log.second)) {
@@ -1263,6 +1299,7 @@ ACTOR Future<RangeResult> ExclusionInProgressActor(ReadYourWritesTransaction* ry
 			result.arena().dependsOn(addrKey.arena());
 		}
 	}
+
 	return result;
 }
 
@@ -1290,7 +1327,7 @@ ACTOR Future<RangeResult> getProcessClassActor(ReadYourWritesTransaction* ryw, K
 	workers.erase(last, workers.end());
 	RangeResult result;
 	for (auto& w : workers) {
-		// exclude :tls in keys even the network addresss is TLS
+		// exclude :tls in keys even the network address is TLS
 		KeyRef k(prefix.withSuffix(formatIpPort(w.address.ip, w.address.port), result.arena()));
 		if (kr.contains(k)) {
 			ValueRef v(result.arena(), w.processClass.toString());
@@ -1413,7 +1450,7 @@ ACTOR Future<RangeResult> getProcessClassSourceActor(ReadYourWritesTransaction* 
 	workers.erase(last, workers.end());
 	RangeResult result;
 	for (auto& w : workers) {
-		// exclude :tls in keys even the network addresss is TLS
+		// exclude :tls in keys even the network address is TLS
 		Key k(prefix.withSuffix(formatIpPort(w.address.ip, w.address.port)));
 		if (kr.contains(k)) {
 			Value v(w.processClass.sourceString());
@@ -1734,12 +1771,12 @@ ACTOR Future<RangeResult> coordinatorsGetRangeActor(ReadYourWritesTransaction* r
 	state ClusterConnectionString cs = ryw->getDatabase()->getConnectionRecord()->getConnectionString();
 	state std::vector<NetworkAddress> coordinator_processes = wait(cs.tryResolveHostnames());
 	RangeResult result;
-	Key cluster_decription_key = prefix.withSuffix("cluster_description"_sr);
-	if (kr.contains(cluster_decription_key)) {
-		result.push_back_deep(result.arena(), KeyValueRef(cluster_decription_key, cs.clusterKeyName()));
+	Key cluster_description_key = prefix.withSuffix("cluster_description"_sr);
+	if (kr.contains(cluster_description_key)) {
+		result.push_back_deep(result.arena(), KeyValueRef(cluster_description_key, cs.clusterKeyName()));
 	}
 	// Note : the sort by string is anti intuition, ex. 1.1.1.1:11 < 1.1.1.1:5
-	// include :tls in keys if the network addresss is TLS
+	// include :tls in keys if the network address is TLS
 	std::sort(coordinator_processes.begin(),
 	          coordinator_processes.end(),
 	          [](const NetworkAddress& lhs, const NetworkAddress& rhs) { return lhs.toString() < rhs.toString(); });
@@ -1811,8 +1848,8 @@ ACTOR static Future<Optional<std::string>> coordinatorsCommitActor(ReadYourWrite
 
 	std::string newName;
 	// check update for cluster_description
-	Key cluster_decription_key = "cluster_description"_sr.withPrefix(kr.begin);
-	auto entry = ryw->getSpecialKeySpaceWriteMap()[cluster_decription_key];
+	Key cluster_description_key = "cluster_description"_sr.withPrefix(kr.begin);
+	auto entry = ryw->getSpecialKeySpaceWriteMap()[cluster_description_key];
 	if (entry.first) {
 		// check valid description [a-zA-Z0-9_]+
 		if (entry.second.present() && isAlphaNumeric(entry.second.get().toString())) {
@@ -2903,6 +2940,29 @@ Future<RangeResult> WorkerInterfacesSpecialKeyImpl::getRange(ReadYourWritesTrans
 	return workerInterfacesImplGetRangeActor(ryw, getKeyRange().begin, kr);
 }
 
+ACTOR Future<Optional<Value>> getJSON(Database db, std::string jsonField = "");
+
+ACTOR static Future<RangeResult> FaultToleranceMetricsImplActor(ReadYourWritesTransaction* ryw, KeyRangeRef kr) {
+	state RangeResult res;
+	if (ryw->getDatabase().getPtr() && ryw->getDatabase()->getConnectionRecord()) {
+		Optional<Value> val = wait(getJSON(ryw->getDatabase(), "fault_tolerance"));
+		if (val.present()) {
+			res.push_back_deep(res.arena(), KeyValueRef(kr.begin, val.get()));
+		}
+	}
+	return res;
+}
+
+FaultToleranceMetricsImpl::FaultToleranceMetricsImpl(KeyRangeRef kr) : SpecialKeyRangeReadImpl(kr) {}
+
+Future<RangeResult> FaultToleranceMetricsImpl::getRange(ReadYourWritesTransaction* ryw,
+                                                        KeyRangeRef kr,
+                                                        GetRangeLimits limitsHint) const {
+	// single key range, the queried range should always be the same as the underlying range
+	ASSERT(kr == getKeyRange());
+	return FaultToleranceMetricsImplActor(ryw, kr);
+}
+
 ACTOR Future<Void> validateSpecialSubrangeRead(ReadYourWritesTransaction* ryw,
                                                KeySelector begin,
                                                KeySelector end,
@@ -2965,7 +3025,7 @@ ACTOR Future<Void> validateSpecialSubrangeRead(ReadYourWritesTransaction* ryw,
 	// Test
 	RangeResult testResult = wait(ryw->getRange(testBegin, testEnd, limits, Snapshot::True, reverse));
 	if (testResult != expectedResult) {
-		fmt::print("Reverse: {}\n", reverse);
+		fmt::print("Reverse: {}\n", static_cast<bool>(reverse));
 		fmt::print("Original range: [{}, {})\n", begin.toString(), end.toString());
 		fmt::print("Original result:\n");
 		for (const auto& kr : result) {

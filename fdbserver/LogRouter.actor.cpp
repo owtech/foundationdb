@@ -256,6 +256,7 @@ ACTOR Future<Void> waitForVersion(LogRouterData* self, Version ver) {
 	// The only time the log router should allow a gap in versions larger than MAX_READ_TRANSACTION_LIFE_VERSIONS is
 	// when processing epoch end. Since one set of log routers is created per generation of transaction logs, the gap
 	// caused by epoch end will be within MAX_VERSIONS_IN_FLIGHT of the log routers start version.
+
 	state double startTime = now();
 	if (self->version.get() < self->startVersion) {
 		// Log router needs to wait for remote tLogs to process data, whose version is less than self->startVersion,
@@ -274,7 +275,7 @@ ACTOR Future<Void> waitForVersion(LogRouterData* self, Version ver) {
 		return Void();
 	}
 	if (!self->foundEpochEnd) {
-		// Similar to proxy that does not keep more than MAX_READ_TRANSACTION_LIFE_VERSIONS transactions oustanding;
+		// Similar to proxy that does not keep more than MAX_READ_TRANSACTION_LIFE_VERSIONS transactions outstanding;
 		// Log router does not keep more than MAX_READ_TRANSACTION_LIFE_VERSIONS transactions outstanding because
 		// remote SS cannot roll back to more than MAX_READ_TRANSACTION_LIFE_VERSIONS ago.
 		wait(self->minPopped.whenAtLeast(
@@ -297,11 +298,33 @@ ACTOR Future<Void> waitForVersion(LogRouterData* self, Version ver) {
 	return Void();
 }
 
+ACTOR Future<Void> waitForVersionAndLog(LogRouterData* self, Version ver) {
+	state Future<Void> f = waitForVersion(self, ver);
+	state double emitInterval = 60.0;
+	loop {
+		choose {
+			when(wait(f)) {
+				return Void();
+			}
+			when(wait(delay(emitInterval))) {
+				TraceEvent("LogRouterWaitForVersionLongDelay", self->dbgid)
+				    .detail("WaitForVersion", ver)
+				    .detail("StartVersion", self->startVersion)
+				    .detail("Version", self->version.get())
+				    .detail("MinPopped", self->minPopped.get())
+				    .detail("FoundEpochEnd", self->foundEpochEnd);
+			}
+		}
+	}
+}
+
 ACTOR Future<Reference<ILogSystem::IPeekCursor>> getPeekCursorData(LogRouterData* self,
                                                                    Reference<ILogSystem::IPeekCursor> r,
                                                                    Version startVersion) {
 	state Reference<ILogSystem::IPeekCursor> result = r;
 	state bool useSatellite = SERVER_KNOBS->LOG_ROUTER_PEEK_FROM_SATELLITES_PREFERRED;
+	state uint32_t noPrimaryPeekLocation = 0;
+
 	loop {
 		Future<Void> getMoreF = Never();
 		if (result) {
@@ -344,6 +367,12 @@ ACTOR Future<Reference<ILogSystem::IPeekCursor>> getPeekCursorData(LogRouterData
 				TraceEvent("LogRouterPeekLocation", self->dbgid)
 				    .detail("LogID", result->getPrimaryPeekLocation())
 				    .trackLatest(self->eventCacheHolder->trackingKey);
+				// If no primary peek location after many tries, flag an error for manual intervention.
+				// The LR may become a bottleneck on the system and need to be excluded.
+				noPrimaryPeekLocation = self->primaryPeekLocation.present() ? 0 : ++noPrimaryPeekLocation;
+				if (!(noPrimaryPeekLocation % 4)) {
+					TraceEvent(SevWarnAlways, "NoPrimaryPeekLocationForLR", self->dbgid);
+				}
 			}
 		}
 	}
@@ -371,7 +400,7 @@ ACTOR Future<Void> pullAsyncData(LogRouterData* self) {
 			if (!foundMessage || r->version().version != ver) {
 				ASSERT(r->version().version > lastVer);
 				if (ver) {
-					wait(waitForVersion(self, ver));
+					wait(waitForVersionAndLog(self, ver));
 
 					commitMessages(self, ver, messages);
 					self->version.set(ver);
@@ -386,7 +415,7 @@ ACTOR Future<Void> pullAsyncData(LogRouterData* self) {
 				if (!foundMessage) {
 					ver--; // ver is the next possible version we will get data for
 					if (ver > self->version.get() && ver >= r->popped()) {
-						wait(waitForVersion(self, ver));
+						wait(waitForVersionAndLog(self, ver));
 
 						self->version.set(ver);
 						wait(yield(TaskPriority::TLogCommit));

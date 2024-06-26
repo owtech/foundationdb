@@ -71,6 +71,8 @@ private:
 	bool assertOnReadWriteCancel;
 
 public:
+	virtual StringRef getClassName() override { return "AsyncFileDetachable"_sr; }
+
 	explicit AsyncFileDetachable(Reference<IAsyncFile> file) : file(file), assertOnReadWriteCancel(true) {
 		shutdown = doShutdown(this);
 	}
@@ -103,6 +105,8 @@ public:
 // killed This is used to simulate a power failure which prevents all written data from being persisted to disk
 class AsyncFileNonDurable final : public IAsyncFile, public ReferenceCounted<AsyncFileNonDurable> {
 public:
+	virtual StringRef getClassName() override { return "AsyncFileNonDurable"_sr; }
+
 	UID id;
 	std::string filename;
 
@@ -158,7 +162,7 @@ private:
 	KillMode killMode;
 
 	ActorCollection
-	    reponses; // cannot call getResult on this actor collection, since the actors will be on different processes
+	    responses; // cannot call getResult on this actor collection, since the actors will be on different processes
 
 	AsyncFileNonDurable(const std::string& filename,
 	                    const std::string& initialFilename,
@@ -167,7 +171,7 @@ private:
 	                    NetworkAddress openedAddress,
 	                    bool aio)
 	  : filename(filename), initialFilename(initialFilename), approximateSize(0), openedAddress(openedAddress),
-	    aio(aio), file(file), pendingModifications(uint64_t(-1)), diskParameters(diskParameters), reponses(false) {
+	    aio(aio), file(file), pendingModifications(uint64_t(-1)), diskParameters(diskParameters), responses(false) {
 
 		// This is only designed to work in simulation
 		ASSERT(g_network->isSimulated());
@@ -254,7 +258,7 @@ public:
 	Future<Void> sync() override {
 		//TraceEvent("AsyncFileNonDurable_Sync", id).detail("Filename", filename);
 		Future<Void> syncFuture = sync(this, true);
-		reponses.add(syncFuture);
+		responses.add(syncFuture);
 		return syncFuture;
 	}
 
@@ -383,9 +387,9 @@ private:
 
 			self->approximateSize = std::max(self->approximateSize, length + offset);
 
-			self->reponses.add(sendOnProcess(currentProcess, writeStarted, currentTaskID));
+			self->responses.add(sendOnProcess(currentProcess, writeStarted, currentTaskID));
 		} catch (Error& e) {
-			self->reponses.add(sendErrorOnProcess(currentProcess, writeStarted, e, currentTaskID));
+			self->responses.add(sendErrorOnProcess(currentProcess, writeStarted, e, currentTaskID));
 			throw;
 		}
 
@@ -564,9 +568,9 @@ private:
 
 			self->approximateSize = size;
 
-			self->reponses.add(sendOnProcess(currentProcess, truncateStarted, currentTaskID));
+			self->responses.add(sendOnProcess(currentProcess, truncateStarted, currentTaskID));
 		} catch (Error& e) {
-			self->reponses.add(sendErrorOnProcess(currentProcess, truncateStarted, e, currentTaskID));
+			self->responses.add(sendErrorOnProcess(currentProcess, truncateStarted, e, currentTaskID));
 			throw;
 		}
 

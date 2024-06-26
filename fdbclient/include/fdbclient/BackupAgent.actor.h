@@ -57,6 +57,8 @@ FDB_BOOLEAN_PARAM(DeleteData);
 FDB_BOOLEAN_PARAM(SetValidation);
 FDB_BOOLEAN_PARAM(PartialBackup);
 
+extern Optional<std::string> fileBackupAgentProxy;
+
 class BackupAgentBase : NonCopyable {
 public:
 	// Time formatter for anything backup or restore related
@@ -156,7 +158,7 @@ public:
 
 	/** RESTORE **/
 
-	enum ERestoreState { UNITIALIZED = 0, QUEUED = 1, STARTING = 2, RUNNING = 3, COMPLETED = 4, ABORTED = 5 };
+	enum ERestoreState { UNINITIALIZED = 0, QUEUED = 1, STARTING = 2, RUNNING = 3, COMPLETED = 4, ABORTED = 5 };
 	static StringRef restoreStateText(ERestoreState id);
 	static Key getPauseKey();
 
@@ -694,7 +696,7 @@ public:
 		return map(tag().get(tr), [u, p, task](Optional<std::string> const& tag) -> Void {
 			if (!tag.present())
 				throw restore_error();
-			// Validation contition is that the uidPair key must be exactly {u, false}
+			// Validation condition is that the uidPair key must be exactly {u, false}
 			TaskBucket::setValidationCondition(
 			    task, KeyBackedTag(tag.get(), p).key, TupleCodec<UidAndAbortedFlagT>::pack({ u, false }));
 			return Void();
@@ -896,7 +898,7 @@ public:
 	// Latest version for which all prior versions have saved by backup workers.
 	KeyBackedProperty<Version> latestBackupWorkerSavedVersion() { return configSpace.pack(__FUNCTION__sr); }
 
-	// Stop differntial logging if already started or don't start after completing KV ranges
+	// Stop differential logging if already started or don't start after completing KV ranges
 	KeyBackedProperty<bool> stopWhenDone() { return configSpace.pack(__FUNCTION__sr); }
 
 	// Enable snapshot backup file encryption

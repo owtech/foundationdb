@@ -234,6 +234,7 @@ CSimpleOpt::SOption g_rgAgentOptions[] = {
 	{ OPT_HELP, "--help", SO_NONE },
 	{ OPT_DEVHELP, "--dev-help", SO_NONE },
 	{ OPT_BLOB_CREDENTIALS, "--blob-credentials", SO_REQ_SEP },
+	{ OPT_PROXY, "--proxy", SO_REQ_SEP },
 	TLS_OPTION_FLAGS,
 	SO_END_OF_OPTIONS
 };
@@ -985,7 +986,7 @@ static void printAgentUsage(bool devhelp) {
 	       "                 then `%s'.\n",
 	       platform::getDefaultClusterFilePath().c_str());
 	printf("  --log          Enables trace file logging for the CLI session.\n"
-	       "  --logdir PATH  Specifes the output directory for trace files. If\n"
+	       "  --logdir PATH  Specifies the output directory for trace files. If\n"
 	       "                 unspecified, defaults to the current directory. Has\n"
 	       "                 no effect unless --log is specified.\n");
 	printf("  --loggroup LOG_GROUP\n"
@@ -1111,7 +1112,7 @@ static void printBackupUsage(bool devhelp) {
 	printf("  --partitioned-log-experimental  Starts with new type of backup system using partitioned logs.\n");
 	printf("  -n, --dryrun   For backup start or restore start, performs a trial run with no actual changes made.\n");
 	printf("  --log          Enables trace file logging for the CLI session.\n"
-	       "  --logdir PATH  Specifes the output directory for trace files. If\n"
+	       "  --logdir PATH  Specifies the output directory for trace files. If\n"
 	       "                 unspecified, defaults to the current directory. Has\n"
 	       "                 no effect unless --log is specified.\n");
 	printf("  --loggroup LOG_GROUP\n"
@@ -1269,7 +1270,7 @@ static void printDBAgentUsage(bool devhelp) {
 	       "                 The path of a file containing the connection string for the\n"
 	       "                 source FoundationDB cluster.\n");
 	printf("  --log          Enables trace file logging for the CLI session.\n"
-	       "  --logdir PATH  Specifes the output directory for trace files. If\n"
+	       "  --logdir PATH  Specifies the output directory for trace files. If\n"
 	       "                 unspecified, defaults to the current directory. Has\n"
 	       "                 no effect unless --log is specified.\n");
 	printf("  --loggroup LOG_GROUP\n"
@@ -1324,7 +1325,7 @@ static void printDBBackupUsage(bool devhelp) {
 	printf("  --dstonly      Abort will not make any changes on the source cluster.\n");
 	printf(TLS_HELP);
 	printf("  --log          Enables trace file logging for the CLI session.\n"
-	       "  --logdir PATH  Specifes the output directory for trace files. If\n"
+	       "  --logdir PATH  Specifies the output directory for trace files. If\n"
 	       "                 unspecified, defaults to the current directory. Has\n"
 	       "                 no effect unless --log is specified.\n");
 	printf("  --loggroup LOG_GROUP\n"
@@ -1752,12 +1753,14 @@ ACTOR Future<json_spirit::mObject> getLayerStatus(Database src, std::string root
 			tr.setOption(FDBTransactionOptions::LOCK_AWARE);
 			state RangeResult kvPairs =
 			    wait(tr.getRange(KeyRangeRef(rootKey, strinc(rootKey)), GetRangeLimits::ROW_LIMIT_UNLIMITED));
-			json_spirit::mObject statusDoc;
-			JSONDoc modifier(statusDoc);
+			state json_spirit::mObject statusDoc;
+			state JSONDoc modifier(statusDoc);
 			for (auto& kv : kvPairs) {
-				json_spirit::mValue docValue;
+				state json_spirit::mValue docValue;
 				json_spirit::read_string(kv.value.toString(), docValue);
+				wait(yield());
 				modifier.absorb(docValue);
+				wait(yield());
 			}
 			JSONDoc::expires_reference_version = (uint64_t)tr.getReadVersion().get();
 			modifier.cleanOps();
@@ -2408,7 +2411,7 @@ ACTOR Future<Void> runRestore(Database db,
 			}
 
 			if (verbose) {
-				fmt::print("Ussing target restore version {}\n", targetVersion);
+				fmt::print("Using target restore version {}\n", targetVersion);
 			}
 		}
 
@@ -2765,7 +2768,7 @@ std::pair<Version, Version> getMaxMinRestorableVersions(const BackupDescription&
 }
 
 // If restoreVersion is invalidVersion or latestVersion, use the maximum or minimum restorable version respectively for
-// selected key ranges. If restoreTimestamp is specified, any specified restoreVersion will be overriden to the version
+// selected key ranges. If restoreTimestamp is specified, any specified restoreVersion will be overridden to the version
 // resolved to that timestamp.
 ACTOR Future<Void> queryBackup(const char* name,
                                std::string destinationContainer,
@@ -4116,6 +4119,7 @@ int main(int argc, char* argv[]) {
 		    .detail("CommandLine", commandLine)
 		    .setMaxFieldLength(0)
 		    .detail("MemoryLimit", memLimit)
+		    .detail("Proxy", proxy.orDefault(""))
 		    .trackLatest("ProgramStart");
 
 		// Ordinarily, this is done when the network is run. However, network thread should be set before TraceEvents
@@ -4137,6 +4141,14 @@ int main(int argc, char* argv[]) {
 			Optional<Database> result = connectToCluster(clusterFile, localities, quiet);
 			if (result.present()) {
 				db = result.get();
+				// Make sure we are setting a transaction timeout and retry limit to prevent cases
+				// where the fdbbackup command hangs infinitely. 60 seconds should be more than
+				// enough for all cases to finish and 5 retries should also be good enough for
+				// most cases.
+				db->setOption(FDBDatabaseOptions::TRANSACTION_TIMEOUT,
+				              Optional<StringRef>(StringRef((const uint8_t*)60000, 8)));
+				db->setOption(FDBDatabaseOptions::TRANSACTION_RETRY_LIMIT,
+				              Optional<StringRef>(StringRef((const uint8_t*)5, 8)));
 			}
 
 			return result.present();
@@ -4153,6 +4165,14 @@ int main(int argc, char* argv[]) {
 			Optional<Database> result = connectToCluster(sourceClusterFile, localities, quiet);
 			if (result.present()) {
 				sourceDb = result.get();
+				// Make sure we are setting a transaction timeout and retry limit to prevent cases
+				// where the fdbbackup command hangs infinitely. 60 seconds should be more than
+				// enough for all cases to finish and 5 retries should also be good enough for
+				// most cases.
+				sourceDb->setOption(FDBDatabaseOptions::TRANSACTION_TIMEOUT,
+				                    Optional<StringRef>(StringRef((const uint8_t*)60000, 8)));
+				sourceDb->setOption(FDBDatabaseOptions::TRANSACTION_RETRY_LIMIT,
+				                    Optional<StringRef>(StringRef((const uint8_t*)5, 8)));
 			}
 
 			return result.present();
@@ -4188,6 +4208,7 @@ int main(int argc, char* argv[]) {
 		case ProgramExe::AGENT:
 			if (!initCluster())
 				return FDB_EXIT_ERROR;
+			fileBackupAgentProxy = proxy;
 			f = stopAfter(runAgent(db));
 			break;
 		case ProgramExe::BACKUP:

@@ -36,7 +36,7 @@
 #include "flow/Error.h"
 #include "flow/actorcompiler.h" // This must be the last #include.
 
-// This worload provides building blocks to test blob restore. The following 2 functions are offered:
+// This workload provides building blocks to test blob restore. The following 2 functions are offered:
 //   1) SetupBlob - blobbify key ranges so that we could backup fdb to a blob storage
 //   2) PerformRestore - Start blob restore to the extra db instance and wait until it finishes
 //
@@ -292,6 +292,7 @@ struct BlobRestoreWorkload : TestWorkload {
 						for (auto& r : rows) {
 							data.push_back_deep(data.arena(), r);
 						}
+						fmt::print("Read trunk {} size {}\n", chunks[i].keyRange.toString(), rows.size());
 					}
 					break;
 				} catch (Error& e) {
@@ -314,7 +315,14 @@ struct BlobRestoreWorkload : TestWorkload {
 					break;
 				}
 			}
-
+			while (i < src.size()) {
+				fmt::print("  src {} = {}\n", src[i].key.printable(), src[i].value.printable());
+				i++;
+			}
+			while (i < dest.size()) {
+				fmt::print("  dest {} = {}\n", dest[i].key.printable(), dest[i].value.printable());
+				i++;
+			}
 			TraceEvent(SevError, "TestFailure")
 			    .detail("Reason", "Size Mismatch")
 			    .detail("Src", dest.size())
@@ -371,7 +379,7 @@ struct BlobRestoreWorkload : TestWorkload {
 				}
 				return Void();
 			} catch (Error& e) {
-				if (e.code() != error_code_tag_throttled) {
+				if (e.code() != error_code_tag_throttled && e.code() != error_code_grv_proxy_memory_limit_exceeded) {
 					fmt::print("Cannot flush blob ranges {}\n", e.what());
 					throw internal_error();
 				}

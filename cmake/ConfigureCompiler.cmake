@@ -79,6 +79,11 @@ if(WIN32)
   add_definitions(-D_USE_MATH_DEFINES) # Math constants
 endif()
 
+if(APPLE)
+# Remove this after boost 1.81 or above is used
+add_definitions(-D_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION)
+endif()
+
 if (USE_CCACHE)
   find_program(CCACHE_PROGRAM "ccache" REQUIRED)
   set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
@@ -279,6 +284,7 @@ else()
       $<${is_cxx_compile}:-DBOOST_USE_UCONTEXT>
     )
     list(APPEND SANITIZER_LINK_OPTIONS $<${is_cxx_link}:-fsanitize=thread>)
+
     list(APPEND BOOST_CXX_OPTIONS
       -fsanitize=thread
       -DBOOST_USE_UCONTEXT
@@ -484,7 +490,7 @@ else()
     $<${is_cxx_compile}:-Wreturn-type>
     $<${is_cxx_compile}:-fPIC>
   )
-  if (CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^x86" AND NOT CLANG AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "8.0.0" AND NOT ICX)
+  if (CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^x86" AND NOT CLANG AND NOT ICX)
     add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wclass-memaccess>)
   endif()
   if (GPERFTOOLS_FOUND AND GCC)
@@ -576,14 +582,14 @@ if (WITH_SWIFT)
 
   set(SwiftOptions "${SwiftOptions} -Xcc -DWITH_SWIFT")
 
-  # Supress noisy C++ warnings from Swift.
+  # Suppress noisy C++ warnings from Swift.
   set(SwiftOptions "${SwiftOptions} -Xcc -Wno-deprecated -Xcc -Wno-undefined-var-template")
-  # Supress rapidjson noisy GCC pragma diagnostics.
+  # Suppress rapidjson noisy GCC pragma diagnostics.
   set(SwiftOptions "${SwiftOptions} -Xcc -Wno-unknown-warning-option")
 
   if (FOUNDATIONDB_CROSS_COMPILING)
     # Cross-compilation options.
-    # For some reason we need to specify -sdk explictly to pass config-time
+    # For some reason we need to specify -sdk explicitly to pass config-time
     # cmake checks, even though Swift does tend to pass it by itself for the
     # actual compilation.
     string(TOLOWER ${CMAKE_SYSTEM_PROCESSOR} TripleArch)
