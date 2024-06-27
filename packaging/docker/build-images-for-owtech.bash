@@ -37,7 +37,7 @@ else
   DISTR_DIR="$DISTR_SRC"
 fi
 
-IMAGE_LIST="foundationdb-base foundationdb foundationdb-kubernetes-sidecar"
+IMAGE_LIST="foundationdb foundationdb-kubernetes-sidecar fdb-kubernetes-monitor"
 
 # Build and tag images
 for IMG in $IMAGE_LIST; do
