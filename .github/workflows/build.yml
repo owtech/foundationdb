@@ -52,7 +52,6 @@ jobs:
             parallel: 5
             image: foundationdb-build:7.4.0-1.ow.build
             owner: owtech
-
     runs-on: ${{ matrix.run_on }}
     steps:
       - name: Checkout
