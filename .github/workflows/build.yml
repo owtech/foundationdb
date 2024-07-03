@@ -166,7 +166,6 @@ jobs:
       - name: Build and push images
         shell: bash
         run: |
-          cp -r ${{github.workspace}}/fdbkubernetesmonitor ${{github.workspace}}/packaging/docker/fdbkubernetesmonitor
           ${{github.workspace}}/packaging/docker/build-images-for-owtech.bash \
             ${{needs.calc_ver.outputs.full_ver}} \
             ${{github.workspace}}/bld/linux/packages \
