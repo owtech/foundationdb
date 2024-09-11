@@ -1737,9 +1737,6 @@ public:
 	}
 
 	void closeAllShards() {
-		if (dbOptions.rate_limiter != nullptr) {
-			dbOptions.rate_limiter->SetBytesPerSecond((int64_t)5 << 30);
-		}
 		columnFamilyMap.clear();
 		physicalShards.clear();
 		// Close DB.
