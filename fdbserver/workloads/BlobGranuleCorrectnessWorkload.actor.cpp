@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2013-2018 Apple Inc. and the FoundationDB project authors
+ * Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -339,18 +339,14 @@ struct BlobGranuleCorrectnessWorkload : TestWorkload {
 		state bool gotEOS = false;
 		state int64_t totalRows = 0;
 		state uint32_t lastKey = -1;
-		state uint32_t lastId = -1;
 		state std::map<uint32_t, KeyData>::iterator lastKeyData = threadData->keyData.end();
 
 		fmt::print("Loading previous directory data for {0}\n", threadData->directoryID);
 
 		loop {
-			state Version readVersion = invalidVersion;
-			state int64_t bufferedBytes = 0;
 			try {
 				state Version ver = wait(tr.getReadVersion());
 				fmt::print("Dir {0}: RV={1}\n", threadData->directoryID, ver);
-				readVersion = ver;
 
 				state PromiseStream<Standalone<RangeResultRef>> results;
 				state Future<Void> stream = tr.getRangeStream(results, keyRange, GetRangeLimits());
@@ -381,8 +377,6 @@ struct BlobGranuleCorrectnessWorkload : TestWorkload {
 
 						// insert new WriteData for key
 						lastKeyData->second.writes.emplace_back(ver, MAX_VERSION, val, it.value.size());
-
-						lastId = id;
 					}
 
 					if (!res.empty()) {
@@ -779,10 +773,14 @@ struct BlobGranuleCorrectnessWorkload : TestWorkload {
 			threadData->validateGranuleBoundary(beginVersionRange.begin, beginVersionRange.end, lastBeginKey);
 			lastBeginKey = beginVersionRange.begin;
 		}
-		CODE_PROBE(beginCollapsed > 0, "BGCorrectness got collapsed request with beginVersion > 0");
-		CODE_PROBE(beginNotCollapsed > 0, "BGCorrectness got un-collapsed request with beginVersion > 0");
+		CODE_PROBE(
+		    beginCollapsed > 0, "BGCorrectness got collapsed request with beginVersion > 0", probe::decoration::rare);
+		CODE_PROBE(beginNotCollapsed > 0,
+		           "BGCorrectness got un-collapsed request with beginVersion > 0",
+		           probe::decoration::rare);
 		CODE_PROBE(beginCollapsed > 0 && beginNotCollapsed > 0,
-		           "BGCorrectness got both collapsed and uncollapsed in the same request!");
+		           "BGCorrectness got both collapsed and uncollapsed in the same request!",
+		           probe::decoration::rare);
 
 		while (checkIt != threadData->keyData.end() && checkIt->first < endKeyExclusive) {
 			uint32_t key = checkIt->first;
@@ -1285,7 +1283,7 @@ struct BlobGranuleCorrectnessWorkload : TestWorkload {
 		ASSERT(result);
 
 		if (self->clientId == 0 && SERVER_KNOBS->BG_ENABLE_MERGING && self->doMergeCheckAtEnd) {
-			CODE_PROBE(true, "BGCorrectness clearing database and awaiting merge");
+			CODE_PROBE(true, "BGCorrectness clearing database and awaiting merge", probe::decoration::rare);
 			wait(clearAndAwaitMerge(cx, threadData->directoryRange));
 		}
 

@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2013-2022 Apple Inc. and the FoundationDB project authors
+ * Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -814,7 +814,7 @@ ACTOR [[flow_allow_discard]] Future<bool> actorTest8() {
 					printf("\nactorTest8 failed\n");
 					return false;
 				}
-				bool b = wait(set);
+				wait(success(set));
 				inloop = true;
 				if (1)
 					throw operation_failed();

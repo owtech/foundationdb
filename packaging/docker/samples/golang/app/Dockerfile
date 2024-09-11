@@ -2,7 +2,7 @@
 #
 # This source file is part of the FoundationDB open source project
 #
-# Copyright 2013-2019 Apple Inc. and the FoundationDB project authors
+# Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@
 # see https://github.com/moby/moby/issues/34129
 ARG FDB_VERSION
 FROM foundationdb/foundationdb:${FDB_VERSION} as fdb
-FROM golang:1.21
+FROM golang:1.22
 ARG FDB_VERSION
 
 WORKDIR /tmp

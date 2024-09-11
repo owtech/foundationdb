@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2013-2022 Apple Inc. and the FoundationDB project authors
+ * Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@
 #include "flow/ApiVersion.h"
 #include "fmt/format.h"
 #include "fdbbackup/BackupTLSConfig.h"
+#include "fdbbackup/Decode.h"
 #include "fdbclient/JsonBuilder.h"
 #include "flow/Arena.h"
 #include "flow/ArgParseUtil.h"
@@ -3847,12 +3848,26 @@ int main(int argc, char* argv[]) {
 			case OPT_DESCRIBE_TIMESTAMPS:
 				describeTimestamps = true;
 				break;
-			case OPT_PREFIX_ADD:
-				addPrefix = args->OptionArg();
+			case OPT_PREFIX_ADD: {
+				bool err = false;
+				addPrefix = decode_hex_string(args->OptionArg(), err);
+				if (err) {
+					fprintf(stderr, "ERROR: Could not parse add prefix\n");
+					printHelpTeaser(argv[0]);
+					return FDB_EXIT_ERROR;
+				}
 				break;
-			case OPT_PREFIX_REMOVE:
-				removePrefix = args->OptionArg();
+			}
+			case OPT_PREFIX_REMOVE: {
+				bool err = false;
+				removePrefix = decode_hex_string(args->OptionArg(), err);
+				if (err) {
+					fprintf(stderr, "ERROR: Could not parse remove prefix\n");
+					printHelpTeaser(argv[0]);
+					return FDB_EXIT_ERROR;
+				}
 				break;
+			}
 			case OPT_ERRORLIMIT: {
 				const char* a = args->OptionArg();
 				if (!sscanf(a, "%d", &maxErrors)) {
@@ -4145,10 +4160,12 @@ int main(int argc, char* argv[]) {
 				// where the fdbbackup command hangs infinitely. 60 seconds should be more than
 				// enough for all cases to finish and 5 retries should also be good enough for
 				// most cases.
+				int64_t timeout = 60000;
 				db->setOption(FDBDatabaseOptions::TRANSACTION_TIMEOUT,
-				              Optional<StringRef>(StringRef((const uint8_t*)60000, 8)));
+				              Optional<StringRef>(StringRef((const uint8_t*)&timeout, sizeof(timeout))));
+				int64_t retryLimit = 5;
 				db->setOption(FDBDatabaseOptions::TRANSACTION_RETRY_LIMIT,
-				              Optional<StringRef>(StringRef((const uint8_t*)5, 8)));
+				              Optional<StringRef>(StringRef((const uint8_t*)&retryLimit, sizeof(retryLimit))));
 			}
 
 			return result.present();
@@ -4169,10 +4186,12 @@ int main(int argc, char* argv[]) {
 				// where the fdbbackup command hangs infinitely. 60 seconds should be more than
 				// enough for all cases to finish and 5 retries should also be good enough for
 				// most cases.
+				int64_t timeout = 60000;
 				sourceDb->setOption(FDBDatabaseOptions::TRANSACTION_TIMEOUT,
-				                    Optional<StringRef>(StringRef((const uint8_t*)60000, 8)));
+				                    Optional<StringRef>(StringRef((const uint8_t*)&timeout, sizeof(timeout))));
+				int64_t retryLimit = 5;
 				sourceDb->setOption(FDBDatabaseOptions::TRANSACTION_RETRY_LIMIT,
-				                    Optional<StringRef>(StringRef((const uint8_t*)5, 8)));
+				                    Optional<StringRef>(StringRef((const uint8_t*)&retryLimit, sizeof(retryLimit))));
 			}
 
 			return result.present();

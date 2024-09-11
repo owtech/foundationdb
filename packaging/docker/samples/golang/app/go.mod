@@ -2,7 +2,7 @@
 //
 // This source file is part of the FoundationDB open source project
 //
-// Copyright 2013-2019 Apple Inc. and the FoundationDB project authors
+// Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,6 +19,6 @@
 
 module foundationdb.org/docker/samples/golang/v0/fdb-demo-golang
 
-go 1.21
+go 1.22
 
 require github.com/apple/foundationdb/bindings/go v0.0.0-20231107151356-57ccdb8fee6d

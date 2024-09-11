@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2013-2022 Apple Inc. and the FoundationDB project authors
+ * Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@
 #include <utility>
 #include <vector>
 
+#include "fdbclient/ClientBooleanParams.h"
 #include "fdbclient/NativeAPI.actor.h"
 #include "fdbserver/workloads/workloads.actor.h"
 #include "fdbserver/ServerDBInfo.h"
@@ -88,8 +89,6 @@ Future<uint64_t> setupRange(Database cx,
                             uint64_t end,
                             std::vector<Reference<Tenant>> tenants) {
 	state uint64_t bytesInserted = 0;
-	state double startT = now();
-	state double prevStart;
 	loop {
 		Optional<Reference<Tenant>> tenant;
 		if (tenants.size() > 0) {
@@ -98,35 +97,38 @@ Future<uint64_t> setupRange(Database cx,
 		state Transaction tr(cx, tenant);
 		setAuthToken(*workload, tr);
 		try {
-			prevStart = now();
 			if (deterministicRandom()->random01() < 0.001)
 				tr.debugTransaction(deterministicRandom()->randomUniqueID());
 
 			state Standalone<KeyValueRef> sampleKV = (*workload)(begin);
-			Optional<Value> f = wait(tr.get(sampleKV.key));
-			if (f.present()) {
-				//				if( sampleKV.value.size() == f.get().size() ) {
-				//TraceEvent("BulkSetupRangeAlreadyPresent")
-				//	.detail("Begin", begin)
-				//	.detail("End", end)
-				//	.detail("Version", tr.getReadVersion().get())
-				//	.detail("Key", printable((*workload)(begin).key))
-				//	.detailf("From", "%016llx", debug_lastLoadBalanceResultEndpointToken);
-				return bytesInserted; // The transaction already completed!
-				//}
-				//TraceEvent(SevError, "BulkSetupConflict")
-				//	.detail("Begin", begin)
-				//	.detail("End", end)
-				//	.detail("ExpectedLength", sampleKV.value.size())
-				//	.detail("FoundLength", f.get().size());
-				// throw operation_failed();
+			if (!g_network->isSimulated() || !g_simulator->speedUpSimulation) {
+				// Don't issue reads if speedUpSimulation is true. So this transaction
+				// becomes blind writes, to avoid transaction_too_old errors.
+				Optional<Value> f = wait(tr.get(sampleKV.key));
+				if (f.present()) {
+					//				if( sampleKV.value.size() == f.get().size() ) {
+					//TraceEvent("BulkSetupRangeAlreadyPresent")
+					//	.detail("Begin", begin)
+					//	.detail("End", end)
+					//	.detail("Version", tr.getReadVersion().get())
+					//	.detail("Key", printable((*workload)(begin).key))
+					//	.detailf("From", "%016llx", debug_lastLoadBalanceResultEndpointToken);
+					return bytesInserted; // The transaction already completed!
+					//}
+					//TraceEvent(SevError, "BulkSetupConflict")
+					//	.detail("Begin", begin)
+					//	.detail("End", end)
+					//	.detail("ExpectedLength", sampleKV.value.size())
+					//	.detail("FoundLength", f.get().size());
+					// throw operation_failed();
+				}
 			}
 			// Predefine a single large write conflict range over the whole key space
 			tr.addWriteConflictRange(KeyRangeRef(workload->keyForIndex(begin), keyAfter(workload->keyForIndex(end))));
 			bytesInserted = 0;
 			for (uint64_t n = begin; n < end; n++) {
 				Standalone<KeyValueRef> kv = (*workload)(n);
-				tr.set(kv.key, kv.value);
+				tr.set(kv.key, kv.value, AddConflictRange::False);
 				bytesInserted += kv.key.size() + kv.value.size();
 			}
 			wait(tr.commit());

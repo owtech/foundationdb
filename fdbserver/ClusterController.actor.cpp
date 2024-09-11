@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2013-2022 Apple Inc. and the FoundationDB project authors
+ * Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -1023,11 +1023,7 @@ void clusterRegisterMaster(ClusterControllerData* self, RegisterMasterRequest co
 
 	if (req.recoveryState == RecoveryState::FULLY_RECOVERED) {
 		self->db.unfinishedRecoveries = 0;
-		self->db.logGenerations = 0;
 		ASSERT(!req.logSystemConfig.oldTLogs.size());
-	} else {
-		// TODO(zhewu): Remove logGenerations. It is not used anywhere.
-		self->db.logGenerations = req.logSystemConfig.oldTLogs.size();
 	}
 
 	db->masterRegistrationCount = req.registrationCount;
@@ -2271,6 +2267,12 @@ ACTOR Future<Void> monitorDataDistributor(ClusterControllerData* self) {
 	}
 
 	loop {
+		bool ddExist = self->db.serverInfo->get().distributor.present();
+		TraceEvent(SevInfo, "CCMonitorDataDistributor", self->id)
+		    .detail("Recruiting", self->recruitDistributor.get())
+		    .detail("Existing", ddExist)
+		    .detail("ExistingDD", ddExist ? self->db.serverInfo->get().distributor.get().id().toString() : "");
+
 		if (self->db.serverInfo->get().distributor.present() && !self->recruitDistributor.get()) {
 			choose {
 				when(wait(waitFailureClient(self->db.serverInfo->get().distributor.get().waitFailure,
@@ -2958,7 +2960,6 @@ ACTOR Future<Void> workerHealthMonitor(ClusterControllerData* self) {
 			while (!self->goodRecruitmentTime.isReady()) {
 				wait(lowPriorityDelay(SERVER_KNOBS->CC_WORKER_HEALTH_CHECKING_INTERVAL));
 			}
-
 			self->degradationInfo = self->getDegradationInfo();
 
 			// Compare `self->degradationInfo` with `self->excludedDegradedServers` and remove those that have
@@ -2992,7 +2993,9 @@ ACTOR Future<Void> workerHealthMonitor(ClusterControllerData* self) {
 
 				// Check if the cluster controller should trigger a recovery to exclude any degraded servers from
 				// the transaction system.
-				if (self->shouldTriggerRecoveryDueToDegradedServers()) {
+				if (SERVER_KNOBS->CC_PAUSE_HEALTH_MONITOR) {
+					TraceEvent(SevWarnAlways, "HealthMonitorPaused");
+				} else if (self->shouldTriggerRecoveryDueToDegradedServers()) {
 					if (SERVER_KNOBS->CC_HEALTH_TRIGGER_RECOVERY) {
 						if (self->recentRecoveryCountDueToHealth() < SERVER_KNOBS->CC_MAX_HEALTH_RECOVERY_COUNT) {
 							self->recentHealthTriggeredRecoveryTime.push(now());
@@ -3180,7 +3183,6 @@ ACTOR Future<Void> clusterControllerCore(ClusterControllerFullInterface interf,
 	                                                               self.id.toString() + "/ClusterControllerMetrics"));
 	self.addActor.send(traceRole(Role::CLUSTER_CONTROLLER, interf.id()));
 	// printf("%s: I am the cluster controller\n", g_network->getLocalAddress().toString().c_str());
-
 	if (SERVER_KNOBS->CC_ENABLE_WORKER_HEALTH_MONITOR) {
 		self.addActor.send(workerHealthMonitor(&self));
 		self.addActor.send(updateRemoteDCHealth(&self));

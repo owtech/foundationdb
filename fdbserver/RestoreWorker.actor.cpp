@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2013-2022 Apple Inc. and the FoundationDB project authors
+ * Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -229,7 +229,7 @@ ACTOR Future<Void> startRestoreWorkerLeader(Reference<RestoreWorkerData> self,
 }
 
 ACTOR Future<Void> startRestoreWorker(Reference<RestoreWorkerData> self, RestoreWorkerInterface interf, Database cx) {
-	state double lastLoopTopTime;
+	state double lastLoopTopTime = now();
 	state ActorCollection actors(false); // Collect the main actor for each role
 	state Future<Void> exitRole = Never();
 

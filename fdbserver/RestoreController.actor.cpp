@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2013-2022 Apple Inc. and the FoundationDB project authors
+ * Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -250,7 +250,6 @@ ACTOR Future<Void> distributeRestoreSysInfo(Reference<RestoreControllerData> con
 // 4) After process all restore requests, finish restore by cleaning up the restore related system key
 //    and ask all restore roles to quit.
 ACTOR Future<Void> startProcessRestoreRequests(Reference<RestoreControllerData> self, Database cx) {
-	state UID randomUID = deterministicRandom()->randomUniqueID();
 	state std::vector<RestoreRequest> restoreRequests = wait(collectRestoreRequests(cx));
 	state int restoreIndex = 0;
 

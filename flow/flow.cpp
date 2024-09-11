@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2013-2022 Apple Inc. and the FoundationDB project authors
+ * Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -339,50 +339,6 @@ Standalone<StringRef> addVersionStampAtEnd(StringRef const& str) {
 	Standalone<StringRef> r;
 	((StringRef&)r) = addVersionStampAtEnd(str, r.arena());
 	return r;
-}
-
-namespace {
-
-std::vector<bool> buggifyActivated{ false, false };
-std::map<BuggifyType, std::map<std::pair<std::string, int>, int>> typedSBVars;
-
-} // namespace
-
-std::vector<double> P_BUGGIFIED_SECTION_ACTIVATED{ .25, .25 };
-std::vector<double> P_BUGGIFIED_SECTION_FIRES{ .25, .25 };
-
-double P_EXPENSIVE_VALIDATION = .05;
-
-int getSBVar(std::string const& file, int line, BuggifyType type) {
-	if (!buggifyActivated[int(type)])
-		return 0;
-
-	const auto& flPair = std::make_pair(file, line);
-	auto& SBVars = typedSBVars[type];
-	if (!SBVars.count(flPair)) {
-		SBVars[flPair] = deterministicRandom()->random01() < P_BUGGIFIED_SECTION_ACTIVATED[int(type)];
-		g_traceBatch.addBuggify(SBVars[flPair], line, file);
-		if (g_network)
-			g_traceBatch.dump();
-	}
-
-	return SBVars[flPair];
-}
-
-void clearBuggifySections(BuggifyType type) {
-	typedSBVars[type].clear();
-}
-
-bool validationIsEnabled(BuggifyType type) {
-	return buggifyActivated[int(type)];
-}
-
-bool isBuggifyEnabled(BuggifyType type) {
-	return buggifyActivated[int(type)];
-}
-
-void enableBuggify(bool enabled, BuggifyType type) {
-	buggifyActivated[int(type)] = enabled;
 }
 
 // Make OpenSSL use DeterministicRandom as RNG source such that simulation runs stay deterministic w/ e.g. signature ops

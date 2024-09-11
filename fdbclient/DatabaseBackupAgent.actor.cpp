@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2013-2022 Apple Inc. and the FoundationDB project authors
+ * Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -364,8 +364,7 @@ struct BackupRangeTaskFunc : TaskFuncBase {
 					if ((!prevAdjacent || !nextAdjacent) &&
 					    rangeCount > ((prevAdjacent || nextAdjacent) ? CLIENT_KNOBS->BACKUP_MAP_KEY_UPPER_LIMIT
 					                                                 : CLIENT_KNOBS->BACKUP_MAP_KEY_LOWER_LIMIT) &&
-					    (!g_network->isSimulated() ||
-					     (isBuggifyEnabled(BuggifyType::General) && !g_simulator->speedUpSimulation))) {
+					    (!g_network->isSimulated() || (isGeneralBuggifyEnabled() && !g_simulator->speedUpSimulation))) {
 						CODE_PROBE(true, "range insert delayed because versionMap is too large");
 
 						if (rangeCount > CLIENT_KNOBS->BACKUP_MAP_KEY_UPPER_LIMIT)
@@ -2969,8 +2968,6 @@ public:
 			state Future<Void> partialTimeout = partial ? delay(30.0) : Never();
 			state Reference<ReadYourWritesTransaction> srcTr(
 			    new ReadYourWritesTransaction(backupAgent->taskBucket->src));
-			state Version beginVersion;
-			state Version endVersion;
 
 			loop {
 				try {
@@ -3007,9 +3004,7 @@ public:
 						return Void();
 					}
 
-					if (bVersionF.get().present()) {
-						beginVersion = BinaryReader::fromStringRef<Version>(bVersionF.get().get(), Unversioned());
-					} else {
+					if (!bVersionF.get().present()) {
 						break;
 					}
 
@@ -3027,8 +3022,6 @@ public:
 					if (partialTimeout.isReady()) {
 						return Void();
 					}
-
-					endVersion = srcTr->getCommittedVersion() + 1;
 
 					break;
 				} catch (Error& e) {
