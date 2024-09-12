@@ -1,0 +1,15 @@
+[[test]]
+testTitle='ClientMetricTest'
+clearAfterTest=false
+runConsistencyCheck=false
+
+    [[test.workload]]
+    testName='ClientMetric'
+    toSet=true
+    samplingProbability=0.01
+    testDuration=500.0
+
+    [[test.workload]]
+    testName='SaveAndKill'
+    restartInfoLocation='simfdb/restartInfo.ini'
+    testDuration=500.0
