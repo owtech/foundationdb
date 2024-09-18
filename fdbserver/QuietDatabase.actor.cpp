@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2013-2022 Apple Inc. and the FoundationDB project authors
+ * Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,9 @@
 #include <vector>
 #include <map>
 
+#include <boost/lexical_cast.hpp>
+#include <fmt/ranges.h>
+
 #include "fdbclient/FDBOptions.g.h"
 #include "fdbclient/SystemData.h"
 #include "fdbrpc/simulator.h"
@@ -35,7 +38,6 @@
 #include "fdbserver/Knobs.h"
 #include "fdbserver/WorkerInterface.actor.h"
 #include "fdbclient/ManagementAPI.actor.h"
-#include <boost/lexical_cast.hpp>
 #include "flow/actorcompiler.h" // This must be the last #include.
 
 ACTOR Future<std::vector<WorkerDetails>> getWorkers(Reference<AsyncVar<ServerDBInfo> const> dbInfo, int flags = 0) {
@@ -1024,7 +1026,7 @@ ACTOR Future<Void> waitForQuietDatabase(Database cx,
                                         int64_t maxDataDistributionQueueSize = 0,
                                         int64_t maxPoppedVersionLag = 30e6,
                                         int64_t maxVersionOffset = 1e6) {
-	state QuietDatabaseChecker checker(isBuggifyEnabled(BuggifyType::General) ? 4000.0 : 1000.0);
+	state QuietDatabaseChecker checker(isGeneralBuggifyEnabled() ? 4000.0 : 1000.0);
 	state Future<Void> reconfig =
 	    reconfigureAfter(cx, 100 + (deterministicRandom()->random01() * 100), dbInfo, "QuietDatabase");
 	state Future<int64_t> dataInFlight;

@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2013-2022 Apple Inc. and the FoundationDB project authors
+ * Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -169,7 +169,6 @@ ACTOR Future<int> AsyncFileNonDurable::read(AsyncFileNonDurable* self, void* dat
 
 ACTOR Future<Void> AsyncFileNonDurable::closeFile(AsyncFileNonDurable* self) {
 	state ISimulator::ProcessInfo* currentProcess = g_simulator->getCurrentProcess();
-	state TaskPriority currentTaskID = g_network->getCurrentTask();
 	state std::string filename = self->filename;
 
 	g_simulator->getMachineByNetworkAddress(self->openedAddress)->deletingOrClosingFiles.insert(self->getFilename());

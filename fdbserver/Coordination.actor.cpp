@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2013-2022 Apple Inc. and the FoundationDB project authors
+ * Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -773,11 +773,21 @@ ACTOR Future<Void> coordinationServer(std::string dataFolder,
 	    .detail("Folder", dataFolder)
 	    .detail("ConfigNodeValid", configNode.isValid());
 
-	if (configNode.isValid()) {
-		configTransactionInterface.setupWellKnownEndpoints();
-		configFollowerInterface.setupWellKnownEndpoints();
+	// Serve some of the config node interface even if it is disabled. This
+	// allows clients to get responses to requests and avoid hanging when
+	// running commands such as a coordinator change.
+	bool configNodeValid = configNode.isValid();
+	if (!configNodeValid) {
+		configNode = makeReference<ConfigNode>(dataFolder);
+	}
+	configTransactionInterface.setupWellKnownEndpoints();
+	configFollowerInterface.setupWellKnownEndpoints();
+	if (configNodeValid) {
 		configDatabaseServer =
 		    brokenPromiseToNever(configNode->serve(cbi, configTransactionInterface, configFollowerInterface));
+	} else {
+		configDatabaseServer =
+		    brokenPromiseToNever(configNode->serveDisabled(configTransactionInterface, configFollowerInterface));
 	}
 
 	try {

@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2013-2022 Apple Inc. and the FoundationDB project authors
+ * Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -76,7 +76,7 @@ struct PhysicalShardMoveWorkLoad : TestWorkload {
 	}
 
 	ACTOR Future<Void> _start(PhysicalShardMoveWorkLoad* self, Database cx) {
-		int ignore = wait(setDDMode(cx, 0));
+		wait(success(setDDMode(cx, 0)));
 		state std::vector<UID> teamA;
 		state std::map<Key, Value> kvs({ { "TestKeyA"_sr, "TestValueA"_sr },
 		                                 { "TestKeyAB"_sr, "TestValueAB"_sr },
@@ -88,7 +88,7 @@ struct PhysicalShardMoveWorkLoad : TestWorkload {
 		                                 { "TestKeyE"_sr, "TestValueE"_sr },
 		                                 { "TestKeyF"_sr, "TestValueF"_sr } });
 
-		Version _ = wait(self->populateData(self, cx, &kvs));
+		wait(success(self->populateData(self, cx, &kvs)));
 
 		TraceEvent("TestValueWritten").log();
 
@@ -616,7 +616,8 @@ struct PhysicalShardMoveWorkLoad : TestWorkload {
 				                             false,
 				                             deterministicRandom()->randomUniqueID(), // for logging only
 				                             &ddEnabledState,
-				                             CancelConflictingDataMoves::False)));
+				                             CancelConflictingDataMoves::False,
+				                             Optional<BulkLoadState>())));
 				break;
 			} catch (Error& e) {
 				if (e.code() == error_code_movekeys_conflict) {

@@ -21,6 +21,11 @@ var randomGenerator *rand.Rand
 // TODO: Rethink how useful the random generator in those test cases is.
 var randomGenerator *rand.Rand
 
+// Since go 1.20 math/rand uses automatically a random seed: https://tip.golang.org/doc/go1.20.
+// To enforce the old behaviour we initialize the random generator with a hard-coded seed.
+// TODO: Rethink how useful the random generator in those test cases is.
+var randomGenerator *rand.Rand
+
 func loadGolden(t *testing.T) (golden map[string][]byte) {
 	f, err := os.Open("testdata/tuples.golden")
 	if err != nil {

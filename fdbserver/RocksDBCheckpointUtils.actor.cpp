@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2013-2022 Apple Inc. and the FoundationDB project authors
+ * Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -255,8 +255,7 @@ ACTOR Future<Void> fetchCheckpointBytesSampleFile(Database cx,
 	ASSERT(!metaData->src.empty());
 	state UID ssId = metaData->src.front();
 
-	int64_t fileSize =
-	    wait(doFetchCheckpointFile(cx, metaData->bytesSampleFile.get(), localFile, ssId, metaData->checkpointID));
+	wait(success(doFetchCheckpointFile(cx, metaData->bytesSampleFile.get(), localFile, ssId, metaData->checkpointID)));
 	metaData->bytesSampleFile = localFile;
 	if (cFun) {
 		wait(cFun(*metaData));
@@ -772,6 +771,46 @@ bool RocksDBSstFileWriter::finish() {
 	return true;
 }
 
+class RocksDBSstFileReader : public IRocksDBSstFileReader {
+public:
+	RocksDBSstFileReader() : sstReader(std::make_unique<rocksdb::SstFileReader>(rocksdb::Options())){};
+	~RocksDBSstFileReader() {}
+
+	void open(const std::string localFile) override;
+
+	KeyValue next() override;
+
+	bool hasNext() const override;
+
+private:
+	std::unique_ptr<rocksdb::SstFileReader> sstReader;
+	std::unique_ptr<rocksdb::Iterator> iter;
+	std::string localFile;
+};
+
+void RocksDBSstFileReader::open(const std::string localFile) {
+	this->localFile = abspath(localFile);
+	rocksdb::Status status = sstReader->Open(this->localFile);
+	if (status.ok()) {
+		iter.reset(sstReader->NewIterator(getReadOptions()));
+		iter->SeekToFirst();
+	} else {
+		TraceEvent(SevError, "RocksDBSstFileReaderWrapperOpenFileError")
+		    .detail("LocalFile", this->localFile)
+		    .detail("Status", status.ToString());
+	}
+}
+
+bool RocksDBSstFileReader::hasNext() const {
+	return iter != nullptr && this->iter->Valid();
+}
+
+KeyValue RocksDBSstFileReader::next() {
+	KeyValue res(KeyValueRef(toStringRef(this->iter->key()), toStringRef(this->iter->value())));
+	iter->Next();
+	return res;
+}
+
 class RocksDBCheckpointByteSampleReader : public ICheckpointByteSampleReader {
 public:
 	RocksDBCheckpointByteSampleReader(const CheckpointMetaData& checkpoint);
@@ -925,7 +964,7 @@ ACTOR Future<Void> fetchCheckpointFile(Database cx,
 	ASSERT_EQ(metaData->src.size(), 1);
 	const UID ssId = metaData->src.front();
 
-	int64_t fileSize = wait(doFetchCheckpointFile(cx, remoteFile, localFile, ssId, metaData->checkpointID));
+	wait(success(doFetchCheckpointFile(cx, remoteFile, localFile, ssId, metaData->checkpointID)));
 	rocksCF.sstFiles[idx].db_path = dir;
 	rocksCF.sstFiles[idx].fetched = true;
 	metaData->serializedCheckpoint = ObjectWriter::toValue(rocksCF, IncludeVersion());
@@ -1283,6 +1322,14 @@ std::unique_ptr<IRocksDBSstFileWriter> newRocksDBSstFileWriter() {
 #ifdef WITH_ROCKSDB
 	std::unique_ptr<IRocksDBSstFileWriter> sstWriter = std::make_unique<RocksDBSstFileWriter>();
 	return sstWriter;
+#endif // WITH_ROCKSDB
+	return nullptr;
+}
+
+std::unique_ptr<IRocksDBSstFileReader> newRocksDBSstFileReader() {
+#ifdef WITH_ROCKSDB
+	std::unique_ptr<IRocksDBSstFileReader> sstReader = std::make_unique<RocksDBSstFileReader>();
+	return sstReader;
 #endif // WITH_ROCKSDB
 	return nullptr;
 }

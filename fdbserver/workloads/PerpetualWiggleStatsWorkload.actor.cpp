@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2013-2022 Apple Inc. and the FoundationDB project authors
+ * Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -156,8 +156,8 @@ struct PerpetualWiggleStatsWorkload : public TestWorkload {
 	PerpetualWiggleStatsWorkload(WorkloadContext const& wcx) : TestWorkload(wcx) {}
 
 	ACTOR static Future<Void> _setup(PerpetualWiggleStatsWorkload* self, Database cx) {
-		int oldMode = wait(setDDMode(cx, 0));
-		MoveKeysLock lock = wait(takeMoveKeysLock(cx, UID())); // force current DD to quit
+		wait(success(setDDMode(cx, 0)));
+		wait(success(takeMoveKeysLock(cx, UID()))); // force current DD to quit
 		bool success = wait(IssueConfigurationChange(cx, "storage_migration_type=disabled", true));
 		ASSERT(success);
 		wait(delay(30.0)); // make sure the DD has already quit before the test start

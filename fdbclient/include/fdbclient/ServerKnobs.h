@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2013-2022 Apple Inc. and the FoundationDB project authors
+ * Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -249,7 +249,8 @@ public:
 	// shard metrics will update immediately
 	int64_t SHARD_READ_OPS_CHANGE_THRESHOLD;
 	bool ENABLE_WRITE_BASED_SHARD_SPLIT; // Experimental. Enable to enforce shard split when write traffic is high
-
+	int DD_SHARD_USABLE_REGION_CHECK_RATE; // Assuming all shards need to repair, the (rough) number of shards moving
+	                                       // for usable region per second. Set 0 to disable shard usable region check
 	double SHARD_MAX_READ_DENSITY_RATIO;
 	int64_t SHARD_READ_HOT_BANDWIDTH_MIN_PER_KSECONDS;
 	double SHARD_MAX_BYTES_READ_PER_KSEC_JITTER;
@@ -344,6 +345,7 @@ public:
 	int64_t REBALANCE_STORAGE_QUEUE_SHARD_PER_KSEC_MIN;
 	bool DD_ENABLE_REBALANCE_STORAGE_QUEUE_WITH_LIGHT_WRITE_SHARD; // Enable to allow storage queue rebalancer to move
 	                                                               // light-traffic shards out of the overloading server
+	double DD_WAIT_TSS_DATA_MOVE_DELAY;
 
 	// TeamRemover to remove redundant teams
 	bool TR_FLAG_DISABLE_MACHINE_TEAM_REMOVER; // disable the machineTeamRemover actor
@@ -378,6 +380,13 @@ public:
 	                            // requested
 	double DD_FIX_WRONG_REPLICAS_DELAY; // the amount of time between attempts to increase the replication factor of
 	                                    // under replicated shards
+	int BULKLOAD_FILE_BYTES_MAX; // the maximum bytes of files to inject by bulk loading
+	double DD_BULKLOAD_SHARD_BOUNDARY_CHANGE_DELAY_SEC; // seconds to delay shard boundary change when blocked by bulk
+	                                                    // loading
+	int DD_BULKLOAD_TASK_METADATA_READ_SIZE; // the number of bulk load tasks read from metadata at a time
+	int DD_BULKLOAD_PARALLELISM; // the maximum number of running bulk load tasks
+	double DD_BULKLOAD_SCHEDULE_MIN_INTERVAL_SEC; // the minimal seconds that the bulk load scheduler has to wait
+	                                              // between two rounds
 
 	// Run storage engine on a child process on the same machine with storage process
 	bool REMOTE_KV_STORE;
@@ -465,6 +474,7 @@ public:
 	// Set to 0 to disable histograms.
 	double ROCKSDB_HISTOGRAMS_SAMPLE_RATE;
 	double ROCKSDB_READ_RANGE_ITERATOR_REFRESH_TIME;
+	double ROCKSDB_PROBABILITY_REUSE_ITERATOR_SIM; // Probability that RocksDB reuses iterator in simulation
 	bool ROCKSDB_READ_RANGE_REUSE_ITERATORS;
 	bool SHARDED_ROCKSDB_REUSE_ITERATORS;
 	bool ROCKSDB_READ_RANGE_REUSE_BOUNDED_ITERATORS;
@@ -718,6 +728,7 @@ public:
 	double REPLACE_INTERFACE_CHECK_DELAY;
 	double COORDINATOR_REGISTER_INTERVAL;
 	double CLIENT_REGISTER_INTERVAL;
+	bool CC_PAUSE_HEALTH_MONITOR;
 	bool CC_ENABLE_WORKER_HEALTH_MONITOR;
 	double CC_WORKER_HEALTH_CHECKING_INTERVAL; // The interval of refreshing the degraded server list.
 	double CC_DEGRADED_LINK_EXPIRATION_INTERVAL; // The time period from the last degradation report after which a
@@ -1108,6 +1119,9 @@ public:
 
 	// Test harness
 	double WORKER_POLL_DELAY;
+	int PROBABILITY_FACTOR_MEMORY_ENGINE_SELECTED_SIM;
+	int PROBABILITY_FACTOR_ROCKSDB_ENGINE_SELECTED_SIM;
+	int PROBABILITY_FACTOR_SQLITE_ENGINE_SELECTED_SIM;
 
 	// Coordination
 	double COORDINATED_STATE_ONCONFLICT_POLL_INTERVAL;
@@ -1235,6 +1249,7 @@ public:
 	int SIM_KMS_MAX_KEYS;
 	int ENCRYPT_PROXY_MAX_DBG_TRACE_LENGTH;
 	double ENCRYPTION_LOGGING_INTERVAL;
+	double DISABLED_ENCRYPTION_PROBABILITY_SIM; // Probability that encryption is forced to be disabled in simulation
 
 	// Compression
 	bool ENABLE_BLOB_GRANULE_COMPRESSION;

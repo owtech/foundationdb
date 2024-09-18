@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2013-2022 Apple Inc. and the FoundationDB project authors
+ * Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ struct DiskDurabilityWorkload : public AsyncFileWorkload {
 			state int64_t offset = (int64_t)self->blockNum * pages * _PAGE_SIZE;
 			state int size = pages * _PAGE_SIZE;
 
-			state int64_t newData;
+			state int64_t newData = 0;
 			if (self->lastData == 0)
 				newData = deterministicRandom()->randomInt64(std::numeric_limits<int64_t>::min(),
 				                                             std::numeric_limits<int64_t>::max());

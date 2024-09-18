@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2013-2022 Apple Inc. and the FoundationDB project authors
+ * Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -391,6 +391,7 @@ public:
 
 					if (peerAddr.isValid()) {
 						evt.detail("PeerAddr", peerAddr);
+						evt.detail("PeerAddress", peerAddr);
 					}
 				}
 
@@ -556,6 +557,7 @@ private:
 			TraceEvent(SevWarn, "N2_CloseError", id)
 			    .suppressFor(1.0)
 			    .detail("PeerAddr", peer_address)
+			    .detail("PeerAddress", peer_address)
 			    .detail("ErrorCode", error.value())
 			    .detail("Message", error.message());
 	}
@@ -564,6 +566,7 @@ private:
 		TraceEvent(SevWarn, "N2_ReadError", id)
 		    .suppressFor(1.0)
 		    .detail("PeerAddr", peer_address)
+		    .detail("PeerAddress", peer_address)
 		    .detail("ErrorCode", error.value())
 		    .detail("Message", error.message());
 		closeSocket();
@@ -572,6 +575,7 @@ private:
 		TraceEvent(SevWarn, "N2_WriteError", id)
 		    .suppressFor(1.0)
 		    .detail("PeerAddr", peer_address)
+		    .detail("PeerAddress", peer_address)
 		    .detail("ErrorCode", error.value())
 		    .detail("Message", error.message());
 		closeSocket();
@@ -841,6 +845,7 @@ struct SSLHandshakerThread final : IThreadPoolReceiver {
 				           h.type == ssl_socket::handshake_type::client ? "N2_ConnectHandshakeError"_audit
 				                                                        : "N2_AcceptHandshakeError"_audit)
 				    .detail("PeerAddr", h.getPeerAddress())
+				    .detail("PeerAddress", h.getPeerAddress())
 				    .detail("ErrorCode", h.err.value())
 				    .detail("ErrorMsg", h.err.message().c_str())
 				    .detail("BackgroundThread", true);
@@ -853,6 +858,7 @@ struct SSLHandshakerThread final : IThreadPoolReceiver {
 			           h.type == ssl_socket::handshake_type::client ? "N2_ConnectHandshakeUnknownError"_audit
 			                                                        : "N2_AcceptHandshakeUnknownError"_audit)
 			    .detail("PeerAddr", h.getPeerAddress())
+			    .detail("PeerAddress", h.getPeerAddress())
 			    .detail("BackgroundThread", true);
 			h.done.sendError(connection_failed());
 		}
@@ -930,9 +936,10 @@ public:
 
 		try {
 			Future<Void> onHandshook;
-			ConfigureSSLStream(N2::g_net2->activeTlsPolicy, self->ssl_sock, [conn = self.getPtr()](bool verifyOk) {
-				conn->has_trusted_peer = verifyOk;
-			});
+			ConfigureSSLStream(N2::g_net2->activeTlsPolicy,
+			                   self->ssl_sock,
+			                   self->peer_address,
+			                   [conn = self.getPtr()](bool verifyOk) { conn->has_trusted_peer = verifyOk; });
 
 			// If the background handshakers are not all busy, use one
 			if (N2::g_net2->sslPoolHandshakesInProgress < N2::g_net2->sslHandshakerThreadsStarted) {
@@ -1013,9 +1020,10 @@ public:
 
 		try {
 			Future<Void> onHandshook;
-			ConfigureSSLStream(N2::g_net2->activeTlsPolicy, self->ssl_sock, [conn = self.getPtr()](bool verifyOk) {
-				conn->has_trusted_peer = verifyOk;
-			});
+			ConfigureSSLStream(N2::g_net2->activeTlsPolicy,
+			                   self->ssl_sock,
+			                   self->peer_address,
+			                   [conn = self.getPtr()](bool verifyOk) { conn->has_trusted_peer = verifyOk; });
 
 			// If the background handshakers are not all busy, use one
 			if (N2::g_net2->sslPoolHandshakesInProgress < N2::g_net2->sslHandshakerThreadsStarted) {
@@ -1191,6 +1199,7 @@ private:
 		TraceEvent(SevWarn, "N2_ReadError", id)
 		    .suppressFor(1.0)
 		    .detail("PeerAddr", peer_address)
+		    .detail("PeerAddress", peer_address)
 		    .detail("ErrorCode", error.value())
 		    .detail("Message", error.message());
 		closeSocket();
@@ -1199,6 +1208,7 @@ private:
 		TraceEvent(SevWarn, "N2_WriteError", id)
 		    .suppressFor(1.0)
 		    .detail("PeerAddr", peer_address)
+		    .detail("PeerAddress", peer_address)
 		    .detail("ErrorCode", error.value())
 		    .detail("Message", error.message());
 		closeSocket();

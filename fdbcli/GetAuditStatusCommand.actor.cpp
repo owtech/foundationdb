@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2013-2023 Apple Inc. and the FoundationDB project authors
+ * Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,7 +35,6 @@ ACTOR Future<Void> getAuditProgressByRange(Database cx, AuditType auditType, UID
 	state Key rangeToReadBegin = auditRange.begin;
 	state int retryCount = 0;
 	state int64_t finishCount = 0;
-	state int64_t unfinishedCount = 0;
 	while (rangeToReadBegin < auditRange.end) {
 		loop {
 			try {
@@ -46,7 +45,6 @@ ACTOR Future<Void> getAuditProgressByRange(Database cx, AuditType auditType, UID
 					AuditPhase phase = auditStates[i].getPhase();
 					if (phase == AuditPhase::Invalid) {
 						printf("( Ongoing ) %s\n", auditStates[i].range.toString().c_str());
-						++unfinishedCount;
 					} else if (phase == AuditPhase::Error) {
 						printf("( Error   ) %s\n", auditStates[i].range.toString().c_str());
 						++finishCount;

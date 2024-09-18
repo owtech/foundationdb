@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2013-2022 Apple Inc. and the FoundationDB project authors
+ * Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,11 +41,13 @@
 #include "fdbclient/Tracing.h"
 #include "flow/actorcompiler.h" // has to be last include
 
+/*
 // CLIENT_BUGGIFY should be used to randomly introduce failures at run time (like BUGGIFY but for client side testing)
 // Unlike BUGGIFY, CLIENT_BUGGIFY can be enabled and disabled at runtime.
 #define CLIENT_BUGGIFY_WITH_PROB(x)                                                                                    \
-	(getSBVar(__FILE__, __LINE__, BuggifyType::Client) && deterministicRandom()->random01() < (x))
+    (getSBVar(__FILE__, __LINE__, BuggifyType::Client) && deterministicRandom()->random01() < (x))
 #define CLIENT_BUGGIFY CLIENT_BUGGIFY_WITH_PROB(P_BUGGIFIED_SECTION_FIRES[int(BuggifyType::Client)])
+*/
 
 FDB_BOOLEAN_PARAM(UseProvisionalProxies);
 
@@ -116,6 +118,9 @@ public:
 	Reference<DatabaseContext> getReference() const { return db; }
 
 	const UniqueOrderedOptionList<FDBTransactionOptions>& getTransactionDefaults() const;
+
+	template <std::invocable<Transaction*> Fun>
+	Future<Void> run(Fun fun);
 
 private:
 	Reference<DatabaseContext> db;
@@ -575,6 +580,24 @@ private:
 	Promise<Void> commitResult;
 	Future<Void> committing;
 };
+
+template <std::invocable<Transaction*> Fun>
+Future<Void> Database::run(Fun fun) {
+	Transaction tr(*this);
+	Future<Void> onError;
+	while (true) {
+		if (onError.isValid()) {
+			co_await onError;
+			onError = Future<Void>();
+		}
+		try {
+			co_await fun(&tr);
+			co_return;
+		} catch (Error& e) {
+			onError = tr.onError(e);
+		}
+	}
+}
 
 ACTOR Future<Version> waitForCommittedVersion(Database cx, Version version, SpanContext spanContext);
 ACTOR Future<Standalone<VectorRef<DDMetricsRef>>> waitDataDistributionMetricsList(Database cx,

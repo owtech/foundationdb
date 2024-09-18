@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2013-2022 Apple Inc. and the FoundationDB project authors
+ * Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
 
 // MockKMS unit tests, the coverage includes:
 // 1. Mock HttpRequest creation and HttpResponse writer.
-// 2. Construct fake request to validate the following scenarions:
+// 2. Construct fake request to validate the following scenarios:
 //  2.1. Request with "unsupported query mode"
 //  2.2. Get encryption keys by KeyIds; with and without 'RefreshKmsUrls' flag.
 //  2.2. Get encryption keys by DomainIds; with and without 'RefreshKmsUrls' flag.

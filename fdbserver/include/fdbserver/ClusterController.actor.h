@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2013-2022 Apple Inc. and the FoundationDB project authors
+ * Copyright 2013-2024 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -141,7 +141,6 @@ public:
 		DatabaseConfiguration fullyRecoveredConfig;
 		Database db;
 		int unfinishedRecoveries;
-		int logGenerations;
 		bool cachePopulated;
 		std::map<NetworkAddress, std::pair<double, OpenDatabaseRequest>> clientStatus;
 		Future<Void> clientCounter;
@@ -163,7 +162,7 @@ public:
 		                               EnableLocalityLoadBalance::True,
 		                               TaskPriority::DefaultEndpoint,
 		                               LockAware::True)), // SOMEDAY: Locality!
-		    unfinishedRecoveries(0), logGenerations(0), cachePopulated(false), clientCount(0),
+		    unfinishedRecoveries(0), cachePopulated(false), clientCount(0),
 		    blobGranulesEnabled(config.blobGranulesEnabled), blobRestoreEnabled(false) {
 			clientCounter = countClients(this);
 		}
@@ -3089,7 +3088,8 @@ public:
 			TraceEvent("ClusterControllerReceivedPeerRecovering")
 			    .suppressFor(10.0)
 			    .detail("Worker", req.address)
-			    .detail("Peer", peer);
+			    .detail("Peer", peer)
+			    .detail("PeerAddress", peer);
 			health.degradedPeers.erase(peer);
 			health.disconnectedPeers.erase(peer);
 		}
@@ -3121,7 +3121,10 @@ public:
 		for (auto& [workerAddress, health] : workerHealth) {
 			for (auto it = health.degradedPeers.begin(); it != health.degradedPeers.end();) {
 				if (currentTime - it->second.lastRefreshTime > SERVER_KNOBS->CC_DEGRADED_LINK_EXPIRATION_INTERVAL) {
-					TraceEvent("WorkerPeerHealthRecovered").detail("Worker", workerAddress).detail("Peer", it->first);
+					TraceEvent("WorkerPeerHealthRecovered")
+					    .detail("Worker", workerAddress)
+					    .detail("Peer", it->first)
+					    .detail("PeerAddress", it->first);
 					health.degradedPeers.erase(it++);
 				} else {
 					++it;
@@ -3129,7 +3132,10 @@ public:
 			}
 			for (auto it = health.disconnectedPeers.begin(); it != health.disconnectedPeers.end();) {
 				if (currentTime - it->second.lastRefreshTime > SERVER_KNOBS->CC_DEGRADED_LINK_EXPIRATION_INTERVAL) {
-					TraceEvent("WorkerPeerHealthRecovered").detail("Worker", workerAddress).detail("Peer", it->first);
+					TraceEvent("WorkerPeerHealthRecovered")
+					    .detail("Worker", workerAddress)
+					    .detail("Peer", it->first)
+					    .detail("PeerAddress", it->first);
 					health.disconnectedPeers.erase(it++);
 				} else {
 					++it;
