@@ -397,11 +397,10 @@ std::string DatabaseConfiguration::configureStringFromJSON(const StatusObject& j
 			continue;
 		}
 
-		result += " ";
 		// All integers are assumed to be actual DatabaseConfig keys and are set with
 		// the hidden "<name>:=<intValue>" syntax of the configure command.
 		if (kv.second.type() == json_spirit::int_type) {
-			result += kv.first + ":=" + format("%d", kv.second.get_int());
+			result += kv.first + ":=" + format("%d", kv.second.get_int()) + " ";
 		} else if (kv.second.type() == json_spirit::str_type) {
 			// For string values, some properties can set with a "<name>=<value>" syntax in "configure"
 			// Such properites are listed here:
@@ -411,19 +410,19 @@ std::string DatabaseConfiguration::configureStringFromJSON(const StatusObject& j
 			};
 
 			if (directSet.contains(kv.first)) {
-				result += kv.first + "=" + kv.second.get_str();
+				result += kv.first + "=" + kv.second.get_str() + " ";
 			} else {
 				// For the rest, it is assumed that the property name is meaningless and the value string
 				// is a standalone 'configure' command which has the identical effect.
 				// TODO:  Fix this terrible legacy behavior which probably isn't compatible with
 				// some of the more recently added configuration and options.
-				result += kv.second.get_str();
+				result += kv.second.get_str() + " ";
 			}
 		} else if (kv.second.type() == json_spirit::array_type) {
 			// Array properties convert to <name>=<json_array>
 			result += kv.first + "=" +
 			          json_spirit::write_string(json_spirit::mValue(kv.second.get_array()),
-			                                    json_spirit::Output_options::none);
+			                                    json_spirit::Output_options::none) + " ";
 		} else {
 			throw invalid_config_db_key();
 		}
@@ -440,7 +439,7 @@ std::string DatabaseConfiguration::configureStringFromJSON(const StatusObject& j
 	// explicit log_engine we simply add " log_engine=ssd-2" to the output string if the input JSON did not contain a
 	// log_engine.
 	if (!json.contains("log_engine")) {
-		result += " log_engine=ssd-2";
+		result += "log_engine=ssd-2";
 	}
 
 	return result;
