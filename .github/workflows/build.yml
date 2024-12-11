@@ -175,7 +175,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       JOSHUA_DB_VER: "6.3.15"
-      N_OF_TESTS: 2  # to fit in 360 minutes job run limit
+      N_OF_TESTS: 500  # to fit in 360 minutes job run limit
       JOSHUA_AGENT_URL: "docker.io/1inker"
       JOSHUA_AGENT_TAG: "rhel8-20220816"
 
