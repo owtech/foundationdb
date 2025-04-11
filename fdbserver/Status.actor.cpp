@@ -332,14 +332,14 @@ JsonBuilderObject machineStatusFetcher(WorkerEvents mMetrics,
 			std::string machineId = event.getValue("MachineID");
 
 			// If this machine ID does not already exist in the machineMap, add it
-			if (machineJsonMap.count(machineId) == 0) {
+			if (!machineJsonMap.contains(machineId)) {
 				statusObj["machine_id"] = machineId;
 
-				if (dcIds.count(it->first)) {
+				if (dcIds.contains(it->first)) {
 					statusObj["datacenter_id"] = dcIds[it->first];
 				}
 
-				if (locality.count(it->first)) {
+				if (locality.contains(it->first)) {
 					statusObj["locality"] = locality[it->first].toJSON<JsonBuilderObject>();
 				}
 
@@ -393,7 +393,7 @@ JsonBuilderObject machineStatusFetcher(WorkerEvents mMetrics,
 				tempList.address = it->first;
 				// Check if the locality data is present and if so, make use of it.
 				auto localityData = LocalityData();
-				if (locality.count(it->first)) {
+				if (locality.contains(it->first)) {
 					localityData = locality[it->first];
 				}
 
@@ -544,6 +544,7 @@ struct RolesInfo {
 			obj.setKeyRawNumber("local_rate", storageMetrics.getValue("LocalRate"));
 			obj["fetched_versions"] = StatusCounter(storageMetrics.getValue("FetchedVersions")).getStatus();
 			obj["fetches_from_logs"] = StatusCounter(storageMetrics.getValue("FetchesFromLogs")).getStatus();
+			obj["rocksdb_version"] = storageMetrics.getValue("RocksDBVersion");
 
 			Version version = storageMetrics.getInt64("Version");
 			Version durableVersion = storageMetrics.getInt64("DurableVersion");
@@ -859,7 +860,7 @@ ACTOR static Future<JsonBuilderObject> processStatusFetcher(
 		    machineMemoryUsage.insert(std::make_pair(workerItr->interf.locality.machineId(), MachineMemoryInfo()))
 		        .first;
 		try {
-			ASSERT(pMetrics.count(workerItr->interf.address()));
+			ASSERT(pMetrics.contains(workerItr->interf.address()));
 			const TraceEventFields& processMetrics = pMetrics[workerItr->interf.address()];
 			const TraceEventFields& programStart = programStarts[workerItr->interf.address()];
 
@@ -987,7 +988,7 @@ ACTOR static Future<JsonBuilderObject> processStatusFetcher(
 		wait(yield());
 		state JsonBuilderObject statusObj;
 		try {
-			ASSERT(pMetrics.count(workerItr->interf.address()));
+			ASSERT(pMetrics.contains(workerItr->interf.address()));
 
 			NetworkAddress address = workerItr->interf.address();
 			const TraceEventFields& processMetrics = pMetrics[workerItr->interf.address()];
@@ -1077,7 +1078,7 @@ ACTOR static Future<JsonBuilderObject> processStatusFetcher(
 			}
 
 			int64_t memoryLimit = 0;
-			if (programStarts.count(address)) {
+			if (programStarts.contains(address)) {
 				auto const& programStartEvent = programStarts.at(address);
 
 				if (programStartEvent.size() > 0) {
@@ -1097,7 +1098,7 @@ ACTOR static Future<JsonBuilderObject> processStatusFetcher(
 			}
 
 			// if this process address is in the machine metrics
-			if (mMetrics.count(address) && mMetrics[address].size()) {
+			if (mMetrics.contains(address) && mMetrics[address].size()) {
 				double availableMemory;
 				availableMemory = mMetrics[address].getDouble("AvailableMemory");
 
@@ -1114,7 +1115,7 @@ ACTOR static Future<JsonBuilderObject> processStatusFetcher(
 
 			JsonBuilderArray messages;
 
-			if (errors.count(address) && errors[address].size()) {
+			if (errors.contains(address) && errors[address].size()) {
 				// returns status object with type and time of error
 				messages.push_back(getError(errors.at(address)));
 			}
@@ -1128,7 +1129,7 @@ ACTOR static Future<JsonBuilderObject> processStatusFetcher(
 			}
 
 			// If this process had a trace file open error, identified by strAddress, then add it to messages array
-			if (tracefileOpenErrorMap.count(strAddress)) {
+			if (tracefileOpenErrorMap.contains(strAddress)) {
 				messages.push_back(tracefileOpenErrorMap[strAddress]);
 			}
 
@@ -1179,6 +1180,19 @@ ACTOR static Future<JsonBuilderObject> processStatusFetcher(
 		processMap[printable(workerItr->interf.locality.processId())] = statusObj;
 	}
 	return processMap;
+}
+
+static JsonBuilderObject grayFailureStatus(const std::unordered_map<NetworkAddress, double>& excludedDegradedServers) {
+	JsonBuilderObject status;
+	JsonBuilderArray excludedServers;
+	for (const auto& [excludedServer, time] : excludedDegradedServers) {
+		JsonBuilderObject server;
+		server["address"] = excludedServer.toString();
+		server["time"] = time;
+		excludedServers.push_back(server);
+	}
+	status["excluded_servers"] = excludedServers;
+	return status;
 }
 
 static JsonBuilderObject clientStatusFetcher(
@@ -1613,9 +1627,9 @@ ACTOR static Future<Void> logRangeWarningFetcher(Database cx,
 					KeyRange range = BinaryReader::fromStringRef<KeyRange>(it.key.removePrefix(destUidLookupPrefix),
 					                                                       IncludeVersion());
 					UID logUid = BinaryReader::fromStringRef<UID>(it.value, Unversioned());
-					if (loggingRanges.count(LogRangeAndUID(range, logUid))) {
+					if (loggingRanges.contains(LogRangeAndUID(range, logUid))) {
 						std::pair<Key, Key> rangePair = std::make_pair(range.begin, range.end);
-						if (existingRanges.count(rangePair)) {
+						if (existingRanges.contains(rangePair)) {
 							std::string rangeDescription = (range == getDefaultBackupSharedRange())
 							                                   ? "the default backup set"
 							                                   : format("`%s` - `%s`",
@@ -2597,7 +2611,7 @@ static JsonBuilderObject tlogFetcher(int* logFaultTolerance,
 		int failedLogs = 0;
 		for (auto& log : tLogSet.tLogs) {
 			JsonBuilderObject logObj;
-			bool failed = !log.present() || !address_workers.count(log.interf().address());
+			bool failed = !log.present() || !address_workers.contains(log.interf().address());
 			logObj["id"] = log.id().shortString();
 			logObj["healthy"] = !failed;
 			if (log.present()) {
@@ -3096,7 +3110,8 @@ ACTOR Future<StatusReply> clusterGetStatus(
     Version dcStorageServerVersionDifference,
     ConfigBroadcaster const* configBroadcaster,
     Optional<UnversionedMetaclusterRegistrationEntry> metaclusterRegistration,
-    metacluster::MetaclusterMetrics metaclusterMetrics) {
+    metacluster::MetaclusterMetrics metaclusterMetrics,
+    std::unordered_map<NetworkAddress, double> excludedDegradedServers) {
 
 	state double tStart = timer();
 
@@ -3640,7 +3655,7 @@ ACTOR Future<StatusReply> clusterGetStatus(
 			if (it.isTss()) {
 				activeTSSCount++;
 			}
-			if (wiggleServers.count(it.id())) {
+			if (wiggleServers.contains(it.id())) {
 				wiggleServerAddress.push_back(it.address().toString());
 			}
 		}
@@ -3730,6 +3745,10 @@ ACTOR Future<StatusReply> clusterGetStatus(
 		int64_t clusterTime = g_network->timer();
 		if (clusterTime != -1) {
 			statusObj["cluster_controller_timestamp"] = clusterTime;
+		}
+
+		if (SERVER_KNOBS->CC_GRAY_FAILURE_STATUS_JSON) {
+			statusObj["gray_failure"] = grayFailureStatus(excludedDegradedServers);
 		}
 
 		TraceEvent("ClusterGetStatus")

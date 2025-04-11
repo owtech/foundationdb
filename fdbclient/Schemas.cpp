@@ -173,6 +173,7 @@ const KeyRef JSONSchemas::statusSchema = R"statusSchema(
                      "throttled_commits":12341234,
                      "write_stall_microseconds":12341234
                   },
+                  "rocksdb_version":"9.7.3",
                   "data_version":12341234,
                   "durable_version":12341234,
                   "data_lag": {
@@ -623,6 +624,14 @@ const KeyRef JSONSchemas::statusSchema = R"statusSchema(
          "lock_uid": "00000000000000000000000000000000"
       },
       "generation":2,
+      "gray_failure" : {
+         "excluded_servers" : [
+            {
+               "address": "127.0.0.1:4500",
+               "time": 1731294251
+            }
+         ]
+      },
       "latency_probe":{
          "read_seconds":7,
          "immediate_priority_transaction_start_seconds":0.0,

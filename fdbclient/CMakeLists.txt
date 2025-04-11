@@ -77,205 +77,44 @@ if(WITH_TLS)
   target_link_libraries(fdbclient PRIVATE OpenSSL::Crypto)
 endif()
 
-# Setup the Swift sources in FDBClient.
-if(WITH_SWIFT)
-  include(FindSwiftLibs)
-  add_library(fdbclient_swift STATIC
-          notified_support.swift
-          )
+add_flow_target(EXECUTABLE NAME s3client SRCS S3Client_cli.actor.cpp)
+target_include_directories(s3client PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_BINARY_DIR}/include"
+    "${CMAKE_SOURCE_DIR}/flow/include"
+    "${CMAKE_BINARY_DIR}/flow/include"
+    "${CMAKE_SOURCE_DIR}/fdbrpc/include"
+    "${CMAKE_BINARY_DIR}/fdbrpc/include"
+    "${CMAKE_SOURCE_DIR}/contrib/md5/include"
+    "${CMAKE_SOURCE_DIR}/contrib/libb64/include"
+    "/opt/boost_1_86_0_clang/include"
+)
 
-  target_include_directories(fdbclient_swift PUBLIC
-          "${CMAKE_BINARY_DIR}/flow/include"
-          "${CMAKE_BINARY_DIR}/flow/"
-          "${CMAKE_BINARY_DIR}/fdbclient/include"
-          "${CMAKE_SOURCE_DIR}/fdbrpc/include"
-          "${CMAKE_BINARY_DIR}/fdbrpc/include"
-          "${CMAKE_SOURCE_DIR}/contrib/fmt-8.1.1/include"
-          "${CMAKE_SOURCE_DIR}/contrib/md5/include"
-          "${CMAKE_SOURCE_DIR}/contrib/libb64/include"
-          "${CMAKE_SOURCE_DIR}/contrib/sqlite"
-          "${Boost_DIR}/../../../include"
-          "${msgpack_DIR}/include"
-          )
+target_link_libraries(s3client PRIVATE
+    fdbclient
+    fdbrpc
+    flow
+    msgpack
+    md5
+    libb64
+    stacktrace
+    fmt
+    crc32
+    eio
+    rapidxml
+    boost_target
+    boost_target_program_options
+)
 
-  # Generate the module map for FDBClient.
-  include(GenerateModulemap)
-  set(FDBCLIENT_BINARY_DIR "${CMAKE_BINARY_DIR}/fdbclient")
-  generate_modulemap("${CMAKE_BINARY_DIR}/fdbclient/include" "FDBClient" fdbclient)
-
-  # TODO: the TBD validation skip is because of swift_job_run_generic, though it seems weird why we need to do that?
-  target_compile_options(fdbclient_swift PRIVATE "$<$<COMPILE_LANGUAGE:Swift>:SHELL:-Xcc -std=c++20 -Xfrontend -validate-tbd-against-ir=none -Xcc -DNO_INTELLISENSE -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/flow/include/headeroverlay.yaml -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/fdbclient/include/headeroverlay.yaml -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/fdbclient/include/headeroverlay.yaml>")
-
-  add_dependencies(fdbclient_swift flow_swift fdbclient_actors fdbrpc_actors fdboptions)
-  # This does not work! (see rdar://99107402)
-  # target_link_libraries(flow PRIVATE flow_swift)
-  add_dependencies(fdbclient fdbclient_swift)
-
-  target_link_options(fdbclient_swift PUBLIC "$<TARGET_OBJECTS:flow_swift>")
-  target_link_options(fdbclient PRIVATE "$<TARGET_OBJECTS:flow_swift>")
-
-  target_link_options(fdbclient PRIVATE "$<TARGET_OBJECTS:fdbclient_swift>")
+if(UNIX AND NOT APPLE)
+    target_link_libraries(s3client PRIVATE folly_memcpy)
 endif()
 
-# Setup the Swift sources in FDBClient.
-if(WITH_SWIFT)
-  include(FindSwiftLibs)
-  add_library(fdbclient_swift STATIC
-          notified_support.swift
-          )
-
-  target_include_directories(fdbclient_swift PUBLIC
-          "${CMAKE_BINARY_DIR}/flow/include"
-          "${CMAKE_BINARY_DIR}/flow/"
-          "${CMAKE_BINARY_DIR}/fdbclient/include"
-          "${CMAKE_SOURCE_DIR}/fdbrpc/include"
-          "${CMAKE_BINARY_DIR}/fdbrpc/include"
-          "${CMAKE_SOURCE_DIR}/contrib/fmt-8.1.1/include"
-          "${CMAKE_SOURCE_DIR}/contrib/md5/include"
-          "${CMAKE_SOURCE_DIR}/contrib/libb64/include"
-          "${CMAKE_SOURCE_DIR}/contrib/sqlite"
-          "${Boost_DIR}/../../../include"
-          "${msgpack_DIR}/include"
-          )
-
-  # Generate the module map for FDBClient.
-  include(GenerateModulemap)
-  set(FDBCLIENT_BINARY_DIR "${CMAKE_BINARY_DIR}/fdbclient")
-  generate_modulemap("${CMAKE_BINARY_DIR}/fdbclient/include" "FDBClient" fdbclient)
-
-  # TODO: the TBD validation skip is because of swift_job_run_generic, though it seems weird why we need to do that?
-  target_compile_options(fdbclient_swift PRIVATE "$<$<COMPILE_LANGUAGE:Swift>:SHELL:-Xcc -std=c++20 -Xfrontend -validate-tbd-against-ir=none -Xcc -DNO_INTELLISENSE -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/flow/include/headeroverlay.yaml -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/fdbclient/include/headeroverlay.yaml -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/fdbclient/include/headeroverlay.yaml>")
-
-  add_dependencies(fdbclient_swift flow_swift fdbclient_actors fdbrpc_actors fdboptions)
-  # This does not work! (see rdar://99107402)
-  # target_link_libraries(flow PRIVATE flow_swift)
-  add_dependencies(fdbclient fdbclient_swift)
-
-  target_link_options(fdbclient_swift PUBLIC "$<TARGET_OBJECTS:flow_swift>")
-  target_link_options(fdbclient PRIVATE "$<TARGET_OBJECTS:flow_swift>")
-
-  target_link_options(fdbclient PRIVATE "$<TARGET_OBJECTS:fdbclient_swift>")
+if(${COROUTINE_IMPL} STREQUAL libcoro)
+    target_link_libraries(s3client PRIVATE coro)
 endif()
 
-# Setup the Swift sources in FDBClient.
-if(WITH_SWIFT)
-  include(FindSwiftLibs)
-  add_library(fdbclient_swift STATIC
-          notified_support.swift
-          )
-
-  target_include_directories(fdbclient_swift PUBLIC
-          "${CMAKE_BINARY_DIR}/flow/include"
-          "${CMAKE_BINARY_DIR}/flow/"
-          "${CMAKE_BINARY_DIR}/fdbclient/include"
-          "${CMAKE_SOURCE_DIR}/fdbrpc/include"
-          "${CMAKE_BINARY_DIR}/fdbrpc/include"
-          "${CMAKE_SOURCE_DIR}/contrib/fmt-8.1.1/include"
-          "${CMAKE_SOURCE_DIR}/contrib/md5/include"
-          "${CMAKE_SOURCE_DIR}/contrib/libb64/include"
-          "${CMAKE_SOURCE_DIR}/contrib/sqlite"
-          "${Boost_DIR}/../../../include"
-          "${msgpack_DIR}/include"
-          )
-
-  # Generate the module map for FDBClient.
-  include(GenerateModulemap)
-  set(FDBCLIENT_BINARY_DIR "${CMAKE_BINARY_DIR}/fdbclient")
-  generate_modulemap("${CMAKE_BINARY_DIR}/fdbclient/include" "FDBClient" fdbclient)
-
-  # TODO: the TBD validation skip is because of swift_job_run_generic, though it seems weird why we need to do that?
-  target_compile_options(fdbclient_swift PRIVATE "$<$<COMPILE_LANGUAGE:Swift>:SHELL:-Xcc -std=c++20 -Xfrontend -validate-tbd-against-ir=none -Xcc -DNO_INTELLISENSE -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/flow/include/headeroverlay.yaml -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/fdbclient/include/headeroverlay.yaml -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/fdbclient/include/headeroverlay.yaml>")
-
-  add_dependencies(fdbclient_swift flow_swift fdbclient_actors fdbrpc_actors fdboptions)
-  # This does not work! (see rdar://99107402)
-  # target_link_libraries(flow PRIVATE flow_swift)
-  add_dependencies(fdbclient fdbclient_swift)
-
-  target_link_options(fdbclient_swift PUBLIC "$<TARGET_OBJECTS:flow_swift>")
-  target_link_options(fdbclient PRIVATE "$<TARGET_OBJECTS:flow_swift>")
-
-  target_link_options(fdbclient PRIVATE "$<TARGET_OBJECTS:fdbclient_swift>")
-endif()
-
-# Setup the Swift sources in FDBClient.
-if(WITH_SWIFT)
-  include(FindSwiftLibs)
-  add_library(fdbclient_swift STATIC
-          notified_support.swift
-          )
-
-  target_include_directories(fdbclient_swift PUBLIC
-          "${CMAKE_BINARY_DIR}/flow/include"
-          "${CMAKE_BINARY_DIR}/flow/"
-          "${CMAKE_BINARY_DIR}/fdbclient/include"
-          "${CMAKE_SOURCE_DIR}/fdbrpc/include"
-          "${CMAKE_BINARY_DIR}/fdbrpc/include"
-          "${CMAKE_SOURCE_DIR}/contrib/fmt-8.1.1/include"
-          "${CMAKE_SOURCE_DIR}/contrib/md5/include"
-          "${CMAKE_SOURCE_DIR}/contrib/libb64/include"
-          "${CMAKE_SOURCE_DIR}/contrib/sqlite"
-          "${Boost_DIR}/../../../include"
-          "${msgpack_DIR}/include"
-          )
-
-  # Generate the module map for FDBClient.
-  include(GenerateModulemap)
-  set(FDBCLIENT_BINARY_DIR "${CMAKE_BINARY_DIR}/fdbclient")
-  generate_modulemap("${CMAKE_BINARY_DIR}/fdbclient/include" "FDBClient" fdbclient)
-
-  # TODO: the TBD validation skip is because of swift_job_run_generic, though it seems weird why we need to do that?
-  target_compile_options(fdbclient_swift PRIVATE "$<$<COMPILE_LANGUAGE:Swift>:SHELL:-Xcc -std=c++20 -Xfrontend -validate-tbd-against-ir=none -Xcc -DNO_INTELLISENSE -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/flow/include/headeroverlay.yaml -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/fdbclient/include/headeroverlay.yaml -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/fdbclient/include/headeroverlay.yaml>")
-
-  add_dependencies(fdbclient_swift flow_swift fdbclient_actors fdbrpc_actors fdboptions)
-  # This does not work! (see rdar://99107402)
-  # target_link_libraries(flow PRIVATE flow_swift)
-  add_dependencies(fdbclient fdbclient_swift)
-
-  target_link_options(fdbclient_swift PUBLIC "$<TARGET_OBJECTS:flow_swift>")
-  target_link_options(fdbclient PRIVATE "$<TARGET_OBJECTS:flow_swift>")
-
-  target_link_options(fdbclient PRIVATE "$<TARGET_OBJECTS:fdbclient_swift>")
-endif()
-
-# Setup the Swift sources in FDBClient.
-if(WITH_SWIFT)
-  include(FindSwiftLibs)
-  add_library(fdbclient_swift STATIC
-          notified_support.swift
-          )
-
-  target_include_directories(fdbclient_swift PUBLIC
-          "${CMAKE_BINARY_DIR}/flow/include"
-          "${CMAKE_BINARY_DIR}/flow/"
-          "${CMAKE_BINARY_DIR}/fdbclient/include"
-          "${CMAKE_SOURCE_DIR}/fdbrpc/include"
-          "${CMAKE_BINARY_DIR}/fdbrpc/include"
-          "${CMAKE_SOURCE_DIR}/contrib/fmt-8.1.1/include"
-          "${CMAKE_SOURCE_DIR}/contrib/md5/include"
-          "${CMAKE_SOURCE_DIR}/contrib/libb64/include"
-          "${CMAKE_SOURCE_DIR}/contrib/sqlite"
-          "${Boost_DIR}/../../../include"
-          "${msgpack_DIR}/include"
-          )
-
-  # Generate the module map for FDBClient.
-  include(GenerateModulemap)
-  set(FDBCLIENT_BINARY_DIR "${CMAKE_BINARY_DIR}/fdbclient")
-  generate_modulemap("${CMAKE_BINARY_DIR}/fdbclient/include" "FDBClient" fdbclient)
-
-  # TODO: the TBD validation skip is because of swift_job_run_generic, though it seems weird why we need to do that?
-  target_compile_options(fdbclient_swift PRIVATE "$<$<COMPILE_LANGUAGE:Swift>:SHELL:-Xcc -std=c++20 -Xfrontend -validate-tbd-against-ir=none -Xcc -DNO_INTELLISENSE -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/flow/include/headeroverlay.yaml -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/fdbclient/include/headeroverlay.yaml -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/fdbclient/include/headeroverlay.yaml>")
-
-  add_dependencies(fdbclient_swift flow_swift fdbclient_actors fdbrpc_actors fdboptions)
-  # This does not work! (see rdar://99107402)
-  # target_link_libraries(flow PRIVATE flow_swift)
-  add_dependencies(fdbclient fdbclient_swift)
-
-  target_link_options(fdbclient_swift PUBLIC "$<TARGET_OBJECTS:flow_swift>")
-  target_link_options(fdbclient PRIVATE "$<TARGET_OBJECTS:flow_swift>")
-
-  target_link_options(fdbclient PRIVATE "$<TARGET_OBJECTS:fdbclient_swift>")
-endif()
+add_dependencies(s3client fdboptions)
 
 # Setup the Swift sources in FDBClient.
 if(WITH_SWIFT)
@@ -341,3 +180,8 @@ if(WITH_AWS_BACKUP)
   target_link_libraries(fdbclient_sampling PUBLIC awssdk_target)
 endif()
 
+if (NOT WIN32 AND NOT OPEN_FOR_IDE)
+  enable_testing()
+  add_test(NAME s3client_test COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/s3client_test.sh ${CMAKE_BINARY_DIR})
+  add_test(NAME bulkload_test COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/bulkload_test.sh ${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR})
+endif()

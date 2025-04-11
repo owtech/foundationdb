@@ -29,6 +29,7 @@
 #include "fdbserver/workloads/workloads.actor.h"
 #include "fdbrpc/simulator.h"
 #include "fdbserver/QuietDatabase.h"
+#include "fdbserver/SimulatedCluster.h"
 #include "flow/IRandom.h"
 #include "flow/actorcompiler.h" // This must be the last #include.
 
@@ -284,7 +285,14 @@ struct ConfigureDatabaseWorkload : TestWorkload {
 		TraceEvent("ConfigureDatabase_Config").detail("Config", config.toString());
 		if (config.encryptionAtRestMode.isEncryptionEnabled()) {
 			TraceEvent("ConfigureDatabase_EncryptionEnabled");
-			self->storageEngineExcludeTypes = { 0, 1, 2, 4, 5 };
+			self->storageEngineExcludeTypes = { (int)SimulationStorageEngine::SSD,
+				                                (int)SimulationStorageEngine::MEMORY,
+				                                (int)SimulationStorageEngine::RADIX_TREE,
+				                                (int)SimulationStorageEngine::ROCKSDB,
+				                                (int)SimulationStorageEngine::SHARDED_ROCKSDB };
+		}
+		if (!SERVER_KNOBS->SHARD_ENCODE_LOCATION_METADATA) {
+			self->storageEngineExcludeTypes.push_back((int)SimulationStorageEngine::SHARDED_ROCKSDB);
 		}
 		if (self->clientId == 0) {
 			self->clients.push_back(timeout(self->singleDB(self, cx), self->testDuration, Void()));
@@ -293,12 +301,42 @@ struct ConfigureDatabaseWorkload : TestWorkload {
 		return Void();
 	}
 
+	// Returns true iff aggressive migration was triggered.
+	// This is needed because there are certain topologies where it's not possible for DD (perpetual wiggle) to migrate
+	// storage servers to the new storage engine. As an example, if the DC has just 1 SS, DD will decide not to do
+	// perpetual wiggle because there's no room. In such cases, we issue aggressive migration which can do in-place
+	// migration.
+	ACTOR Future<bool> issueAggressiveMigrationIfNeeded(Database cx,
+	                                                    DatabaseConfiguration conf,
+	                                                    std::vector<StorageServerInterface> storageServers) {
+		state std::unordered_map<std::string /* dc id */, int /* number of ss in that dc id */> dcIdToSSCount;
+		for (const auto& ss : storageServers) {
+			if (ss.locality.dcId().present()) {
+				const auto& dcId = ss.locality.dcId().get().toString();
+				if (!dcIdToSSCount.contains(dcId)) {
+					dcIdToSSCount[dcId] = 0;
+				}
+				dcIdToSSCount[dcId] += 1;
+			}
+		}
+
+		for (const auto& [_, ssCount] : dcIdToSSCount) {
+			if (ssCount <= conf.storageTeamSize) {
+				wait(success(IssueConfigurationChange(cx, "storage_migration_type=aggressive", false)));
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	ACTOR Future<bool> _check(ConfigureDatabaseWorkload* self, Database cx) {
 		wait(delay(30.0));
 		// only storage_migration_type=gradual && perpetual_storage_wiggle=1 need this check because in QuietDatabase
 		// perpetual wiggle will be forced to close For other cases, later ConsistencyCheck will check KV store type
 		// there
 		if (self->allowTestStorageMigration || self->waitStoreTypeCheck) {
+			state bool aggressiveMigrationTriggered = false;
 			loop {
 				// There exists a race where the check can start before the last transaction that singleDB issued
 				// finishes, if singleDB gets actor cancelled from a timeout at the end of a test. This means the
@@ -313,6 +351,11 @@ struct ConfigureDatabaseWorkload : TestWorkload {
 
 				state bool pass = true;
 				state std::vector<StorageServerInterface> storageServers = wait(getStorageServers(cx));
+
+				if (!aggressiveMigrationTriggered) {
+					wait(store(aggressiveMigrationTriggered,
+					           self->issueAggressiveMigrationIfNeeded(cx, conf, storageServers)));
+				}
 
 				for (i = 0; i < storageServers.size(); i++) {
 					// Check that each storage server has the correct key value store type
@@ -423,10 +466,10 @@ struct ConfigureDatabaseWorkload : TestWorkload {
 			} else if (randomChoice == 5) {
 				int storeType = 0;
 				while (true) {
-					storeType = deterministicRandom()->randomInt(0, 4);
-					if (std::count(self->storageEngineExcludeTypes.begin(),
-					               self->storageEngineExcludeTypes.end(),
-					               storeType) == 0) {
+					storeType = deterministicRandom()->randomInt(0, 6);
+					if (std::find(self->storageEngineExcludeTypes.begin(),
+					              self->storageEngineExcludeTypes.end(),
+					              storeType) == self->storageEngineExcludeTypes.end()) {
 						break;
 					}
 				}
@@ -444,8 +487,13 @@ struct ConfigureDatabaseWorkload : TestWorkload {
 					storeTypeStr = "memory-radixtree";
 					break;
 				case 3:
-					// Experimental suffix is still supported so test it
-					storeTypeStr = BUGGIFY ? "ssd-redwood-1" : "ssd-redwood-1-experimental";
+					storeTypeStr = "ssd-redwood-1";
+					break;
+				case 4:
+					storeTypeStr = "ssd-rocksdb-v1";
+					break;
+				case 5:
+					storeTypeStr = "ssd-sharded-rocksdb";
 					break;
 				default:
 					ASSERT(false);
@@ -476,7 +524,7 @@ struct ConfigureDatabaseWorkload : TestWorkload {
 						state std::vector<StorageServerInterface> storageServers = wait(getStorageServers(cx));
 						std::string localityFilter;
 						int selectSSCount =
-						    deterministicRandom()->randomInt(1, std::min(4, (int)(storageServers.size())));
+						    deterministicRandom()->randomInt(1, std::min(4, (int)(storageServers.size() + 1)));
 						std::vector<StringRef> localityKeys = { LocalityData::keyDcId,
 							                                    LocalityData::keyDataHallId,
 							                                    LocalityData::keyZoneId,

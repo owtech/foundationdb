@@ -66,6 +66,7 @@ struct OldLogData {
 };
 
 struct IdToInterf : ReferenceCounted<IdToInterf> {
+	Optional<Version> recoverAt = Optional<Version>();
 	std::map<UID, TLogInterface> lockInterf;
 };
 
@@ -76,6 +77,16 @@ struct LogLockInfo {
 	std::vector<Future<TLogLockResult>> replies;
 
 	LogLockInfo() : epochEnd(std::numeric_limits<Version>::max()), isCurrent(false) {}
+};
+
+struct DurableVersionInfo {
+	Version knownCommittedVersion; // maximum of the known committed versions of available tLogs
+	Version minimumDurableVersion; // mimimum of the durable versions of available tLogs
+	std::vector<TLogLockResult> lockResults; // replies from various tLogs
+	bool policyResult; // unavailable tLogs meet the replication policy or not
+
+	DurableVersionInfo(Version kcv, Version dv, std::vector<TLogLockResult>& replies, bool meetsPolicy)
+	  : knownCommittedVersion(kcv), minimumDurableVersion(dv), lockResults(replies), policyResult(meetsPolicy) {}
 };
 
 struct TagPartitionedLogSystem final : ILogSystem, ReferenceCounted<TagPartitionedLogSystem> {
@@ -245,7 +256,12 @@ struct TagPartitionedLogSystem final : ILogSystem, ReferenceCounted<TagPartition
 	// Specifically, the epoch is determined by looking up "dbgid" in tlog sets of generations.
 	// The returned cursor can peek data at the "tag" from the given "begin" version to that epoch's end version or
 	// the recovery version for the latest old epoch. For the current epoch, the cursor has no end version.
-	Reference<IPeekCursor> peekLogRouter(UID dbgid, Version begin, Tag tag, bool useSatellite) final;
+	// For the old epoch, the cursor is provided an end version.
+	Reference<IPeekCursor> peekLogRouter(UID dbgid,
+	                                     Version begin,
+	                                     Tag tag,
+	                                     bool useSatellite,
+	                                     Optional<Version> end) final;
 
 	Version getKnownCommittedVersion() final;
 
@@ -300,7 +316,12 @@ struct TagPartitionedLogSystem final : ILogSystem, ReferenceCounted<TagPartition
 
 	Version getPeekEnd() const;
 
-	void getPushLocations(VectorRef<Tag> tags, std::vector<int>& locations, bool allLocations) const final;
+	void getPushLocations(VectorRef<Tag> tags,
+	                      std::vector<int>& locations,
+	                      bool allLocations,
+	                      Optional<std::vector<Reference<LocalitySet>>> fromLocations) const final;
+
+	std::vector<Reference<LocalitySet>> getPushLocationsForTags(std::vector<int>& fromLocations) const final;
 
 	bool hasRemoteLogs() const final;
 
@@ -328,8 +349,11 @@ struct TagPartitionedLogSystem final : ILogSystem, ReferenceCounted<TagPartition
 	ACTOR static Future<Void> monitorLog(Reference<AsyncVar<OptionalInterface<TLogInterface>>> logServer,
 	                                     Reference<AsyncVar<bool>> failed);
 
-	// returns the log group's knownComittedVersion, DV, and a vector of TLogLockResults for each tLog in the group.
-	Optional<std::tuple<Version, Version, std::vector<TLogLockResult>>> static getDurableVersion(
+	// returns the log group's knownComittedVersion, DV, a vector of TLogLockResults for
+	// each tLog in the group, and the result of applying the replication policy check over
+	// unavailable tLogs from the group
+	// Optional<std::tuple<Version, Version, std::vector<TLogLockResult>, bool>>
+	Optional<DurableVersionInfo> static getDurableVersion(
 	    UID dbgid,
 	    LogLockInfo lockInfo,
 	    std::vector<Reference<AsyncVar<bool>>> failed = std::vector<Reference<AsyncVar<bool>>>(),
@@ -392,10 +416,7 @@ struct TagPartitionedLogSystem final : ILogSystem, ReferenceCounted<TagPartition
 	    std::vector<Reference<AsyncVar<OptionalInterface<TLogInterface>>>> tlogs,
 	    Reference<AsyncVar<Version>> recoveredVersion);
 
-	ACTOR static Future<TLogLockResult> lockTLog(
-	    UID myID,
-	    Reference<AsyncVar<OptionalInterface<TLogInterface>>> tlog,
-	    Optional<Reference<IdToInterf>> lockInterf = Optional<Reference<IdToInterf>>());
+	ACTOR static Future<TLogLockResult> lockTLog(UID myID, Reference<AsyncVar<OptionalInterface<TLogInterface>>> tlog);
 	template <class T>
 	static std::vector<T> getReadyNonError(std::vector<Future<T>> const& futures);
 };

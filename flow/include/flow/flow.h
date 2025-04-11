@@ -1226,7 +1226,7 @@ struct NotifiedQueue : private SingleCallback<T>
 		if (error.isValid())
 			return;
 
-		ASSERT(this->error.code() != error_code_success);
+		ASSERT(this->error.code() != error_code_success && this->error.code() != error_code_end_of_stream);
 		this->error = err;
 
 		// end_of_stream error is "expected", don't terminate reading stream early for this
@@ -1458,6 +1458,9 @@ public:
 		}
 		return queue->onEmpty.getFuture();
 	}
+
+	int getFutureReferenceCount() const { return queue->getFutureReferenceCount(); }
+	int getPromiseReferenceCount() const { return queue->getPromiseReferenceCount(); }
 
 private:
 	NotifiedQueue<T>* queue;

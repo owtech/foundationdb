@@ -30,6 +30,7 @@
 #include "fdbserver/IKeyValueContainer.h"
 #include "fdbserver/IKeyValueStore.h"
 #include "fdbserver/RadixTree.h"
+#include "fdbserver/TransactionStoreMutationTracking.h"
 #include "flow/ActorCollection.h"
 #include "flow/EncryptUtils.h"
 #include "flow/Knobs.h"
@@ -52,6 +53,7 @@ public:
 	                    bool exactRecovery,
 	                    bool enableEncryption);
 
+	bool getReplaceContent() const override { return replaceContent; }
 	// IClosable
 	Future<Void> getError() const override { return log->getError(); }
 	Future<Void> onClosed() const override { return log->onClosed(); }
@@ -494,7 +496,7 @@ private:
 		uint32_t opType = (uint32_t)op;
 		// Make sure the first bit of the optype is empty
 		ASSERT(opType >> ENCRYPTION_ENABLED_BIT == 0);
-		if (!enableEncryption || metaOps.count(op) > 0) {
+		if (!enableEncryption || metaOps.contains(op)) {
 			OpHeader h = { opType, v1.size(), v2.size() };
 			log->push(StringRef((const uint8_t*)&h, sizeof(h)));
 			log->push(v1);
@@ -532,7 +534,9 @@ private:
 			log->push(headerRefStr);
 			log->push(cipherText);
 		}
-		return log->push("\x01"_sr); // Changes here should be reflected in OP_DISK_OVERHEAD
+		IDiskQueue::location loc = log->push("\x01"_sr); // Changes here should be reflected in OP_DISK_OVERHEAD
+		DEBUG_TRANSACTION_STATE_STORE("LogOp", v1, id, loc);
+		return loc;
 	}
 
 	// In case the op data is not encrypted, simply read the operands and the zero fill flag.
@@ -545,7 +549,7 @@ private:
 		ASSERT(!isOpEncrypted(&h));
 		// Metadata op types to be excluded from encryption.
 		static std::unordered_set<OpType> metaOps = { OpSnapshotEnd, OpSnapshotAbort, OpCommit, OpRollback };
-		if (metaOps.count((OpType)h.op) == 0) {
+		if (!metaOps.contains((OpType)h.op)) {
 			// It is not supported to open an encrypted store as unencrypted, or vice-versa.
 			ASSERT_EQ(encryptedOp, self->enableEncryption);
 		}
@@ -671,6 +675,8 @@ private:
 					if (!isZeroFilled) {
 						StringRef p1 = data.substr(0, h.len1);
 						StringRef p2 = data.substr(h.len1, h.len2);
+
+						DEBUG_TRANSACTION_STATE_STORE("Recover", p1, self->id);
 
 						if (h.op == OpSnapshotItem || h.op == OpSnapshotItemDelta) { // snapshot data item
 							/*if (p1 < uncommittedNextKey) {
@@ -824,6 +830,7 @@ private:
 		int64_t snapshotSize = 0;
 		for (auto kv = snapshotData.begin(); kv != snapshotData.end(); ++kv) {
 			StringRef tempKey = kv.getKey(reserved_buffer);
+			DEBUG_TRANSACTION_STATE_STORE("FullSnapshot", tempKey, id);
 			log_op(OpSnapshotItem, tempKey, kv.getValue());
 			snapshotSize += tempKey.size() + kv.getValue().size() + OP_DISK_OVERHEAD;
 			++count;
@@ -940,6 +947,8 @@ private:
 					// to be a proper KeyRef of the key. This intentionally leaves the Arena alone and doesn't copy
 					// anything into it.
 					destKey.contents() = KeyRef(destKey.begin(), tempKey.size());
+
+					DEBUG_TRANSACTION_STATE_STORE("SnapshotItem", destKey.toString(), self->id);
 
 					// Get the common prefix between this key and the previous one, or 0 if there was no previous one.
 					int commonPrefix;
@@ -1080,8 +1089,8 @@ IKeyValueStore* keyValueStoreMemory(std::string const& basename,
 	    .detail("MemoryLimit", memoryLimit)
 	    .detail("StoreType", storeType);
 
-	// SOMEDAY: update to use DiskQueueVersion::V2 with xxhash3 checksum for FDB >= 7.2
-	IDiskQueue* log = openDiskQueue(basename, ext, logID, DiskQueueVersion::V1);
+	// Use DiskQueueVersion::V2 with xxhash3 checksum
+	IDiskQueue* log = openDiskQueue(basename, ext, logID, DiskQueueVersion::V2);
 	if (storeType == KeyValueStoreType::MEMORY_RADIXTREE) {
 		return new KeyValueStoreMemory<radix_tree>(
 		    log, Reference<AsyncVar<ServerDBInfo> const>(), logID, memoryLimit, storeType, false, false, false, false);

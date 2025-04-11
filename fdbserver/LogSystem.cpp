@@ -157,7 +157,7 @@ void LogSet::checkSatelliteTagLocations() {
 	std::set<Optional<Key>> zones;
 	std::set<Optional<Key>> dcs;
 	for (auto& loc : tLogLocalities) {
-		if (zones.count(loc.zoneId())) {
+		if (zones.contains(loc.zoneId())) {
 			foundDuplicate = true;
 			break;
 		}
@@ -180,12 +180,9 @@ void LogSet::checkSatelliteTagLocations() {
 
 int LogSet::bestLocationFor(Tag tag) {
 	if (locality == tagLocalitySatellite) {
-		return satelliteTagLocations[tag == txsTag ? 0 : tag.id + 1][0];
+		return satelliteTagLocations[tag.id + 1][0];
 	}
 
-	// the following logic supports upgrades from 5.X
-	if (tag == txsTag)
-		return txsTagOld % logServers.size();
 	return tag.id % logServers.size();
 }
 
@@ -216,11 +213,15 @@ bool LogSet::satisfiesPolicy(const std::vector<LocalityEntry>& locations) {
 	return resultEntries.size() == 0;
 }
 
-void LogSet::getPushLocations(VectorRef<Tag> tags, std::vector<int>& locations, int locationOffset, bool allLocations) {
+void LogSet::getPushLocations(VectorRef<Tag> tags,
+                              std::vector<int>& locations,
+                              int locationOffset,
+                              bool allLocations,
+                              const Optional<Reference<LocalitySet>>& restrictedLogSet) {
 	if (locality == tagLocalitySatellite) {
 		for (auto& t : tags) {
-			if (t == txsTag || t.locality == tagLocalityTxs || t.locality == tagLocalityLogRouter) {
-				for (int loc : satelliteTagLocations[t == txsTag ? 0 : t.id + 1]) {
+			if (t.locality == tagLocalityTxs || t.locality == tagLocalityLogRouter) {
+				for (int loc : satelliteTagLocations[t.id + 1]) {
 					locations.push_back(locationOffset + loc);
 				}
 			}
@@ -259,7 +260,12 @@ void LogSet::getPushLocations(VectorRef<Tag> tags, std::vector<int>& locations, 
 	}
 
 	// Run the policy, assert if unable to satisfy
-	bool result = logServerSet->selectReplicas(tLogPolicy, alsoServers, resultEntries);
+	bool result;
+	if (restrictedLogSet.present()) {
+		result = restrictedLogSet.get()->selectReplicas(tLogPolicy, alsoServers, resultEntries);
+	} else {
+		result = logServerSet->selectReplicas(tLogPolicy, alsoServers, resultEntries);
+	}
 	ASSERT(result);
 
 	// Add the new servers to the location array
@@ -282,11 +288,7 @@ LogPushData::LogPushData(Reference<ILogSystem> logSystem, int tlogCount) : logSy
 }
 
 void LogPushData::addTxsTag() {
-	if (logSystem->getTLogVersion() >= TLogVersion::V4) {
-		next_message_tags.push_back(logSystem->getRandomTxsTag());
-	} else {
-		next_message_tags.push_back(txsTag);
-	}
+	next_message_tags.push_back(logSystem->getRandomTxsTag());
 }
 
 void LogPushData::addTransactionInfo(SpanContext const& context) {
@@ -348,7 +350,7 @@ float LogPushData::getEmptyMessageRatio() const {
 
 bool LogPushData::writeTransactionInfo(int location, uint32_t subseq) {
 	if (!FLOW_KNOBS->WRITE_TRACING_ENABLED || logSystem->getTLogVersion() < TLogVersion::V6 ||
-	    writtenLocations.count(location) != 0) {
+	    writtenLocations.contains(location)) {
 		return false;
 	}
 

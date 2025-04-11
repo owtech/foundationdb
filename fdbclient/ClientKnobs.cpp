@@ -168,6 +168,7 @@ void ClientKnobs::initialize(Randomize randomize) {
 	init( BACKUP_MAP_KEY_UPPER_LIMIT,              1e5 ); if( buggifyMapLimits ) BACKUP_MAP_KEY_UPPER_LIMIT = 30;
 	init( BACKUP_COPY_TASKS,                        90 );
 	init( BACKUP_BLOCK_SIZE,   LOG_RANGE_BLOCK_SIZE/10 );
+	init( BACKUP_ALLOW_DRYRUN,                   false );
 	init( COPY_LOG_BLOCK_SIZE,              LOG_RANGE_BLOCK_SIZE ); // the maximum possible value due the getLogRanges limitations
 	init( COPY_LOG_BLOCKS_PER_TASK,               1000 );
 	init( COPY_LOG_PREFETCH_BLOCKS,                  3 );
@@ -183,6 +184,7 @@ void ClientKnobs::initialize(Randomize randomize) {
 	init( BACKUP_DISPATCH_ADDTASK_SIZE,             50 );
 	init( RESTORE_DISPATCH_ADDTASK_SIZE,           150 );
 	init( RESTORE_DISPATCH_BATCH_SIZE,           30000 ); if( randomize && BUGGIFY ) RESTORE_DISPATCH_BATCH_SIZE = 20;
+	init (RESTORE_PARTITIONED_BATCH_VERSION_SIZE, 10000000); // each step restores 10s worth of data
 	init( RESTORE_WRITE_TX_SIZE,            256 * 1024 );
 	init( APPLY_MAX_LOCK_BYTES,                    1e9 );
 	init( APPLY_MIN_LOCK_BYTES,                   11e6 ); //Must be bigger than TRANSACTION_SIZE_LIMIT
@@ -199,6 +201,9 @@ void ClientKnobs::initialize(Randomize randomize) {
 	init( BACKUP_CONTAINER_LOCAL_ALLOW_RELATIVE_PATH, false );
 	init( ENABLE_REPLICA_CONSISTENCY_CHECK_ON_BACKUP_READS, true );
 	init( CONSISTENCY_CHECK_REQUIRED_REPLICAS,      -2 ); // Do consistency check based on all available storage replicas
+	init( BULKLOAD_JOB_HISTORY_COUNT_MAX,           10 ); if (randomize && BUGGIFY) BULKLOAD_JOB_HISTORY_COUNT_MAX = deterministicRandom()->randomInt(1, 10);
+	init( BULKLOAD_VERBOSE_LEVEL,                   10 );
+	init( S3CLIENT_VERBOSE_LEVEL,                   10 );
 
 	// Configuration
 	init( DEFAULT_AUTO_COMMIT_PROXIES,               3 );
@@ -247,6 +252,7 @@ void ClientKnobs::initialize(Randomize randomize) {
 
 	init( BLOBSTORE_MAX_DELAY_RETRYABLE_ERROR,      60  );
 	init( BLOBSTORE_MAX_DELAY_CONNECTION_FAILED,    10  );
+	init (BLOBSTORE_ENABLE_OBJECT_INTEGRITY_CHECK,false );
 
 	init( BLOBSTORE_LIST_REQUESTS_PER_SECOND,       200 );
 	init( BLOBSTORE_WRITE_REQUESTS_PER_SECOND,       50 );
@@ -301,6 +307,7 @@ void ClientKnobs::initialize(Randomize randomize) {
 	init( TAG_THROTTLING_PAGE_SIZE,                4096 ); if( randomize && BUGGIFY ) TAG_THROTTLING_PAGE_SIZE = 4096;
 	init( GLOBAL_TAG_THROTTLING_RW_FUNGIBILITY_RATIO,            4.0 );
 	init( PROXY_MAX_TAG_THROTTLE_DURATION,          5.0 ); if( randomize && BUGGIFY ) PROXY_MAX_TAG_THROTTLE_DURATION = 0.5;
+	init( TRANSACTION_LOCK_REJECTION_RETRIABLE,    true );
 
 	// busyness reporting
 	init( BUSYNESS_SPIKE_START_THRESHOLD,         0.100 );
@@ -339,8 +346,8 @@ void ClientKnobs::initialize(Randomize randomize) {
 	init( REST_KMS_ALLOW_NOT_SECURE_CONNECTION,     false ); if ( randomize && BUGGIFY ) REST_KMS_ALLOW_NOT_SECURE_CONNECTION = !REST_KMS_ALLOW_NOT_SECURE_CONNECTION;
 	init( SIM_KMS_VAULT_MAX_KEYS,                    4096 );
 
-	init( ENABLE_MUTATION_CHECKSUM,                  true ); if ( randomize && BUGGIFY ) ENABLE_MUTATION_CHECKSUM = deterministicRandom()->coinflip(); // Enable this after deserialiser is ported to 7.3.
-	init( ENABLE_ACCUMULATIVE_CHECKSUM,              true ); if ( randomize && BUGGIFY ) ENABLE_ACCUMULATIVE_CHECKSUM = deterministicRandom()->coinflip(); // Enable this after deserialiser is ported to 7.3.
+	init( ENABLE_MUTATION_CHECKSUM,                 false ); if ( randomize && BUGGIFY ) ENABLE_MUTATION_CHECKSUM = deterministicRandom()->coinflip();
+	init( ENABLE_ACCUMULATIVE_CHECKSUM,             false ); if ( randomize && BUGGIFY ) ENABLE_ACCUMULATIVE_CHECKSUM = deterministicRandom()->coinflip();
 	init( ENABLE_ACCUMULATIVE_CHECKSUM_LOGGING,     false );
 	// clang-format on
 }

@@ -82,31 +82,17 @@ const Value keyServersValue(RangeResult result, const std::vector<UID>& src, con
 	std::vector<Tag> srcTag;
 	std::vector<Tag> destTag;
 
-	bool foundOldLocality = false;
 	for (const KeyValueRef& kv : result) {
 		UID uid = decodeServerTagKey(kv.key);
 		if (std::find(src.begin(), src.end(), uid) != src.end()) {
 			srcTag.push_back(decodeServerTagValue(kv.value));
-			if (srcTag.back().locality == tagLocalityUpgraded) {
-				foundOldLocality = true;
-				break;
-			}
 		}
 		if (std::find(dest.begin(), dest.end(), uid) != dest.end()) {
 			destTag.push_back(decodeServerTagValue(kv.value));
-			if (destTag.back().locality == tagLocalityUpgraded) {
-				foundOldLocality = true;
-				break;
-			}
 		}
 	}
 
-	if (foundOldLocality || src.size() != srcTag.size() || dest.size() != destTag.size()) {
-		ASSERT_WE_THINK(foundOldLocality);
-		BinaryWriter wr(IncludeVersion(ProtocolVersion::withKeyServerValue()));
-		wr << src << dest;
-		return wr.toValue();
-	}
+	ASSERT_WE_THINK(src.size() == srcTag.size() && dest.size() == destTag.size());
 
 	return keyServersValue(srcTag, destTag);
 }
@@ -685,10 +671,6 @@ void decodeServerKeysValue(const ValueRef& value,
 	}
 }
 
-bool physicalShardMoveEnabled(const UID& dataMoveId) {
-	return (dataMoveId.second() & 1U);
-}
-
 const KeyRef cacheKeysPrefix = "\xff\x02/cacheKeys/"_sr;
 
 const Key cacheKeysKey(uint16_t idx, const KeyRef& key) {
@@ -835,21 +817,8 @@ Version decodeServerTagHistoryKey(KeyRef const& key) {
 Tag decodeServerTagValue(ValueRef const& value) {
 	Tag s;
 	BinaryReader reader(value, IncludeVersion());
-	if (!reader.protocolVersion().hasTagLocality()) {
-		int16_t id;
-		reader >> id;
-		if (id == invalidTagOld) {
-			s = invalidTag;
-		} else if (id == txsTagOld) {
-			s = txsTag;
-		} else {
-			ASSERT(id >= 0);
-			s.id = id;
-			s.locality = tagLocalityUpgraded;
-		}
-	} else {
-		reader >> s;
-	}
+	ASSERT_WE_THINK(reader.protocolVersion().hasTagLocality());
+	reader >> s;
 	return s;
 }
 
@@ -974,10 +943,7 @@ StorageServerInterface decodeServerListValue(ValueRef const& value) {
 	StorageServerInterface s;
 	BinaryReader reader(value, IncludeVersion());
 
-	if (!reader.protocolVersion().hasStorageInterfaceReadiness()) {
-		reader >> s;
-		return s;
-	}
+	ASSERT_WE_THINK(reader.protocolVersion().hasStorageInterfaceReadiness());
 
 	return decodeServerListValueFB(value);
 }
@@ -1153,6 +1119,7 @@ const KeyRangeRef backupProgressKeys("\xff\x02/backupProgress/"_sr, "\xff\x02/ba
 const KeyRef backupProgressPrefix = backupProgressKeys.begin;
 const KeyRef backupStartedKey = "\xff\x02/backupStarted"_sr;
 extern const KeyRef backupPausedKey = "\xff\x02/backupPaused"_sr;
+extern const KeyRef backupWorkerMaxNoopVersionKey = "\xff\x02/backupWorkerMaxNoopVersion"_sr;
 
 const Key backupProgressKeyFor(UID workerID) {
 	BinaryWriter wr(Unversioned());
@@ -1230,18 +1197,109 @@ const UID dataDistributionModeLock = UID(6345, 3425);
 
 // Bulk loading keys
 const KeyRef bulkLoadModeKey = "\xff/bulkLoadMode"_sr;
-const KeyRangeRef bulkLoadKeys = KeyRangeRef("\xff/bulkLoad/"_sr, "\xff/bulkLoad0"_sr);
-const KeyRef bulkLoadPrefix = bulkLoadKeys.begin;
+const KeyRangeRef bulkLoadTaskKeys = KeyRangeRef("\xff/bulkLoadTask/"_sr, "\xff/bulkLoadTask0"_sr);
+const KeyRef bulkLoadTaskPrefix = bulkLoadTaskKeys.begin;
 
-const Value bulkLoadStateValue(const BulkLoadState& bulkLoadState) {
-	return ObjectWriter::toValue(bulkLoadState, IncludeVersion());
+const Value bulkLoadTaskStateValue(const BulkLoadTaskState& bulkLoadTaskState) {
+	return ObjectWriter::toValue(bulkLoadTaskState, IncludeVersion());
 }
 
-BulkLoadState decodeBulkLoadState(const ValueRef& value) {
-	BulkLoadState bulkLoadState;
+BulkLoadTaskState decodeBulkLoadTaskState(const ValueRef& value) {
+	BulkLoadTaskState bulkLoadTaskState;
 	ObjectReader reader(value.begin(), IncludeVersion());
-	reader.deserialize(bulkLoadState);
-	return bulkLoadState;
+	reader.deserialize(bulkLoadTaskState);
+	return bulkLoadTaskState;
+}
+
+const Value ssBulkLoadMetadataValue(const SSBulkLoadMetadata& ssBulkLoadMetadata) {
+	return ObjectWriter::toValue(ssBulkLoadMetadata, IncludeVersion());
+}
+
+SSBulkLoadMetadata decodeSSBulkLoadMetadata(const ValueRef& value) {
+	SSBulkLoadMetadata ssBulkLoadMetadata;
+	ObjectReader reader(value.begin(), IncludeVersion());
+	reader.deserialize(ssBulkLoadMetadata);
+	return ssBulkLoadMetadata;
+}
+
+const KeyRangeRef bulkLoadJobKeys = KeyRangeRef("\xff/bulkLoadJob/"_sr, "\xff/bulkLoadJob0"_sr);
+const KeyRef bulkLoadJobPrefix = bulkLoadJobKeys.begin;
+
+const Value bulkLoadJobValue(const BulkLoadJobState& bulkLoadJobState) {
+	return ObjectWriter::toValue(bulkLoadJobState, IncludeVersion());
+}
+
+BulkLoadJobState decodeBulkLoadJobState(const ValueRef& value) {
+	BulkLoadJobState bulkLoadJobState;
+	ObjectReader reader(value.begin(), IncludeVersion());
+	reader.deserialize(bulkLoadJobState);
+	return bulkLoadJobState;
+}
+
+const KeyRangeRef bulkLoadJobHistoryKeys = KeyRangeRef("\xff/bulkLoadJobHistory/"_sr, "\xff/bulkLoadJobHistory0"_sr);
+const KeyRef bulkLoadJobHistoryPrefix = bulkLoadJobHistoryKeys.begin;
+
+// BulkLoad job with the same jobId can run for multiple times, we only keep the latest one
+// in the history.
+const Key bulkLoadJobHistoryKeyFor(const UID& jobId) {
+	BinaryWriter wr(Unversioned());
+	wr.serializeBytes(bulkLoadJobHistoryPrefix);
+	wr.serializeBytes(StringRef(jobId.toString()));
+	return wr.toValue();
+}
+
+// Bulk dumping keys
+const KeyRef bulkDumpModeKey = "\xff/bulkDumpMode"_sr;
+const KeyRangeRef bulkDumpKeys = KeyRangeRef("\xff/bulkDump/"_sr, "\xff/bulkDump0"_sr);
+const KeyRef bulkDumpPrefix = bulkDumpKeys.begin;
+
+const Value bulkDumpStateValue(const BulkDumpState& bulkDumpState) {
+	return ObjectWriter::toValue(bulkDumpState, IncludeVersion());
+}
+
+BulkDumpState decodeBulkDumpState(const ValueRef& value) {
+	BulkDumpState bulkDumpState;
+	ObjectReader reader(value.begin(), IncludeVersion());
+	reader.deserialize(bulkDumpState);
+	return bulkDumpState;
+}
+
+// Range Lock
+const std::string rangeLockNameForBulkLoad = "BulkLoad";
+
+const KeyRangeRef rangeLockKeys = KeyRangeRef("\xff/rangeLock/"_sr, "\xff/rangeLock0"_sr);
+const KeyRef rangeLockPrefix = rangeLockKeys.begin;
+
+const Value rangeLockStateSetValue(const RangeLockStateSet& rangeLockStateSet) {
+	return ObjectWriter::toValue(rangeLockStateSet, IncludeVersion());
+}
+
+RangeLockStateSet decodeRangeLockStateSet(const ValueRef& value) {
+	RangeLockStateSet rangeLockStateSet;
+	ObjectReader reader(value.begin(), IncludeVersion());
+	reader.deserialize(rangeLockStateSet);
+	return rangeLockStateSet;
+}
+
+const KeyRangeRef rangeLockOwnerKeys = KeyRangeRef("\xff/rangeLockOwner/"_sr, "\xff/rangeLockOwner0"_sr);
+const KeyRef rangeLockOwnerPrefix = rangeLockOwnerKeys.begin;
+
+const Key rangeLockOwnerKeyFor(const RangeLockOwnerName& ownerUniqueID) {
+	BinaryWriter wr(Unversioned());
+	wr.serializeBytes(rangeLockOwnerPrefix);
+	wr.serializeBytes(StringRef(ownerUniqueID));
+	return wr.toValue();
+}
+
+const Value rangeLockOwnerValue(const RangeLockOwner& rangeLockOwner) {
+	return ObjectWriter::toValue(rangeLockOwner, IncludeVersion());
+}
+
+RangeLockOwner decodeRangeLockOwner(const ValueRef& value) {
+	RangeLockOwner rangeLockOwner;
+	ObjectReader reader(value.begin(), IncludeVersion());
+	reader.deserialize(rangeLockOwner);
+	return rangeLockOwner;
 }
 
 // Keys to view and control tag throttling

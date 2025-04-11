@@ -83,12 +83,20 @@ template <class T>
 class ThreadReturnPromise : NonCopyable {
 public:
 	ThreadReturnPromise() {}
+	ThreadReturnPromise(const ThreadReturnPromise& p) = delete;
+	ThreadReturnPromise(ThreadReturnPromise&& other) : promise(std::move(other.promise)) {}
+
 	~ThreadReturnPromise() {
 		if (promise.isValid())
 			sendError(broken_promise());
 	}
 
-	Future<T> getFuture() const { // Call only on the originating thread!
+	// NOTE:
+	// - Call only on the originating thread.
+	// - Must be called before `send` or `sendError`. Will result into crash otherwise, since
+	//   tagAndForward() will take ownership of underlying promise.
+	Future<T> getFuture() const {
+		ASSERT(isValid());
 		return promise.getFuture();
 	}
 
@@ -110,6 +118,9 @@ public:
 	bool isValid() const { return promise.isValid(); }
 	bool canBeSet() const { return promise.canBeSet(); }
 
+	int getFutureReferenceCount() const { return promise.getFutureReferenceCount(); }
+	int getPromiseReferenceCount() const { return promise.getPromiseReferenceCount(); }
+
 private:
 	Promise<T> promise;
 };
@@ -118,6 +129,9 @@ template <class T>
 class ThreadReturnPromiseStream : NonCopyable {
 public:
 	ThreadReturnPromiseStream() {}
+	ThreadReturnPromiseStream(const ThreadReturnPromiseStream& p) = delete;
+	ThreadReturnPromiseStream(ThreadReturnPromiseStream&& other) : promiseStream(std::move(other.promiseStream)) {}
+
 	~ThreadReturnPromiseStream() {}
 
 	FutureStream<T> getFuture() { // Call only on the originating thread!
@@ -140,6 +154,9 @@ public:
 		                                                    : TaskPriority::DefaultOnMainThread);
 	}
 
+	int getFutureReferenceCount() const { return promiseStream.getFutureReferenceCount(); }
+	int getPromiseReferenceCount() const { return promiseStream.getPromiseReferenceCount(); }
+
 private:
 	PromiseStream<T> promiseStream;
 };
@@ -154,6 +171,7 @@ public:
 	void addThread(IThreadPoolReceiver* userData, const char* name = nullptr) override {
 		ASSERT(!thread);
 		thread = userData;
+		userData->init();
 	}
 	void post(PThreadAction action) override {
 		try {

@@ -334,7 +334,6 @@ struct TLogData : NonCopyable {
 	int64_t overheadBytesInput;
 	int64_t overheadBytesDurable;
 	int activePeekStreams = 0;
-	Optional<Version> clusterRecoveryVersion;
 	WorkerCache<TLogInterface> tlogCache;
 	FlowLock peekMemoryLimiter;
 
@@ -555,7 +554,7 @@ struct LogData : NonCopyable, public ReferenceCounted<LogData> {
 	                                 bool poppedRecently,
 	                                 bool unpoppedRecovered) {
 		if (tag.locality != tagLocalityLogRouter && tag.locality != tagLocalityTxs && tag != txsTag && allTags.size() &&
-		    !allTags.count(tag) && popped <= recoveredAt) {
+		    !allTags.contains(tag) && popped <= recoveredAt) {
 			popped = recoveredAt + 1;
 		}
 		auto newTagData = makeReference<TagData>(tag, popped, 0, nothingPersistent, poppedRecently, unpoppedRecovered);
@@ -1187,7 +1186,7 @@ ACTOR Future<Void> updatePersistentData(TLogData* self, Reference<LogData> logDa
 		}
 		if (minVersion != std::numeric_limits<Version>::max()) {
 			self->persistentQueue->forgetBefore(
-			    newPersistentDataVersion,
+			    minVersion,
 			    logData); // SOMEDAY: this can cause a slow task (~0.5ms), presumably from erasing too many versions.
 			              // Should we limit the number of versions cleared at a time?
 		}
@@ -1345,7 +1344,7 @@ ACTOR Future<Void> tLogPop(TLogData* self, TLogPopRequest req, Reference<LogData
 // This actor is just a loop that calls updatePersistentData and popDiskQueue whenever
 // (a) there's data to be spilled or (b) we should update metadata after some commits have been fully popped.
 ACTOR Future<Void> updateStorage(TLogData* self) {
-	while (self->spillOrder.size() && !self->id_data.count(self->spillOrder.front())) {
+	while (self->spillOrder.size() && !self->id_data.contains(self->spillOrder.front())) {
 		self->spillOrder.pop_front();
 	}
 
@@ -1750,7 +1749,8 @@ Future<Void> tLogPeekMessages(PromiseType replyPromise,
                               Tag reqTag,
                               bool reqReturnIfBlocked = false,
                               bool reqOnlySpilled = false,
-                              Optional<std::pair<UID, int>> reqSequence = Optional<std::pair<UID, int>>()) {
+                              Optional<std::pair<UID, int>> reqSequence = Optional<std::pair<UID, int>>(),
+                              Optional<Version> reqEnd = Optional<Version>()) {
 	state BinaryWriter messages(Unversioned());
 	state BinaryWriter messages2(Unversioned());
 	state int sequence = -1;
@@ -1814,26 +1814,34 @@ Future<Void> tLogPeekMessages(PromiseType replyPromise,
 
 	state double blockStart = now();
 
-	// if tLog locked for recovery, return an empty message at the cluster recovery version
-	// if requested version is greater than any received.
-	state Optional<Version> clusterRecoveryVersion = Optional<Version>();
-	ASSERT(!clusterRecoveryVersion.present() || reqBegin <= clusterRecoveryVersion.get());
-	if (logData->stopped() && logData->version.get() < reqBegin && self->clusterRecoveryVersion.present()) {
-		clusterRecoveryVersion = self->clusterRecoveryVersion.get();
-		TraceEvent("TLogPeekMessagesClusterRecoveryVersion").detail("Version", clusterRecoveryVersion.get());
-	}
-
-	if (!clusterRecoveryVersion.present() && reqReturnIfBlocked && logData->version.get() < reqBegin) {
-		replyPromise.sendError(end_of_stream());
-		if (reqSequence.present()) {
-			auto& trackerData = logData->peekTracker[peekId];
-			auto& sequenceData = trackerData.sequence_version[sequence + 1];
-			trackerData.lastUpdate = now();
-			if (!sequenceData.isSet()) {
-				sequenceData.send(std::make_pair(reqBegin, reqOnlySpilled));
+	// We need to return data that the caller doesn't already have.
+	// If the requested version is beyond what the tLog currently has, we'll wait for new data.
+	// However, there's a catch:
+	//   - If the tLog is locked (e.g., during recovery), waiting for new data could cause a deadlock.
+	//     This happens because a locked tLog won't receive any new commits.
+	//   - This scenario can occur with version vector, where a tLog can be peeked at a version
+	//     higher than its current logData->version during recovery.
+	// To prevent deadlocks:
+	//   - If a valid 'end' version was provided in the request (the Recovery Version), return with that version.
+	//   - Otherwise, wait for new data as long as the tLog isn't locked.
+	state Optional<Version> replyWithRecoveryVersion = Optional<Version>();
+	ASSERT(!SERVER_KNOBS->ENABLE_VERSION_VECTOR_REPLY_RECOVERY || SERVER_KNOBS->ENABLE_VERSION_VECTOR);
+	if (logData->version.get() < reqBegin) {
+		if (SERVER_KNOBS->ENABLE_VERSION_VECTOR_REPLY_RECOVERY && SERVER_KNOBS->ENABLE_VERSION_VECTOR &&
+		    logData->stopped() && reqEnd.present() && reqEnd.get() != std::numeric_limits<Version>::max()) {
+			replyWithRecoveryVersion = reqEnd;
+		} else if (reqReturnIfBlocked) {
+			replyPromise.sendError(end_of_stream());
+			if (reqSequence.present()) {
+				auto& trackerData = logData->peekTracker[peekId];
+				auto& sequenceData = trackerData.sequence_version[sequence + 1];
+				trackerData.lastUpdate = now();
+				if (!sequenceData.isSet()) {
+					sequenceData.send(std::make_pair(reqBegin, reqOnlySpilled));
+				}
 			}
+			return Void();
 		}
-		return Void();
 	}
 
 	DebugLogTraceEvent("TLogPeekMessages0", self->dbgid)
@@ -1841,9 +1849,10 @@ Future<Void> tLogPeekMessages(PromiseType replyPromise,
 	    .detail("Tag", reqTag.toString())
 	    .detail("ReqBegin", reqBegin)
 	    .detail("Version", logData->version.get())
-	    .detail("RecoveredAt", logData->recoveredAt);
+	    .detail("RecoveredAt", logData->recoveredAt)
+	    .detail("ClusterRecovery", replyWithRecoveryVersion.present() ? replyWithRecoveryVersion.get() : -1);
 	// Wait until we have something to return that the caller doesn't already have
-	if (!clusterRecoveryVersion.present() && logData->version.get() < reqBegin) {
+	if (!replyWithRecoveryVersion.present() && logData->version.get() < reqBegin) {
 		wait(logData->version.whenAtLeast(reqBegin));
 		wait(delay(SERVER_KNOBS->TLOG_PEEK_DELAY, g_network->getCurrentTask()));
 	}
@@ -2120,7 +2129,10 @@ Future<Void> tLogPeekMessages(PromiseType replyPromise,
 	auto messagesValue = messages.toValue();
 	reply.arena.dependsOn(messagesValue.arena());
 	reply.messages = messagesValue;
-	reply.end = clusterRecoveryVersion.present() ? clusterRecoveryVersion.get() : endVersion;
+	reply.end = endVersion;
+	if (replyWithRecoveryVersion.present()) {
+		reply.end = replyWithRecoveryVersion.get();
+	}
 	reply.onlySpilled = onlySpilled;
 
 	DebugLogTraceEvent("TLogPeekMessages4", self->dbgid)
@@ -2194,7 +2206,15 @@ ACTOR Future<Void> tLogPeekStream(TLogData* self, TLogPeekStreamRequest req, Ref
 		state Future<TLogPeekReply> future(promise.getFuture());
 		try {
 			wait(req.reply.onReady() && store(reply.rep, future) &&
-			     tLogPeekMessages(promise, self, logData, begin, req.tag, req.returnIfBlocked, onlySpilled));
+			     tLogPeekMessages(promise,
+			                      self,
+			                      logData,
+			                      begin,
+			                      req.tag,
+			                      req.returnIfBlocked,
+			                      onlySpilled,
+			                      Optional<std::pair<UID, int>>(),
+			                      req.end));
 
 			reply.rep.begin = begin;
 			req.reply.send(reply);
@@ -2532,7 +2552,8 @@ ACTOR Future<Void> rejoinClusterController(TLogData* self,
 	loop {
 		auto const& inf = self->dbInfo->get();
 		bool isDisplaced =
-		    !std::count(inf.priorCommittedLogServers.begin(), inf.priorCommittedLogServers.end(), tli.id());
+		    std::find(inf.priorCommittedLogServers.begin(), inf.priorCommittedLogServers.end(), tli.id()) ==
+		    inf.priorCommittedLogServers.end();
 		if (isPrimary) {
 			isDisplaced =
 			    isDisplaced && inf.recoveryCount >= recoveryCount && inf.recoveryState != RecoveryState::UNINITIALIZED;
@@ -2791,7 +2812,7 @@ ACTOR Future<Void> serveTLogInterface(TLogData* self,
 			bool found = false;
 			if (self->dbInfo->get().recoveryState >= RecoveryState::ACCEPTING_COMMITS) {
 				for (auto& logs : self->dbInfo->get().logSystemConfig.tLogs) {
-					if (std::count(logs.tLogs.begin(), logs.tLogs.end(), logData->logId)) {
+					if (std::find(logs.tLogs.begin(), logs.tLogs.end(), logData->logId) != logs.tLogs.end()) {
 						found = true;
 						break;
 					}
@@ -2820,8 +2841,15 @@ ACTOR Future<Void> serveTLogInterface(TLogData* self,
 			logData->addActor.send(tLogPeekStream(self, req, logData));
 		}
 		when(TLogPeekRequest req = waitNext(tli.peekMessages.getFuture())) {
-			logData->addActor.send(tLogPeekMessages(
-			    req.reply, self, logData, req.begin, req.tag, req.returnIfBlocked, req.onlySpilled, req.sequence));
+			logData->addActor.send(tLogPeekMessages(req.reply,
+			                                        self,
+			                                        logData,
+			                                        req.begin,
+			                                        req.tag,
+			                                        req.returnIfBlocked,
+			                                        req.onlySpilled,
+			                                        req.sequence,
+			                                        req.end));
 		}
 		when(TLogPopRequest req = waitNext(tli.popMessages.getFuture())) {
 			logData->addActor.send(tLogPop(self, req, logData));
@@ -2872,11 +2900,6 @@ ACTOR Future<Void> serveTLogInterface(TLogData* self,
 		when(TLogEnablePopRequest enablePopReq = waitNext(tli.enablePopRequest.getFuture())) {
 			logData->addActor.send(tLogEnablePopReq(enablePopReq, self, logData));
 		}
-		when(setClusterRecoveryVersionRequest req = waitNext(tli.setClusterRecoveryVersion.getFuture())) {
-			ASSERT(logData->stopped());
-			self->clusterRecoveryVersion = req.recoveryVersion;
-			req.reply.send(Void());
-		}
 	}
 }
 
@@ -2895,7 +2918,7 @@ void removeLog(TLogData* self, Reference<LogData> logData) {
 	                                                   // actors threw an error immediately
 	self->id_data.erase(logData->logId);
 
-	while (self->popOrder.size() && !self->id_data.count(self->popOrder.front())) {
+	while (self->popOrder.size() && !self->id_data.contains(self->popOrder.front())) {
 		self->popOrder.pop_front();
 	}
 

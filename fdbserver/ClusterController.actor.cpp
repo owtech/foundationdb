@@ -34,6 +34,7 @@
 #include "fdbclient/DatabaseContext.h"
 #include "fdbrpc/FailureMonitor.h"
 #include "fdbclient/EncryptKeyProxyInterface.h"
+#include "fdbrpc/Locality.h"
 #include "fdbserver/BlobGranuleServerCommon.actor.h"
 #include "fdbserver/BlobMigratorInterface.h"
 #include "fdbserver/Knobs.h"
@@ -94,12 +95,19 @@ ACTOR Future<Optional<Value>> getPreviousCoordinators(ClusterControllerData* sel
 	}
 }
 
+bool ClusterControllerData::processesInSameDC(const NetworkAddress& addr1, const NetworkAddress& addr2) const {
+	return this->addr_locality.contains(addr1) && this->addr_locality.contains(addr2) &&
+	       this->addr_locality.at(addr1).dcId().present() && this->addr_locality.at(addr2).dcId().present() &&
+	       this->addr_locality.at(addr1).dcId().get() == this->addr_locality.at(addr2).dcId().get();
+}
+
 bool ClusterControllerData::transactionSystemContainsDegradedServers() {
 	const ServerDBInfo& dbi = db.serverInfo->get();
 	const Reference<ClusterRecoveryData> recoveryData = db.recoveryData;
 	auto transactionWorkerInList = [&dbi, &recoveryData](const std::unordered_set<NetworkAddress>& serverList,
 	                                                     bool skipSatellite,
-	                                                     bool skipRemote) -> bool {
+	                                                     bool skipRemoteTLog,
+	                                                     bool skipRemoteLogRouter) -> bool {
 		for (const auto& server : serverList) {
 			if (dbi.master.addresses().contains(server)) {
 				return true;
@@ -115,15 +123,19 @@ bool ClusterControllerData::transactionSystemContainsDegradedServers() {
 					continue;
 				}
 
-				if (skipRemote && !logSet.isLocal) {
-					continue;
-				}
-
 				if (!logSet.isLocal) {
-					// Only check log routers in the remote region.
-					for (const auto& logRouter : logSet.logRouters) {
-						if (logRouter.present() && logRouter.interf().addresses().contains(server)) {
-							return true;
+					if (!skipRemoteTLog) {
+						for (const auto& tlog : logSet.tLogs) {
+							if (tlog.present() && tlog.interf().addresses().contains(server)) {
+								return true;
+							}
+						}
+					}
+					if (!skipRemoteLogRouter) {
+						for (const auto& logRouter : logSet.logRouters) {
+							if (logRouter.present() && logRouter.interf().addresses().contains(server)) {
+								return true;
+							}
 						}
 					}
 				} else {
@@ -176,13 +188,23 @@ bool ClusterControllerData::transactionSystemContainsDegradedServers() {
 		return false;
 	};
 
-	// Check if transaction system contains degraded/disconnected servers. For satellite and remote regions, we only
+	// Check if transaction system contains degraded/disconnected servers. For satellite, we only
 	// check for disconnection since the latency between prmary and satellite is across WAN and may not be very
 	// stable.
-	return transactionWorkerInList(degradationInfo.degradedServers, /*skipSatellite=*/true, /*skipRemote=*/true) ||
+	// TODO: Consider adding satellite latency degradation check and rely on
+	//       SERVER_KNOBS->CC_ONLY_CONSIDER_INTRA_DC_LATENCY for accurate health signal
+	return transactionWorkerInList(degradationInfo.degradedServers,
+	                               /*skipSatellite=*/true,
+	                               /*skipRemoteTLog=*/
+	                               !(SERVER_KNOBS->CC_ONLY_CONSIDER_INTRA_DC_LATENCY &&
+	                                 SERVER_KNOBS->CC_ENABLE_REMOTE_TLOG_DEGRADATION_MONITORING),
+	                               /*skipRemoteLogRouter*/
+	                               !(SERVER_KNOBS->CC_ONLY_CONSIDER_INTRA_DC_LATENCY &&
+	                                 SERVER_KNOBS->CC_ENABLE_REMOTE_LOG_ROUTER_DEGRADATION_MONITORING)) ||
 	       transactionWorkerInList(degradationInfo.disconnectedServers,
 	                               /*skipSatellite=*/false,
-	                               /*skipRemote=*/!SERVER_KNOBS->CC_ENABLE_REMOTE_LOG_ROUTER_MONITORING);
+	                               /*skipRemoteTLog=*/!SERVER_KNOBS->CC_ENABLE_REMOTE_TLOG_DISCONNECT_MONITORING,
+	                               /*skipRemoteLogRouter*/ !SERVER_KNOBS->CC_ENABLE_REMOTE_LOG_ROUTER_MONITORING);
 }
 
 bool ClusterControllerData::remoteTransactionSystemContainsDegradedServers() {
@@ -275,6 +297,7 @@ ACTOR Future<Void> clusterWatchDatabase(ClusterControllerData* cluster,
 
 			collection = actorCollection(db->recoveryData->addActor.getFuture());
 			recoveryCore = clusterRecoveryCore(db->recoveryData);
+			cluster->recentHealthTriggeredRecoveryTime.push(now());
 
 			// Master failure detection is pretty sensitive, but if we are in the middle of a very long recovery we
 			// really don't want to have to start over
@@ -558,7 +581,7 @@ bool isHealthySingleton(ClusterControllerData* self,
                         const Optional<UID> recruitingID) {
 	// A singleton is stable if it exists in cluster, has not been killed off of proc and is not being recruited
 	bool isStableSingleton = singleton.isPresent() &&
-	                         self->id_worker.count(singleton.getInterface().locality.processId()) &&
+	                         self->id_worker.contains(singleton.getInterface().locality.processId()) &&
 	                         (!recruitingID.present() || (recruitingID.get() == singleton.getInterface().id()));
 
 	if (!isStableSingleton) {
@@ -578,13 +601,25 @@ bool isHealthySingleton(ClusterControllerData* self,
 	    self->isUsedNotMaster(currWorker.details.interf.locality.processId()) || bestFitness < currFitness ||
 	    (currFitness == bestFitness && currWorker.details.interf.locality.processId() == self->masterProcessId &&
 	     newWorker.interf.locality.processId() != self->masterProcessId);
+	if (g_network->isSimulated() && singleton.getRole() == Role::DATA_DISTRIBUTOR &&
+	    SERVER_KNOBS->CC_ENFORCE_USE_UNFIT_DD_IN_SIM) {
+		// It is possible that DD location is not optimal in the simulation.
+		// This can cause the simulation stuck if it always halts DD.
+		// TODO(BulkLoad): this is a work around. We should figure out why DD can be repeatedly
+		// terminated by CC throughout the simulation.
+		shouldRerecruit = false;
+	}
 	if (shouldRerecruit) {
 		std::string roleAbbr = singleton.getRole().abbreviation;
 		TraceEvent(("CCHalt" + roleAbbr).c_str(), self->id)
 		    .detail(roleAbbr + "ID", singleton.getInterface().id())
 		    .detail("Excluded", currWorker.priorityInfo.isExcluded)
 		    .detail("Fitness", currFitness)
-		    .detail("BestFitness", bestFitness);
+		    .detail("BestFitness", bestFitness)
+		    .detail("MasterProcessId", self->masterProcessId)
+		    .detail("CurrentWorkerProcessId", currWorker.details.interf.locality.processId())
+		    .detail("NewWorkerProcessId", newWorker.interf.locality.processId())
+		    .detail("IsUsedNotMaster", self->isUsedNotMaster(currWorker.details.interf.locality.processId()));
 		singleton.recruit(*self); // SIDE EFFECT: initiating recruitment
 		return false; // not healthy since needed to be rerecruited
 	} else {
@@ -914,6 +949,14 @@ ACTOR Future<Void> workerAvailabilityWatch(WorkerInterface worker,
 				    .detail("Address", worker.address());
 				cluster->removedDBInfoEndpoints.insert(worker.updateServerDBInfo.getEndpoint());
 				cluster->id_worker.erase(worker.locality.processId());
+				// Currently, only CC_ONLY_CONSIDER_INTRA_DC_LATENCY feature relies on addr_locality mapping. In the
+				// future, if needed, we can populate the mapping unconditionally.
+				if (SERVER_KNOBS->CC_ONLY_CONSIDER_INTRA_DC_LATENCY) {
+					cluster->addr_locality.erase(worker.address());
+					if (worker.secondaryAddress().present()) {
+						cluster->addr_locality.erase(worker.secondaryAddress().get());
+					}
+				}
 				cluster->updateWorkerList.set(worker.locality.processId(), Optional<ProcessData>());
 				return Void();
 			}
@@ -1149,7 +1192,7 @@ void haltRegisteringOrCurrentSingleton(ClusterControllerData* self,
 		// if not currently recruiting, then halt previous one in favour of requesting one
 		TraceEvent(("CCRegister" + roleName).c_str(), self->id).detail(roleAbbr + "ID", registeringID);
 		if (currSingleton.isPresent() && currSingleton.getInterface().id() != registeringID &&
-		    self->id_worker.count(currSingleton.getInterface().locality.processId())) {
+		    self->id_worker.contains(currSingleton.getInterface().locality.processId())) {
 			TraceEvent(("CCHaltPrevious" + roleName).c_str(), self->id)
 			    .detail(roleAbbr + "ID", currSingleton.getInterface().id())
 			    .detail("DcID", printable(self->clusterControllerDcId))
@@ -1275,6 +1318,23 @@ ACTOR Future<Void> registerWorker(RegisterWorkerRequest req,
 		                                                     req.degraded,
 		                                                     req.recoveredDiskFiles,
 		                                                     req.issues);
+		// Currently, only CC_ONLY_CONSIDER_INTRA_DC_LATENCY feature relies on addr_locality mapping. In the future, if
+		// needed, we can populate the mapping unconditionally.
+		if (SERVER_KNOBS->CC_ONLY_CONSIDER_INTRA_DC_LATENCY) {
+			const bool addrDcChanged = self->addr_locality.contains(w.address()) &&
+			                           self->addr_locality[w.address()].dcId() != w.locality.dcId();
+			if (addrDcChanged) {
+				TraceEvent(SevWarn, "AddrDcChanged")
+				    .detail("Addr", w.address())
+				    .detail("ExistingLocality", self->addr_locality[w.address()].toString())
+				    .detail("NewLocality", w.locality.toString());
+			}
+			ASSERT_WE_THINK(!addrDcChanged);
+			self->addr_locality[w.address()] = w.locality;
+			if (w.secondaryAddress().present()) {
+				self->addr_locality[w.secondaryAddress().get()] = w.locality;
+			}
+		}
 		if (!self->masterProcessId.present() &&
 		    w.locality.processId() == self->db.serverInfo->get().master.locality.processId()) {
 			self->masterProcessId = w.locality.processId();
@@ -1527,7 +1587,8 @@ ACTOR Future<Void> statusServer(FutureStream<StatusRequest> requests,
 			                                                                  self->dcStorageServerVersionDifference,
 			                                                                  configBroadcaster,
 			                                                                  self->db.metaclusterRegistration,
-			                                                                  self->db.metaclusterMetrics)));
+			                                                                  self->db.metaclusterMetrics,
+			                                                                  self->excludedDegradedServers)));
 
 			if (result.isError() && result.getError().code() == error_code_actor_cancelled)
 				throw result.getError();
@@ -1713,7 +1774,7 @@ ACTOR Future<Void> monitorStorageMetadata(ClusterControllerData* self) {
 				idMetadata[id] = decodeServerMetadataValue(sm.value);
 			}
 			for (auto& s : servers) {
-				if (idMetadata.count(s.id())) {
+				if (idMetadata.contains(s.id())) {
 					s.metadata = idMetadata[s.id()];
 				} else {
 					TraceEvent(SevWarn, "StorageServerMetadataMissing", self->id).detail("ServerID", s.id());
@@ -2236,7 +2297,7 @@ ACTOR Future<Void> startDataDistributor(ClusterControllerData* self, double wait
 				    .detail("Addr", worker.interf.address())
 				    .detail("DDID", ddInterf.get().id());
 				if (distributor.present() && distributor.get().id() != ddInterf.get().id() &&
-				    self->id_worker.count(distributor.get().locality.processId())) {
+				    self->id_worker.contains(distributor.get().locality.processId())) {
 
 					TraceEvent("CCHaltDataDistributorAfterRecruit", self->id)
 					    .detail("DDID", distributor.get().id())
@@ -2336,7 +2397,7 @@ ACTOR Future<Void> startRatekeeper(ClusterControllerData* self, double waitTime)
 				    .detail("Addr", worker.interf.address())
 				    .detail("RKID", interf.get().id());
 				if (ratekeeper.present() && ratekeeper.get().id() != interf.get().id() &&
-				    self->id_worker.count(ratekeeper.get().locality.processId())) {
+				    self->id_worker.contains(ratekeeper.get().locality.processId())) {
 					TraceEvent("CCHaltRatekeeperAfterRecruit", self->id)
 					    .detail("RKID", ratekeeper.get().id())
 					    .detail("DcID", printable(self->clusterControllerDcId));
@@ -2426,7 +2487,7 @@ ACTOR Future<Void> startConsistencyScan(ClusterControllerData* self) {
 				    .detail("Addr", worker.interf.address())
 				    .detail("CKID", interf.get().id());
 				if (consistencyScan.present() && consistencyScan.get().id() != interf.get().id() &&
-				    self->id_worker.count(consistencyScan.get().locality.processId())) {
+				    self->id_worker.contains(consistencyScan.get().locality.processId())) {
 					TraceEvent("CCHaltConsistencyScanAfterRecruit", self->id)
 					    .detail("CKID", consistencyScan.get().id())
 					    .detail("DcID", printable(self->clusterControllerDcId));
@@ -2528,7 +2589,7 @@ ACTOR Future<Void> startEncryptKeyProxy(ClusterControllerData* self, EncryptionA
 				    .detail("Id", interf.get().id())
 				    .detail("ProcessId", interf.get().locality.processId());
 				if (encryptKeyProxy.present() && encryptKeyProxy.get().id() != interf.get().id() &&
-				    self->id_worker.count(encryptKeyProxy.get().locality.processId())) {
+				    self->id_worker.contains(encryptKeyProxy.get().locality.processId())) {
 					TraceEvent("CCEKP_HaltAfterRecruit", self->id)
 					    .detail("Id", encryptKeyProxy.get().id())
 					    .detail("DcId", printable(self->clusterControllerDcId));
@@ -2700,7 +2761,7 @@ ACTOR Future<Void> startBlobMigrator(ClusterControllerData* self, double waitTim
 				    .detail("Addr", worker.interf.address())
 				    .detail("MGID", interf.get().id());
 				if (blobMigrator.present() && blobMigrator.get().id() != interf.get().id() &&
-				    self->id_worker.count(blobMigrator.get().locality.processId())) {
+				    self->id_worker.contains(blobMigrator.get().locality.processId())) {
 					TraceEvent("CCHaltBlobMigratorAfterRecruit", self->id)
 					    .detail("MGID", blobMigrator.get().id())
 					    .detail("DcID", printable(self->clusterControllerDcId));
@@ -2805,7 +2866,7 @@ ACTOR Future<Void> startBlobManager(ClusterControllerData* self, double waitTime
 				    .detail("Addr", worker.interf.address())
 				    .detail("BMID", interf.get().id());
 				if (blobManager.present() && blobManager.get().id() != interf.get().id() &&
-				    self->id_worker.count(blobManager.get().locality.processId())) {
+				    self->id_worker.contains(blobManager.get().locality.processId())) {
 					TraceEvent("CCHaltBlobManagerAfterRecruit", self->id)
 					    .detail("BMID", blobManager.get().id())
 					    .detail("DcID", printable(self->clusterControllerDcId));
@@ -2953,6 +3014,18 @@ ACTOR Future<Void> dbInfoUpdater(ClusterControllerData* self) {
 	}
 }
 
+// If we are excluding processes and triggering recovery because of gray failure, also
+// invalidate the past complaints from such processes because that signal is no longer
+// reliable.
+static void invalidateExcludedProcessComplaints(ClusterControllerData* self) {
+	if (!SERVER_KNOBS->CC_INVALIDATE_EXCLUDED_PROCESSES) {
+		return;
+	}
+	for (const auto& [addr, _] : self->excludedDegradedServers) {
+		self->workerHealth.erase(addr);
+	}
+}
+
 // The actor that periodically monitors the health of tracked workers.
 ACTOR Future<Void> workerHealthMonitor(ClusterControllerData* self) {
 	loop {
@@ -2966,8 +3039,9 @@ ACTOR Future<Void> workerHealthMonitor(ClusterControllerData* self) {
 			// recovered.
 			bool hasRecoveredServer = false;
 			for (auto it = self->excludedDegradedServers.begin(); it != self->excludedDegradedServers.end();) {
-				if (self->degradationInfo.degradedServers.find(*it) == self->degradationInfo.degradedServers.end() &&
-				    self->degradationInfo.disconnectedServers.find(*it) ==
+				if (self->degradationInfo.degradedServers.find(it->first) ==
+				        self->degradationInfo.degradedServers.end() &&
+				    self->degradationInfo.disconnectedServers.find(it->first) ==
 				        self->degradationInfo.disconnectedServers.end()) {
 					self->excludedDegradedServers.erase(it++);
 					hasRecoveredServer = true;
@@ -2993,18 +3067,27 @@ ACTOR Future<Void> workerHealthMonitor(ClusterControllerData* self) {
 
 				// Check if the cluster controller should trigger a recovery to exclude any degraded servers from
 				// the transaction system.
-				if (SERVER_KNOBS->CC_PAUSE_HEALTH_MONITOR) {
-					TraceEvent(SevWarnAlways, "HealthMonitorPaused");
-				} else if (self->shouldTriggerRecoveryDueToDegradedServers()) {
+				if (self->shouldTriggerRecoveryDueToDegradedServers()) {
 					if (SERVER_KNOBS->CC_HEALTH_TRIGGER_RECOVERY) {
 						if (self->recentRecoveryCountDueToHealth() < SERVER_KNOBS->CC_MAX_HEALTH_RECOVERY_COUNT) {
-							self->recentHealthTriggeredRecoveryTime.push(now());
-							self->excludedDegradedServers = self->degradationInfo.degradedServers;
-							self->excludedDegradedServers.insert(self->degradationInfo.disconnectedServers.begin(),
-							                                     self->degradationInfo.disconnectedServers.end());
+							self->excludedDegradedServers.clear();
+							for (const auto& degradedServer : self->degradationInfo.degradedServers) {
+								self->excludedDegradedServers[degradedServer] = now();
+							}
+							for (const auto& disconnectedServer : self->degradationInfo.disconnectedServers) {
+								self->excludedDegradedServers[disconnectedServer] = now();
+							}
+							invalidateExcludedProcessComplaints(self);
 							TraceEvent(SevWarnAlways, "DegradedServerDetectedAndTriggerRecovery")
-							    .detail("RecentRecoveryCountDueToHealth", self->recentRecoveryCountDueToHealth());
+							    .detail("RecentRecoveryCountDueToHealth", self->recentRecoveryCountDueToHealth())
+							    .detail("DegradedServers", degradedServerString)
+							    .detail("DisconnectedServers", disconnectedServerString)
+							    .detail("DegradedSatellite", self->degradationInfo.degradedSatellite);
 							self->db.forceMasterFailure.trigger();
+						} else {
+							TraceEvent(SevWarnAlways, "RecentRecoveryCountHigh")
+							    .suppressFor(1.0)
+							    .detail("RecentRecoveryCountDueToHealth", self->recentRecoveryCountDueToHealth());
 						}
 					} else {
 						self->excludedDegradedServers.clear();
@@ -3365,6 +3448,15 @@ ACTOR Future<Void> clusterController(Reference<IClusterConnectionRecord> connRec
 
 namespace {
 
+void addProcessesToSameDC(ClusterControllerData& self, const std::vector<NetworkAddress>&& processes) {
+	LocalityData locality;
+	locality.set(LocalityData::keyDcId, Standalone<StringRef>(std::string{ "1" }));
+	for (const auto& process : processes) {
+		const bool added = self.addr_locality.insert({ process, locality }).second;
+		ASSERT(added);
+	}
+}
+
 // Tests `ClusterControllerData::updateWorkerHealth()` can update `ClusterControllerData::workerHealth`
 // based on `UpdateWorkerHealth` request correctly.
 TEST_CASE("/fdbserver/clustercontroller/updateWorkerHealth") {
@@ -3537,6 +3629,10 @@ TEST_CASE("/fdbserver/clustercontroller/getDegradationInfo") {
 	NetworkAddress badPeer2(IPAddress(0x03030303), 1);
 	NetworkAddress badPeer3(IPAddress(0x04040404), 1);
 	NetworkAddress badPeer4(IPAddress(0x05050505), 1);
+
+	if (SERVER_KNOBS->CC_ONLY_CONSIDER_INTRA_DC_LATENCY) {
+		addProcessesToSameDC(data, { worker, badPeer1, badPeer2, badPeer3, badPeer4 });
+	}
 
 	// Test that a reported degraded link should stay for sometime before being considered as a degraded
 	// link by cluster controller.
@@ -3799,22 +3895,32 @@ TEST_CASE("/fdbserver/clustercontroller/shouldTriggerRecoveryDueToDegradedServer
 	data.degradationInfo.disconnectedServers.clear();
 
 	// No recovery when remote tlog is degraded.
-	data.degradationInfo.degradedServers.insert(remoteTlog);
-	ASSERT(!data.shouldTriggerRecoveryDueToDegradedServers());
-	data.degradationInfo.degradedServers.clear();
-	data.degradationInfo.disconnectedServers.insert(remoteTlog);
-	ASSERT(!data.shouldTriggerRecoveryDueToDegradedServers());
-	data.degradationInfo.disconnectedServers.clear();
+	if (!(SERVER_KNOBS->CC_ONLY_CONSIDER_INTRA_DC_LATENCY &&
+	      SERVER_KNOBS->CC_ENABLE_REMOTE_TLOG_DEGRADATION_MONITORING)) {
+		data.degradationInfo.degradedServers.insert(remoteTlog);
+		ASSERT(!data.shouldTriggerRecoveryDueToDegradedServers());
+		data.degradationInfo.degradedServers.clear();
+	}
+	if (!SERVER_KNOBS->CC_ENABLE_REMOTE_TLOG_DISCONNECT_MONITORING) {
+		data.degradationInfo.disconnectedServers.insert(remoteTlog);
+		ASSERT(!data.shouldTriggerRecoveryDueToDegradedServers());
+		data.degradationInfo.disconnectedServers.clear();
+	}
 
 	// No recovery when remote log router is degraded.
-	data.degradationInfo.degradedServers.insert(logRouter);
-	ASSERT(!data.shouldTriggerRecoveryDueToDegradedServers());
-	data.degradationInfo.degradedServers.clear();
+	if (!(SERVER_KNOBS->CC_ONLY_CONSIDER_INTRA_DC_LATENCY &&
+	      SERVER_KNOBS->CC_ENABLE_REMOTE_LOG_ROUTER_DEGRADATION_MONITORING)) {
+		data.degradationInfo.degradedServers.insert(logRouter);
+		ASSERT(!data.shouldTriggerRecoveryDueToDegradedServers());
+		data.degradationInfo.degradedServers.clear();
+	}
 
 	// Trigger recovery when remote log router is disconnected.
-	data.degradationInfo.disconnectedServers.insert(logRouter);
-	ASSERT(data.shouldTriggerRecoveryDueToDegradedServers());
-	data.degradationInfo.disconnectedServers.clear();
+	if (SERVER_KNOBS->CC_ENABLE_REMOTE_LOG_ROUTER_MONITORING) {
+		data.degradationInfo.disconnectedServers.insert(logRouter);
+		ASSERT(data.shouldTriggerRecoveryDueToDegradedServers());
+		data.degradationInfo.disconnectedServers.clear();
+	}
 
 	// No recovery when backup worker is degraded.
 	data.degradationInfo.degradedServers.insert(backup);
@@ -3974,6 +4080,89 @@ TEST_CASE("/fdbserver/clustercontroller/shouldTriggerFailoverDueToDegradedServer
 	data.degradationInfo.disconnectedServers.insert(remoteTlog);
 	ASSERT(!data.shouldTriggerFailoverDueToDegradedServers());
 	data.degradationInfo.disconnectedServers.clear();
+
+	return Void();
+}
+
+TEST_CASE("/fdbserver/clustercontroller/invalidateExcludedProcessComplaints") {
+	ClusterControllerData data(ClusterControllerFullInterface(),
+	                           LocalityData(),
+	                           ServerCoordinators(Reference<IClusterConnectionRecord>(
+	                               new ClusterConnectionMemoryRecord(ClusterConnectionString()))),
+	                           makeReference<AsyncVar<Optional<UID>>>());
+	NetworkAddress worker1(IPAddress::parse("1.1.1.0").get(), 1);
+	NetworkAddress worker2(IPAddress::parse("1.1.1.1").get(), 1);
+	NetworkAddress worker3(IPAddress::parse("1.1.1.2").get(), 1);
+	NetworkAddress badPeer(IPAddress::parse("1.1.1.3").get(), 1);
+
+	if (SERVER_KNOBS->CC_ONLY_CONSIDER_INTRA_DC_LATENCY) {
+		addProcessesToSameDC(data, { worker1, worker2, worker3, badPeer });
+	}
+
+	ASSERT(data.workerHealth.empty());
+
+	// {worker1, worker2, worker3} complain about badPeer
+	data.workerHealth[worker1].degradedPeers[badPeer] = { now() - SERVER_KNOBS->CC_MIN_DEGRADATION_INTERVAL - 1,
+		                                                  now() };
+	data.workerHealth[worker2].degradedPeers[badPeer] = { now() - SERVER_KNOBS->CC_MIN_DEGRADATION_INTERVAL - 1,
+		                                                  now() };
+	data.workerHealth[worker3].degradedPeers[badPeer] = { now() - SERVER_KNOBS->CC_MIN_DEGRADATION_INTERVAL - 1,
+		                                                  now() };
+
+	// badPeer complains about {worker1, worker2, worker3}
+	data.workerHealth[badPeer].degradedPeers[worker1] = { now() - SERVER_KNOBS->CC_MIN_DEGRADATION_INTERVAL - 1,
+		                                                  now() };
+	data.workerHealth[badPeer].degradedPeers[worker2] = { now() - SERVER_KNOBS->CC_MIN_DEGRADATION_INTERVAL - 1,
+		                                                  now() };
+	data.workerHealth[badPeer].degradedPeers[worker3] = { now() - SERVER_KNOBS->CC_MIN_DEGRADATION_INTERVAL - 1,
+		                                                  now() };
+
+	// At this point, we should have 4 complaints total
+	ASSERT(data.workerHealth.contains(worker1));
+	ASSERT(data.workerHealth.contains(worker2));
+	ASSERT(data.workerHealth.contains(worker3));
+	ASSERT(data.workerHealth.contains(badPeer));
+	ASSERT(data.workerHealth.size() == 4);
+
+	// Compute degraded processes
+	data.degradationInfo = data.getDegradationInfo();
+	for (const auto& addr : data.degradationInfo.degradedServers) {
+		data.excludedDegradedServers[addr] = now();
+	}
+
+	// Ensure badPeer is successfully added to excluded list
+	// At this point, recovery would also be triggered in a production setting
+	// We would also invalidate complaints by the excluded process at this point
+	ASSERT(data.degradationInfo.degradedServers.size() == 1);
+	ASSERT(data.degradationInfo.degradedServers.contains(badPeer));
+	invalidateExcludedProcessComplaints(&data);
+
+	// Now it's possible because of various factors (e.g. timing, expiration) that
+	// the complaints against badPeer disappear, but the initial complaints that badPeer
+	// made against others are still there.
+	data.workerHealth[worker1].degradedPeers.erase(badPeer);
+	data.workerHealth[worker2].degradedPeers.erase(badPeer);
+	data.workerHealth[worker3].degradedPeers.erase(badPeer);
+
+	// Compute degraded processes again
+	data.degradationInfo = data.getDegradationInfo();
+	for (const auto& addr : data.degradationInfo.degradedServers) {
+		data.excludedDegradedServers[addr] = now();
+	}
+
+	if (SERVER_KNOBS->CC_INVALIDATE_EXCLUDED_PROCESSES) {
+		// With CC_INVALIDATE_EXCLUDE_PROCESSES, we should got 0 degraded processes
+		// because the original complaints by the now excluded badPeer were invalidated
+		ASSERT(data.degradationInfo.degradedServers.empty());
+	} else {
+		// However, without CC_INVALIDATE_EXCLUDE_PROCESSES, we would get 3 degraded processes
+		// which are: worker1, worker2, worker3. This is because we did not invalidate workerHealth
+		// to remove badPeer complaints when badPeer was excluded and recovery was triggered.
+		ASSERT(data.degradationInfo.degradedServers.size() == 3);
+		ASSERT(data.degradationInfo.degradedServers.contains(worker1));
+		ASSERT(data.degradationInfo.degradedServers.contains(worker2));
+		ASSERT(data.degradationInfo.degradedServers.contains(worker3));
+	}
 
 	return Void();
 }

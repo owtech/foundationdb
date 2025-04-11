@@ -333,7 +333,7 @@ Future<Void> holdWhileVoid(X object, Future<T> what) {
 
 // Assign the future value of what to out
 template <class T, class X>
-Future<Void> store(X& out, Future<T> what) {
+[[nodiscard]] Future<Void> store(X& out, Future<T> what) {
 	return map(what, [&out](T const& v) {
 		out = v;
 		return Void();
@@ -1455,8 +1455,9 @@ void tagAndForward(Promise<T>* pOutputPromise, U value, Future<Void> signal) {
 
 ACTOR template <class T>
 void tagAndForward(PromiseStream<T>* pOutput, T value, Future<Void> signal) {
+	state PromiseStream<T> out(*pOutput);
 	wait(signal);
-	pOutput->send(std::move(value));
+	out.send(std::move(value));
 }
 
 ACTOR template <class T>
@@ -1468,8 +1469,9 @@ void tagAndForwardError(Promise<T>* pOutputPromise, Error value, Future<Void> si
 
 ACTOR template <class T>
 void tagAndForwardError(PromiseStream<T>* pOutput, Error value, Future<Void> signal) {
+	state PromiseStream<T> out(*pOutput);
 	wait(signal);
-	pOutput->sendError(value);
+	out.sendError(value);
 }
 
 ACTOR template <class T>

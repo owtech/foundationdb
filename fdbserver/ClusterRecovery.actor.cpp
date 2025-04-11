@@ -18,6 +18,8 @@
  * limitations under the License.
  */
 
+#include <utility>
+
 #include "fdbclient/FDBTypes.h"
 #include "fdbclient/MetaclusterRegistration.h"
 #include "fdbrpc/sim_validation.h"
@@ -270,7 +272,7 @@ ACTOR Future<Void> newTLogServers(Reference<ClusterRecoveryData> self,
                                   std::vector<Standalone<CommitTransactionRef>>* initialConfChanges) {
 	if (self->configuration.usableRegions > 1) {
 		state Optional<Key> remoteDcId = self->remoteDcIds.size() ? self->remoteDcIds[0] : Optional<Key>();
-		if (!self->dcId_locality.count(recr.dcId)) {
+		if (!self->dcId_locality.contains(recr.dcId)) {
 			int8_t loc = self->getNextLocality();
 			Standalone<CommitTransactionRef> tr;
 			tr.set(tr.arena(), tagLocalityListKeyFor(recr.dcId), tagLocalityListValue(loc));
@@ -279,7 +281,7 @@ ACTOR Future<Void> newTLogServers(Reference<ClusterRecoveryData> self,
 			TraceEvent(SevWarn, "UnknownPrimaryDCID", self->dbgid).detail("PrimaryId", recr.dcId).detail("Loc", loc);
 		}
 
-		if (!self->dcId_locality.count(remoteDcId)) {
+		if (!self->dcId_locality.contains(remoteDcId)) {
 			int8_t loc = self->getNextLocality();
 			Standalone<CommitTransactionRef> tr;
 			tr.set(tr.arena(), tagLocalityListKeyFor(remoteDcId), tagLocalityListValue(loc));
@@ -357,7 +359,7 @@ ACTOR Future<Void> newSeedServers(Reference<ClusterRecoveryData> self,
 		    .detail("CandidateWorker", recruits.storageServers[idx].locality.toString());
 
 		InitializeStorageRequest isr;
-		isr.seedTag = dcId_tags.count(recruits.storageServers[idx].locality.dcId())
+		isr.seedTag = dcId_tags.contains(recruits.storageServers[idx].locality.dcId())
 		                  ? dcId_tags[recruits.storageServers[idx].locality.dcId()]
 		                  : Tag(nextLocality, 0);
 		isr.storeType = self->configuration.storageServerStoreType;
@@ -376,7 +378,7 @@ ACTOR Future<Void> newSeedServers(Reference<ClusterRecoveryData> self,
 			CODE_PROBE(true, "initial storage recuitment loop failed to get new server");
 			wait(delay(SERVER_KNOBS->STORAGE_RECRUITMENT_DELAY));
 		} else {
-			if (!dcId_tags.count(recruits.storageServers[idx].locality.dcId())) {
+			if (!dcId_tags.contains(recruits.storageServers[idx].locality.dcId())) {
 				dcId_tags[recruits.storageServers[idx].locality.dcId()] = Tag(nextLocality, 0);
 				nextLocality++;
 			}
@@ -625,15 +627,22 @@ ACTOR Future<Void> configurationMonitor(Reference<ClusterRecoveryData> self, Dat
 	}
 }
 
-ACTOR static Future<Optional<Version>> getMinBackupVersion(Reference<ClusterRecoveryData> self, Database cx) {
+// Returns the minimum backup version and the maximum backup worker noop version.
+ACTOR static Future<std::pair<Optional<Version>, Optional<Version>>> getMinBackupVersion(
+    Reference<ClusterRecoveryData> self,
+    Database cx) {
 	loop {
 		state ReadYourWritesTransaction tr(cx);
 
 		try {
 			tr.setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
 			tr.setOption(FDBTransactionOptions::LOCK_AWARE);
-			Optional<Value> value = wait(tr.get(backupStartedKey));
-			Optional<Version> minVersion;
+			state Future<Optional<Value>> fValue = tr.get(backupStartedKey);
+			state Future<Optional<Value>> fNoopValue = tr.get(backupWorkerMaxNoopVersionKey);
+			wait(success(fValue) && success(fNoopValue));
+			Optional<Value> value = fValue.get();
+			Optional<Value> noopValue = fNoopValue.get();
+			Optional<Version> minVersion, noopVersion;
 			if (value.present()) {
 				auto uidVersions = decodeBackupStartedValue(value.get());
 				TraceEvent e("GotBackupStartKey", self->dbgid);
@@ -646,7 +655,10 @@ ACTOR static Future<Optional<Version>> getMinBackupVersion(Reference<ClusterReco
 			} else {
 				TraceEvent("EmptyBackupStartKey", self->dbgid).log();
 			}
-			return minVersion;
+			if (noopValue.present()) {
+				noopVersion = BinaryReader::fromStringRef<Version>(noopValue.get(), Unversioned());
+			}
+			return std::make_pair(minVersion, noopVersion);
 
 		} catch (Error& e) {
 			wait(tr.onError(e));
@@ -695,17 +707,23 @@ ACTOR static Future<Void> recruitBackupWorkers(Reference<ClusterRecoveryData> se
 		                    backup_worker_failed()));
 	}
 
-	state Future<Optional<Version>> fMinVersion = getMinBackupVersion(self, cx);
+	state Future<std::pair<Optional<Version>, Optional<Version>>> fMinVersion = getMinBackupVersion(self, cx);
 	wait(gotProgress && success(fMinVersion));
-	TraceEvent("MinBackupVersion", self->dbgid).detail("Version", fMinVersion.get().present() ? fMinVersion.get() : -1);
+	Optional<Version> minVersion = fMinVersion.get().first;
+	Optional<Version> noopVersion = fMinVersion.get().second;
+	TraceEvent("MinBackupVersion", self->dbgid)
+	    .detail("Version", minVersion.present() ? minVersion.get() : -1)
+	    .detail("NoopVersion", noopVersion.present() ? noopVersion.get() : -1);
 
 	std::map<std::tuple<LogEpoch, Version, int>, std::map<Tag, Version>> toRecruit =
 	    backupProgress->getUnfinishedBackup();
 	for (const auto& [epochVersionTags, tagVersions] : toRecruit) {
 		const Version oldEpochEnd = std::get<1>(epochVersionTags);
-		if (!fMinVersion.get().present() || fMinVersion.get().get() + 1 >= oldEpochEnd) {
+		if ((!minVersion.present() || minVersion.get() + 1 >= oldEpochEnd) ||
+		    (noopVersion.present() && noopVersion.get() >= oldEpochEnd)) {
 			TraceEvent("SkipBackupRecruitment", self->dbgid)
-			    .detail("MinVersion", fMinVersion.get().present() ? fMinVersion.get() : -1)
+			    .detail("MinVersion", minVersion.present() ? minVersion.get() : -1)
+			    .detail("NoopVersion", noopVersion.present() ? noopVersion.get() : -1)
 			    .detail("Epoch", epoch)
 			    .detail("OldEpoch", std::get<0>(epochVersionTags))
 			    .detail("OldEpochEnd", oldEpochEnd);
@@ -758,7 +776,7 @@ ACTOR Future<Void> updateLogsValue(Reference<ClusterRecoveryData> self, Database
 			bool found = false;
 			for (auto& logSet : self->logSystem->getLogSystemConfig().tLogs) {
 				for (auto& log : logSet.tLogs) {
-					if (logIds.count(log.id())) {
+					if (logIds.contains(log.id())) {
 						found = true;
 						break;
 					}
@@ -1317,7 +1335,7 @@ ACTOR Future<Void> sendInitialCommitToResolvers(Reference<ClusterRecoveryData> s
 		req.prevVersion = -1;
 		req.version = self->lastEpochEnd;
 		req.lastReceivedVersion = -1;
-
+		req.lastShardMove = -1;
 		replies.push_back(brokenPromiseToNever(r.resolve.getReply(req)));
 	}
 
@@ -1832,7 +1850,7 @@ ACTOR Future<Void> cleanupRecoveryActorCollection(Reference<ClusterRecoveryData>
 }
 
 bool isNormalClusterRecoveryError(const Error& error) {
-	return normalClusterRecoveryErrors().count(error.code());
+	return normalClusterRecoveryErrors().contains(error.code());
 }
 
 std::string& getRecoveryEventName(ClusterRecoveryEventType type) {

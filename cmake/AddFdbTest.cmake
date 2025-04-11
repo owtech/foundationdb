@@ -390,14 +390,17 @@ function(prepare_binding_test_files build_directory target_name target_dependenc
   add_custom_target(${target_name} DEPENDS ${target_dependency})
   add_custom_command(
     TARGET ${target_name}
+    POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:fdb_flow_tester> ${build_directory}/tests/flow/bin/fdb_flow_tester
     COMMENT "Copy Flow tester for bindingtester")
 
+  add_dependencies(${target_name} python_binding)
   set(generated_binding_files python/fdb/fdboptions.py python/fdb/apiversion.py)
   if(WITH_JAVA_BINDING)
     set(not_fdb_release_string "")
     add_custom_command(
       TARGET ${target_name}
+      POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
         ${CMAKE_BINARY_DIR}/packages/fdb-java-${FDB_VERSION}${not_fdb_release_string}.jar
         ${build_directory}/tests/java/foundationdb-client.jar
@@ -422,6 +425,7 @@ function(prepare_binding_test_files build_directory target_name target_dependenc
   foreach(generated IN LISTS generated_binding_files)
     add_custom_command(
       TARGET ${target_name}
+      POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/bindings/${generated} ${build_directory}/tests/${generated}
       COMMENT "Copy ${generated} to bindingtester")
   endforeach()

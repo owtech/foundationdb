@@ -56,7 +56,7 @@ enum {
 	tagLocalitySpecial = -1, // tag with this locality means it is invalidTag (id=0), txsTag (id=1), or cacheTag (id=2)
 	tagLocalityLogRouter = -2,
 	tagLocalityRemoteLog = -3, // tag created by log router for remote (aka. not in Primary DC) tLogs
-	tagLocalityUpgraded = -4, // tlogs with old log format
+	tagLocalityUpgraded = -4, // tlogs with old log format (no longer applicable)
 	tagLocalitySatellite = -5,
 	tagLocalityLogRouterMapped = -6, // The pseudo tag used by log routers to pop the real LogRouter tag (i.e., -2)
 	tagLocalityTxs = -7,
@@ -155,10 +155,8 @@ struct hash<Tag> {
 } // namespace std
 
 static const Tag invalidTag{ tagLocalitySpecial, 0 };
-static const Tag txsTag{ tagLocalitySpecial, 1 };
+static const Tag txsTag{ tagLocalitySpecial, 1 }; // obsolete now
 static const Tag cacheTag{ tagLocalitySpecial, 2 };
-
-enum { txsTagOld = -1, invalidTagOld = -100 };
 
 struct TagsAndMessage {
 	StringRef message;
@@ -188,11 +186,11 @@ struct TagsAndMessage {
 	}
 
 	// Returns the size of the header, including: msg_length, version.sub, tag_count, tags.
-	int32_t getHeaderSize() const {
-		return sizeof(int32_t) + sizeof(uint32_t) + sizeof(uint16_t) + tags.size() * sizeof(Tag);
+	static int32_t getHeaderSize(int numTags) {
+		return sizeof(int32_t) + sizeof(uint32_t) + sizeof(uint16_t) + numTags * sizeof(Tag);
 	}
 
-	StringRef getMessageWithoutTags() const { return message.substr(getHeaderSize()); }
+	StringRef getMessageWithoutTags() const { return message.substr(getHeaderSize(tags.size())); }
 
 	// Returns the message with the header.
 	StringRef getRawMessage() const { return message; }
@@ -1033,10 +1031,10 @@ struct TLogVersion {
 		V5 = 5, // 6.3
 		V6 = 6, // 7.0
 		V7 = 7, // 7.2
-		MIN_SUPPORTED = V2,
+		MIN_SUPPORTED = V5,
 		MAX_SUPPORTED = V7,
 		MIN_RECRUITABLE = V6,
-		DEFAULT = V6,
+		DEFAULT = V7,
 	} version;
 
 	TLogVersion() : version(UNSET) {}
@@ -1670,24 +1668,30 @@ struct StorageMetadataType {
 	KeyValueStoreType storeType;
 
 	// no need to serialize part (should be assigned after initialization)
-	bool wrongConfigured = false;
+	// Used only during wiggling to find out if the SS has incorrect storageType
+	// compared to perpetualStorageWiggleType. If perpetualStorageWiggleType is not
+	// set, configuredStorageType is compared to SS storageType.
+	bool wrongConfiguredForWiggle = false;
 
 	StorageMetadataType() : createdTime(0) {}
-	StorageMetadataType(double t, KeyValueStoreType storeType = KeyValueStoreType::END, bool wrongConfigured = false)
-	  : createdTime(t), storeType(storeType), wrongConfigured(wrongConfigured) {}
+	StorageMetadataType(double t,
+	                    KeyValueStoreType storeType = KeyValueStoreType::END,
+	                    bool wrongConfiguredForWiggle = false)
+	  : createdTime(t), storeType(storeType), wrongConfiguredForWiggle(wrongConfiguredForWiggle) {}
 
 	static double currentTime() { return g_network->timer(); }
 
 	bool operator==(const StorageMetadataType& b) const {
-		return createdTime == b.createdTime && storeType == b.storeType && wrongConfigured == b.wrongConfigured;
+		return createdTime == b.createdTime && storeType == b.storeType &&
+		       wrongConfiguredForWiggle == b.wrongConfiguredForWiggle;
 	}
 
 	bool operator<(const StorageMetadataType& b) const {
-		if (wrongConfigured == b.wrongConfigured) {
+		if (wrongConfiguredForWiggle == b.wrongConfiguredForWiggle) {
 			// the older SS has smaller createdTime
 			return createdTime < b.createdTime;
 		}
-		return wrongConfigured > b.wrongConfigured;
+		return wrongConfiguredForWiggle > b.wrongConfiguredForWiggle;
 	}
 
 	bool operator>(const StorageMetadataType& b) const { return b < *this; }
@@ -1744,7 +1748,7 @@ struct ReadOptions {
 	            ReadType type = ReadType::NORMAL,
 	            CacheResult cache = CacheResult::True,
 	            Optional<Version> version = Optional<Version>())
-	  : type(type), cacheResult(cache), debugID(debugID), consistencyCheckStartVersion(version){};
+	  : type(type), cacheResult(cache), debugID(debugID), consistencyCheckStartVersion(version) {}
 
 	ReadOptions(ReadType type, CacheResult cache = CacheResult::True) : ReadOptions({}, type, cache) {}
 

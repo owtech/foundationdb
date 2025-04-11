@@ -45,6 +45,7 @@ FDB_BOOLEAN_PARAM(ForceAction);
 FDB_BOOLEAN_PARAM(Terminator);
 FDB_BOOLEAN_PARAM(IncrementalBackupOnly);
 FDB_BOOLEAN_PARAM(UsePartitionedLog);
+FDB_BOOLEAN_PARAM(TransformPartitionedLog);
 FDB_BOOLEAN_PARAM(OnlyApplyMutationLogs);
 FDB_BOOLEAN_PARAM(SnapshotBackupUseTenantCache);
 FDB_BOOLEAN_PARAM(InconsistentSnapshotOnly);
@@ -204,8 +205,10 @@ public:
 	                        OnlyApplyMutationLogs = OnlyApplyMutationLogs::False,
 	                        InconsistentSnapshotOnly = InconsistentSnapshotOnly::False,
 	                        Optional<std::string> const& encryptionKeyFileName = {},
-	                        Optional<std::string> blobManifestUrl = {});
+	                        Optional<std::string> blobManifestUrl = {},
+	                        TransformPartitionedLog transformPartitionedLog = TransformPartitionedLog::False);
 
+	// this method will construct range and version vectors and then call restore()
 	Future<Version> restore(Database cx,
 	                        Optional<Database> cxOrig,
 	                        Key tagName,
@@ -224,6 +227,7 @@ public:
 	                        Optional<std::string> const& encryptionKeyFileName = {},
 	                        Optional<std::string> blobManifestUrl = {});
 
+	// create a version vector of size ranges.size(), all elements are the same, i.e. beginVersion
 	Future<Version> restore(Database cx,
 	                        Optional<Database> cxOrig,
 	                        Key tagName,
@@ -241,7 +245,8 @@ public:
 	                        InconsistentSnapshotOnly inconsistentSnapshotOnly = InconsistentSnapshotOnly::False,
 	                        Version beginVersion = ::invalidVersion,
 	                        Optional<std::string> const& encryptionKeyFileName = {},
-	                        Optional<std::string> blobManifestUrl = {});
+	                        Optional<std::string> blobManifestUrl = {},
+	                        TransformPartitionedLog transformPartitionedLog = TransformPartitionedLog::False);
 
 	Future<Version> atomicRestore(Database cx,
 	                              Key tagName,
@@ -526,12 +531,13 @@ public:
 
 using RangeResultWithVersion = std::pair<RangeResult, Version>;
 
+// RCGroup contains the backup mutations for a commit version, i.e., groupKey.
 struct RCGroup {
 	RangeResult items;
-	Version version;
-	uint64_t groupKey;
+	Version version; // this is read version for this group
+	Version groupKey; // this is the original commit version for this group
 
-	RCGroup() : version(-1), groupKey(ULLONG_MAX){};
+	RCGroup() : version(-1), groupKey(ULLONG_MAX) {}
 
 	template <class Ar>
 	void serialize(Ar& ar) {
@@ -575,6 +581,8 @@ ACTOR Future<Void> readCommitted(Database cx,
                                  Terminator terminator = Terminator::True,
                                  AccessSystemKeys systemAccess = AccessSystemKeys::False,
                                  LockAware lockAware = LockAware::False);
+
+// Applies the mutations between the beginVersion and endVersion to the database during a restore.
 ACTOR Future<Void> applyMutations(Database cx,
                                   Key uid,
                                   Key addPrefix,
@@ -682,6 +690,7 @@ public:
 	                    Reference<Task> task,
 	                    SetValidation setValidation = SetValidation::True) {
 		// Set the uid task parameter
+		// task's uid is set to my uid
 		TaskParams.uid().set(task, uid);
 
 		if (!setValidation) {

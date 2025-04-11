@@ -11,15 +11,6 @@ import (
 )
 
 var update = flag.Bool("update", false, "update .golden files")
-// Since go 1.20 math/rand uses automatically a random seed: https://tip.golang.org/doc/go1.20.
-// To enfore the old behaviour we intialize the random generator with a hard-coded seed.
-// TODO: Rethink how useful the random generator in those test cases is.
-var randomGenerator *rand.Rand
-
-// Since go 1.20 math/rand uses automatically a random seed: https://tip.golang.org/doc/go1.20.
-// To enforce the old behaviour we initialize the random generator with a hard-coded seed.
-// TODO: Rethink how useful the random generator in those test cases is.
-var randomGenerator *rand.Rand
 
 // Since go 1.20 math/rand uses automatically a random seed: https://tip.golang.org/doc/go1.20.
 // To enforce the old behaviour we initialize the random generator with a hard-coded seed.

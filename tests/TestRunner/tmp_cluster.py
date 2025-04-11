@@ -77,7 +77,6 @@ class TempCluster(LocalCluster):
                 pass
 
 
-
 if __name__ == "__main__":
     script_desc = """
     This script automatically configures a temporary local cluster on the machine

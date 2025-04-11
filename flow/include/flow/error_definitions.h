@@ -108,6 +108,7 @@ ERROR( duplicate_snapshot_request, 1083, "A duplicate snapshot request has been 
 ERROR( dd_config_changed, 1084, "DataDistribution configuration changed." )
 ERROR( consistency_check_urgent_task_failed, 1085, "Consistency check urgent task is failed")
 ERROR( data_move_conflict, 1086, "Data move conflict in SS")
+ERROR( consistency_check_urgent_duplicate_request, 1087, "Consistency check urgent got a duplicate request")
 
 ERROR( broken_promise, 1100, "Broken promise" )
 ERROR( operation_cancelled, 1101, "Asynchronous operation cancelled" )
@@ -154,8 +155,16 @@ ERROR( audit_storage_task_outdated, 1234, "Audit task is scheduled by an outdate
 ERROR( transaction_throttled_hot_shard, 1235, "Transaction throttled due to hot shard" )
 ERROR( storage_replica_comparison_error, 1236, "Storage replicas not consistent" )
 ERROR( unreachable_storage_replica, 1237, "Storage replica cannot be reached" )
-ERROR( bulkload_task_failed, 1238, "Bulk loading task failed")
+ERROR( bulkload_task_failed, 1238, "Bulk loading task failed" )
 ERROR( bulkload_task_outdated, 1239, "Bulk loading task outdated" )
+ERROR( range_lock_failed, 1241, "Lock range failed" )
+ERROR( transaction_rejected_range_locked, 1242, "Transaction rejected due to range lock" )
+ERROR( bulkdump_task_failed, 1243, "Bulk dumping task failed" )
+ERROR( bulkdump_task_outdated, 1244, "Bulk dumping task outdated" )
+ERROR( bulkload_fileset_invalid_filepath, 1245, "Bulkload fileset provides invalid filepath" )
+ERROR( bulkload_manifest_decode_error, 1246, "Bulkload manifest string is failed to decode" )
+ERROR( range_lock_reject, 1247, "Range lock is rejected" )
+ERROR( range_unlock_reject, 1248, "Range unlock is rejected" )
 
 // 15xx Platform errors
 ERROR( platform_error, 1500, "Platform error" )
@@ -343,6 +352,7 @@ ERROR( backup_does_not_exist, 2319, "Backup does not exist")
 ERROR( backup_not_filterable_with_key_ranges, 2320, "Backup before 6.3 cannot be filtered with key ranges")
 ERROR( backup_not_overlapped_with_keys_filter, 2321, "Backup key ranges doesn't overlap with key ranges filter")
 ERROR( bucket_not_in_url, 2322, "bucket is not in the URL for backup" )
+ERROR( backup_parse_s3_response_failure, 2323, "cannot parse s3 response properly" )
 ERROR( restore_invalid_version, 2361, "Invalid restore version")
 ERROR( restore_corrupted_data, 2362, "Corrupted backup data")
 ERROR( restore_missing_data, 2363, "Missing backup data")
@@ -407,6 +417,10 @@ ERROR( digital_signature_ops_error, 6002, "Digital signature operation error" )
 ERROR( authorization_token_verify_failed, 6003, "Failed to verify authorization token" )
 ERROR( pkey_decode_error, 6004, "Failed to decode public/private key" )
 ERROR( pkey_encode_error, 6005, "Failed to encode public/private key" )
+
+// gRPC error
+ERROR( grpc_error, 7000, "gRPC Error" )
+
 // clang-format on
 
 #undef ERROR

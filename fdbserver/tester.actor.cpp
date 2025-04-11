@@ -18,18 +18,15 @@
  * limitations under the License.
  */
 
-#include <boost/algorithm/string/predicate.hpp>
-#include <boost/filesystem.hpp>
-#include <boost/filesystem/directory.hpp>
-#include <boost/filesystem/path.hpp>
-#include <boost/range/iterator_range_core.hpp>
 #include <cinttypes>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <istream>
 #include <iterator>
 #include <map>
 #include <streambuf>
+#include <numeric>
 
 #include <fmt/ranges.h>
 #include <toml.hpp>
@@ -60,6 +57,7 @@
 #include "fdbserver/MoveKeys.actor.h"
 #include "flow/Platform.h"
 
+#include "flow/Trace.h"
 #include "flow/actorcompiler.h" // This must be the last #include.
 
 WorkloadContext::WorkloadContext() {}
@@ -422,19 +420,19 @@ void CompoundWorkload::addFailureInjection(WorkloadRequest& work) {
 	for (auto const& w : workloads) {
 		w->disableFailureInjectionWorkloads(disabledWorkloads);
 	}
-	if (disabledWorkloads.count("all") > 0) {
+	if (disabledWorkloads.contains("all")) {
 		return;
 	}
 	auto& factories = IFailureInjectorFactory::factories();
 	DeterministicRandom random(sharedRandomNumber);
 	for (auto& factory : factories) {
 		auto workload = factory->create(*this);
-		if (disabledWorkloads.count(workload->description()) > 0) {
+		if (disabledWorkloads.contains(workload->description())) {
 			continue;
 		}
-		if (std::count(work.disabledFailureInjectionWorkloads.begin(),
-		               work.disabledFailureInjectionWorkloads.end(),
-		               workload->description()) > 0) {
+		if (std::find(work.disabledFailureInjectionWorkloads.begin(),
+		              work.disabledFailureInjectionWorkloads.end(),
+		              workload->description()) != work.disabledFailureInjectionWorkloads.end()) {
 			continue;
 		}
 		while (shouldInjectFailure(random, work, workload)) {
@@ -967,24 +965,33 @@ ACTOR Future<Void> testerServerCore(TesterInterface interf,
 			} else if (work.title == "ConsistencyCheckUrgent") {
 				// The workload is a consistency checker urgent workload
 				if (work.sharedRandomNumber == consistencyCheckerUrgentTester.first) {
-					TraceEvent(SevInfo, "ConsistencyCheckUrgent_TesterDuplicatedRequest", interf.id())
+					// A single req can be sent for multiple times. In this case, the sharedRandomNumber is same as
+					// the existing one. For this scenario, we reply an error. This case should be rare.
+					TraceEvent(SevWarn, "ConsistencyCheckUrgent_TesterDuplicatedRequest", interf.id())
 					    .detail("ConsistencyCheckerId", work.sharedRandomNumber)
 					    .detail("ClientId", work.clientId)
 					    .detail("ClientCount", work.clientCount);
-				} else if (consistencyCheckerUrgentTester.second.isValid() &&
-				           !consistencyCheckerUrgentTester.second.isReady()) {
-					TraceEvent(SevWarnAlways, "ConsistencyCheckUrgent_TesterWorkloadConflict", interf.id())
-					    .detail("ExistingConsistencyCheckerId", consistencyCheckerUrgentTester.first)
-					    .detail("ArrivingConsistencyCheckerId", work.sharedRandomNumber)
+					work.reply.sendError(consistency_check_urgent_duplicate_request());
+				} else {
+					// When the req.sharedRandomNumber is different from the existing one, the cluster has muiltiple
+					// consistencycheckurgent roles at the same time. Evenutally, the cluster will have only one
+					// consistencycheckurgent role in a stable state. So, in this case, we simply let the new request to
+					// overwrite the old request. After the work is destroyed, the broken_promise will be replied.
+					if (consistencyCheckerUrgentTester.second.isValid() &&
+					    !consistencyCheckerUrgentTester.second.isReady()) {
+						TraceEvent(SevWarnAlways, "ConsistencyCheckUrgent_TesterWorkloadConflict", interf.id())
+						    .detail("ExistingConsistencyCheckerId", consistencyCheckerUrgentTester.first)
+						    .detail("ArrivingConsistencyCheckerId", work.sharedRandomNumber)
+						    .detail("ClientId", work.clientId)
+						    .detail("ClientCount", work.clientCount);
+					}
+					consistencyCheckerUrgentTester = std::make_pair(
+					    work.sharedRandomNumber, testerServerConsistencyCheckerUrgentWorkload(work, ccr, dbInfo));
+					TraceEvent(SevInfo, "ConsistencyCheckUrgent_TesterWorkloadInitialized", interf.id())
+					    .detail("ConsistencyCheckerId", consistencyCheckerUrgentTester.first)
 					    .detail("ClientId", work.clientId)
 					    .detail("ClientCount", work.clientCount);
 				}
-				consistencyCheckerUrgentTester = std::make_pair(
-				    work.sharedRandomNumber, testerServerConsistencyCheckerUrgentWorkload(work, ccr, dbInfo));
-				TraceEvent(SevInfo, "ConsistencyCheckUrgent_TesterWorkloadInitialized", interf.id())
-				    .detail("ConsistencyCheckerId", consistencyCheckerUrgentTester.first)
-				    .detail("ClientId", work.clientId)
-				    .detail("ClientCount", work.clientCount);
 			} else {
 				addWorkload.send(testerServerWorkload(work, ccr, dbInfo, locality));
 			}
@@ -1310,6 +1317,10 @@ ACTOR Future<Void> changeConfiguration(Database cx, std::vector<TesterInterface>
 }
 
 ACTOR Future<Void> auditStorageCorrectness(Reference<AsyncVar<ServerDBInfo>> dbInfo, AuditType auditType) {
+	if (SERVER_KNOBS->DISABLE_AUDIT_STORAGE_FINAL_REPLICA_CHECK_IN_SIM &&
+	    (auditType == AuditType::ValidateHA || auditType == AuditType::ValidateReplica)) {
+		return Void();
+	}
 	TraceEvent(SevDebug, "AuditStorageCorrectnessBegin").detail("AuditType", auditType);
 	state Database cx;
 	state UID auditId;
@@ -1650,7 +1661,7 @@ Optional<Key> getKeyFromString(const std::string& str) {
 		}
 		const char first = str.at(i + 2);
 		const char second = str.at(i + 3);
-		if (parseCharMap.count(first) == 0 || parseCharMap.count(second) == 0) {
+		if (!parseCharMap.contains(first) || !parseCharMap.contains(second)) {
 			TraceEvent(g_network->isSimulated() ? SevError : SevWarnAlways,
 			           "ConsistencyCheckUrgent_GetKeyFromStringError")
 			    .setMaxEventLength(-1)
@@ -1766,7 +1777,13 @@ std::unordered_map<int, std::vector<KeyRange>> makeTaskAssignment(Database cx,
                                                                   std::vector<KeyRange> shardsToCheck,
                                                                   int testersCount,
                                                                   int round) {
+	ASSERT(testersCount >= 1);
 	std::unordered_map<int, std::vector<KeyRange>> assignment;
+
+	std::vector<size_t> shuffledIndices(testersCount);
+	std::iota(shuffledIndices.begin(), shuffledIndices.end(), 0); // creates [0, 1, ..., testersCount - 1]
+	deterministicRandom()->randomShuffle(shuffledIndices);
+
 	int batchSize = CLIENT_KNOBS->CONSISTENCY_CHECK_URGENT_BATCH_SHARD_COUNT;
 	int startingPoint = 0;
 	if (shardsToCheck.size() > batchSize * testersCount) {
@@ -1781,7 +1798,17 @@ std::unordered_map<int, std::vector<KeyRange>> makeTaskAssignment(Database cx,
 		if (testerIdx > testersCount - 1) {
 			break; // Have filled up all testers
 		}
-		assignment[testerIdx].push_back(shardsToCheck[i]);
+		// When assigning a shards/batch to a tester idx, there are certain edge cases which can result in urgent
+		// consistency checker being infinetely stuck in a loop. Examples:
+		//      1. if there is 1 remaining shard, and tester 0 consistently fails, we will still always pick tester 0
+		//      2. if there are 10 remaining shards, and batch size is 10, and tester 0 consistently fails, we will
+		//      still always pick tester 0
+		//      3. if there are 20 remaining shards, and batch size is 10, and testers {0, 1} consistently fail, we will
+		//      keep picking testers {0, 1}
+		// To avoid repeatedly picking the same testers even though they could be failing, shuffledIndices provides an
+		// indirection to a random tester idx. That way, each invocation of makeTaskAssignment won't
+		// result in the same task assignment for the class of edge cases mentioned above.
+		assignment[shuffledIndices[testerIdx]].push_back(shardsToCheck[i]);
 	}
 	std::unordered_map<int, std::vector<KeyRange>>::iterator assignIt;
 	for (assignIt = assignment.begin(); assignIt != assignment.end(); assignIt++) {
@@ -1869,7 +1896,7 @@ ACTOR Future<Void> runConsistencyCheckerUrgentCore(Reference<AsyncVar<Optional<C
 			} else { // In simulation
 				ts = testers.get();
 			}
-			TraceEvent(SevInfo, "ConsistencyCheckUrgent_GoTTesters")
+			TraceEvent(SevInfo, "ConsistencyCheckUrgent_GotTesters")
 			    .detail("ConsistencyCheckerId", consistencyCheckerId)
 			    .detail("Round", round)
 			    .detail("RetryTimes", retryTimes)
@@ -1948,6 +1975,9 @@ ACTOR Future<Void> runConsistencyCheckerUrgentHolder(Reference<AsyncVar<Optional
 }
 
 Future<Void> checkConsistencyUrgentSim(Database cx, std::vector<TesterInterface> testers) {
+	if (SERVER_KNOBS->DISABLE_AUDIT_STORAGE_FINAL_REPLICA_CHECK_IN_SIM) {
+		return Void();
+	}
 	return runConsistencyCheckerUrgentHolder(
 	    Reference<AsyncVar<Optional<ClusterControllerFullInterface>>>(), cx, testers, 1, /*repeatRun=*/false);
 }
@@ -2040,13 +2070,13 @@ ACTOR Future<bool> runTest(Database cx,
 			if (quiescent && g_network->isSimulated()) {
 				try {
 					TraceEvent("AuditStorageStart");
-					wait(timeoutError(auditStorageCorrectness(dbInfo, AuditType::ValidateHA), 1000.0));
+					wait(timeoutError(auditStorageCorrectness(dbInfo, AuditType::ValidateHA), 1500.0));
 					TraceEvent("AuditStorageCorrectnessHADone");
-					wait(timeoutError(auditStorageCorrectness(dbInfo, AuditType::ValidateReplica), 1000.0));
+					wait(timeoutError(auditStorageCorrectness(dbInfo, AuditType::ValidateReplica), 1500.0));
 					TraceEvent("AuditStorageCorrectnessReplicaDone");
-					wait(timeoutError(auditStorageCorrectness(dbInfo, AuditType::ValidateLocationMetadata), 1000.0));
+					wait(timeoutError(auditStorageCorrectness(dbInfo, AuditType::ValidateLocationMetadata), 1500.0));
 					TraceEvent("AuditStorageCorrectnessLocationMetadataDone");
-					wait(timeoutError(auditStorageCorrectness(dbInfo, AuditType::ValidateStorageServerShard), 1000.0));
+					wait(timeoutError(auditStorageCorrectness(dbInfo, AuditType::ValidateStorageServerShard), 1500.0));
 					TraceEvent("AuditStorageCorrectnessStorageServerShardDone");
 				} catch (Error& e) {
 					ok = false;
@@ -2558,7 +2588,7 @@ void encryptionAtRestPlaintextMarkerCheck() {
 		return;
 	}
 
-	namespace fs = boost::filesystem;
+	namespace fs = std::filesystem;
 
 	printf("EncryptionAtRestPlaintextMarkerCheckStart\n");
 	TraceEvent("EncryptionAtRestPlaintextMarkerCheckStart");
@@ -2568,8 +2598,8 @@ void encryptionAtRestPlaintextMarkerCheck() {
 	bool success = true;
 	// Enumerate all files in the "simfdb/" folder and look for "marker" string
 	for (fs::recursive_directory_iterator itr(p); itr != end; ++itr) {
-		if (boost::filesystem::is_regular_file(itr->path())) {
-			std::ifstream f(itr->path().string().c_str());
+		if (fs::is_regular_file(itr->path())) {
+			std::ifstream f(itr->path());
 			if (f) {
 				std::string buf;
 				int count = 0;
@@ -2623,7 +2653,42 @@ ACTOR Future<Void> disableConnectionFailuresAfter(double seconds, std::string co
 		TraceEvent(SevWarnAlways, ("ScheduleDisableConnectionFailures_" + context).c_str())
 		    .detail("At", now() + seconds);
 		wait(delay(seconds));
-		disableConnectionFailures(context);
+		while (true) {
+			double delaySeconds = disableConnectionFailures(context, ForceDisable::False);
+			if (delaySeconds > 0.001) {
+				wait(delay(delaySeconds));
+			} else {
+				break;
+			}
+		}
+	}
+	return Void();
+}
+
+ACTOR Future<Void> disableBackupWorker(Database cx) {
+	DatabaseConfiguration configuration = wait(getDatabaseConfiguration(cx));
+	if (!configuration.backupWorkerEnabled) {
+		TraceEvent("BackupWorkerAlreadyDisabled");
+		return Void();
+	}
+	ConfigurationResult res = wait(ManagementAPI::changeConfig(cx.getReference(), "backup_worker_enabled:=0", true));
+	if (res != ConfigurationResult::SUCCESS) {
+		TraceEvent("BackupWorkerDisableFailed").detail("Result", res);
+		throw operation_failed();
+	}
+	return Void();
+}
+
+ACTOR Future<Void> enableBackupWorker(Database cx) {
+	DatabaseConfiguration configuration = wait(getDatabaseConfiguration(cx));
+	if (configuration.backupWorkerEnabled) {
+		TraceEvent("BackupWorkerAlreadyEnabled");
+		return Void();
+	}
+	ConfigurationResult res = wait(ManagementAPI::changeConfig(cx.getReference(), "backup_worker_enabled:=1", true));
+	if (res != ConfigurationResult::SUCCESS) {
+		TraceEvent("BackupWorkerEnableFailed").detail("Result", res);
+		throw operation_failed();
 	}
 	return Void();
 }
@@ -2664,12 +2729,17 @@ ACTOR Future<Void> runTests(Reference<AsyncVar<Optional<struct ClusterController
 	state bool waitForQuiescenceEnd = false;
 	state bool restorePerpetualWiggleSetting = false;
 	state bool perpetualWiggleEnabled = false;
+	state bool backupWorkerEnabled = false;
 	state double startDelay = 0.0;
 	state double databasePingDelay = 1e9;
 	state ISimulator::BackupAgentType simBackupAgents = ISimulator::BackupAgentType::NoBackupAgents;
 	state ISimulator::BackupAgentType simDrAgents = ISimulator::BackupAgentType::NoBackupAgents;
 	state bool enableDD = false;
 	state TesterConsistencyScanState consistencyScanState;
+
+	// Gives chance for g_network->run() to run inside event loop and hence let
+	// the tests see correct value for `isOnMainThread()`.
+	wait(yield());
 
 	if (tests.empty())
 		useDB = true;
@@ -2727,14 +2797,19 @@ ACTOR Future<Void> runTests(Reference<AsyncVar<Optional<struct ClusterController
 		} catch (Error& e) {
 			TraceEvent(SevError, "TestFailure").error(e).detail("Reason", "Unable to set starting configuration");
 		}
+		std::string_view confView(reinterpret_cast<const char*>(startingConfiguration.begin()),
+		                          startingConfiguration.size());
 		if (restorePerpetualWiggleSetting) {
-			std::string_view confView(reinterpret_cast<const char*>(startingConfiguration.begin()),
-			                          startingConfiguration.size());
 			const std::string setting = "perpetual_storage_wiggle:=";
 			auto pos = confView.find(setting);
 			if (pos != confView.npos && confView.at(pos + setting.size()) == '1') {
 				perpetualWiggleEnabled = true;
 			}
+		}
+		const std::string bwSetting = "backup_worker_enabled:=";
+		auto pos = confView.find(bwSetting);
+		if (pos != confView.npos && confView.at(pos + bwSetting.size()) == '1') {
+			backupWorkerEnabled = true;
 		}
 	}
 
@@ -2835,6 +2910,12 @@ ACTOR Future<Void> runTests(Reference<AsyncVar<Optional<struct ClusterController
 			printf("Set perpetual_storage_wiggle=1 Done.\n");
 		}
 
+		if (backupWorkerEnabled) {
+			printf("Enabling backup worker ...\n");
+			wait(enableBackupWorker(cx));
+			printf("Enabled backup worker.\n");
+		}
+
 		// TODO: Move this to a BehaviorInjection workload once that concept exists.
 		if (consistencyScanState.enabled && !consistencyScanState.enableAfter) {
 			printf("Enabling consistency scan ...\n");
@@ -2843,7 +2924,7 @@ ACTOR Future<Void> runTests(Reference<AsyncVar<Optional<struct ClusterController
 		}
 	}
 
-	enableConnectionFailures("Tester");
+	enableConnectionFailures("Tester", FLOW_KNOBS->SIM_SPEEDUP_AFTER_SECONDS);
 	state Future<Void> disabler = disableConnectionFailuresAfter(FLOW_KNOBS->SIM_SPEEDUP_AFTER_SECONDS, "Tester");
 	state Future<Void> repairDataCenter;
 	if (useDB) {
@@ -3048,9 +3129,9 @@ ACTOR Future<Void> runTests(Reference<IClusterConnectionRecord> connRecord,
 			return Void();
 		}
 		enableClientInfoLogging(); // Enable Client Info logging by default for tester
-		if (boost::algorithm::ends_with(fileName, ".txt")) {
+		if (fileName.ends_with(".txt")) {
 			testSet.testSpecs = readTests(ifs);
-		} else if (boost::algorithm::ends_with(fileName, ".toml")) {
+		} else if (fileName.ends_with(".toml")) {
 			// TOML is weird about opening the file as binary on windows, so we
 			// just let TOML re-open the file instead of using ifs.
 			testSet = readTOMLTests(fileName);
@@ -3154,12 +3235,12 @@ ACTOR Future<Void> testExpectedErrorImpl(Future<Void> test,
 	}
 
 	// Make sure that no duplicate details were provided
-	ASSERT(details.count("TestDescription") == 0);
-	ASSERT(details.count("ExpectedError") == 0);
-	ASSERT(details.count("ExpectedErrorCode") == 0);
-	ASSERT(details.count("ActualError") == 0);
-	ASSERT(details.count("ActualErrorCode") == 0);
-	ASSERT(details.count("Reason") == 0);
+	ASSERT(!details.contains("TestDescription"));
+	ASSERT(!details.contains("ExpectedError"));
+	ASSERT(!details.contains("ExpectedErrorCode"));
+	ASSERT(!details.contains("ActualError"));
+	ASSERT(!details.contains("ActualErrorCode"));
+	ASSERT(!details.contains("Reason"));
 
 	for (auto& p : details) {
 		evt.detail(p.first.c_str(), p.second);

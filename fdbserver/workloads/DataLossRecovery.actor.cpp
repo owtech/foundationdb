@@ -195,7 +195,7 @@ struct DataLossRecoveryWorkload : TestWorkload {
 			state std::vector<StorageServerInterface> interfs = wait(getStorageServers(cx));
 			if (!interfs.empty()) {
 				state StorageServerInterface interf = interfs[deterministicRandom()->randomInt(0, interfs.size())];
-				if (g_simulator->protectedAddresses.count(interf.address()) == 0) {
+				if (!g_simulator->protectedAddresses.contains(interf.address())) {
 					// We need to avoid selecting a storage server that is already dead at this point, otherwise
 					// the test will hang. This is achieved by sending a GetStorageMetrics RPC. This is a necessary
 					// check for this test because DD has been disabled and the proper mechanism that removes bad
@@ -236,7 +236,10 @@ struct DataLossRecoveryWorkload : TestWorkload {
 				if (SERVER_KNOBS->SHARD_ENCODE_LOCATION_METADATA) {
 					UID dataMoveId = newDataMoveId(deterministicRandom()->randomUInt64(),
 					                               AssignEmptyRange(false),
-					                               DataMoveType::PHYSICAL,
+					                               deterministicRandom()->random01() <
+					                                       SERVER_KNOBS->DD_PHYSICAL_SHARD_MOVE_PROBABILITY
+					                                   ? DataMoveType::PHYSICAL
+					                                   : DataMoveType::LOGICAL,
 					                               DataMovementReason::TEAM_HEALTHY,
 					                               UnassignShard(false));
 					params = std::make_unique<MoveKeysParams>(dataMoveId,
@@ -251,7 +254,7 @@ struct DataLossRecoveryWorkload : TestWorkload {
 					                                          UID(), // for logging only
 					                                          &ddEnabledState,
 					                                          CancelConflictingDataMoves::True,
-					                                          Optional<BulkLoadState>());
+					                                          Optional<BulkLoadTaskState>());
 				} else {
 					UID dataMoveId = newDataMoveId(deterministicRandom()->randomUInt64(),
 					                               AssignEmptyRange(false),
@@ -270,7 +273,7 @@ struct DataLossRecoveryWorkload : TestWorkload {
 					                                          UID(), // for logging only
 					                                          &ddEnabledState,
 					                                          CancelConflictingDataMoves::True,
-					                                          Optional<BulkLoadState>());
+					                                          Optional<BulkLoadTaskState>());
 				}
 				wait(moveKeys(cx, *params));
 				break;

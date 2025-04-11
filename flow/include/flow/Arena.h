@@ -43,6 +43,7 @@
 #include <limits>
 #include <optional>
 #include <set>
+#include <unordered_set>
 #include <type_traits>
 #include <sstream>
 #include <string_view>
@@ -191,7 +192,7 @@ struct ArenaBlock : NonCopyable, ThreadSafeReferenceCounted<ArenaBlock> {
 	int unused() const;
 	const void* getData() const;
 	const void* getNextData() const;
-	size_t totalSize() const;
+	size_t totalSize(std::unordered_set<ArenaBlock*>&) const;
 	size_t estimatedTotalSize() const;
 	void wipeUsed();
 	// just for debugging:
@@ -501,12 +502,29 @@ public:
 		return s;
 	}
 
+	// Get string with full content in hex format. Different digits are splitted by a space.
+	// This is currently used for bulk dumping manifest text file when recording key ranges.
+	std::string toFullHexStringPlain() const {
+		std::string s;
+		s.reserve(length * 7);
+		for (int i = 0; i < length; i++) {
+			uint8_t b = (*this)[i];
+			s.append(format("%02x ", b));
+		}
+		if (s.size() > 0)
+			s.resize(s.size() - 1);
+		return s;
+	}
+
 	int expectedSize() const { return size(); }
 
 	int compare(StringRef const& other) const {
-		auto minSize = static_cast<int>(std::min(size(), other.size()));
+		int minSize = static_cast<int>(std::min(size(), other.size()));
 		if (minSize != 0) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-overread"
 			int c = memcmp(begin(), other.begin(), minSize);
+#pragma GCC diagnostic pop
 			if (c != 0)
 				return c;
 		}
