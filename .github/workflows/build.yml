@@ -180,6 +180,11 @@ jobs:
       JOSHUA_AGENT_TAG: "rhel8-20220816"
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: ${{github.workspace}}/src
+
       - name: Install dependencies
         shell: bash
         run: |
@@ -227,12 +232,7 @@ jobs:
           podman pull ${{ env.JOSHUA_AGENT_URL }}/joshua-agent:${{ env.JOSHUA_AGENT_TAG }}
           podman create --name joshua-agent -v /etc/foundationdb:/etc/foundationdb -it joshua-agent:${{ env.JOSHUA_AGENT_TAG }}
           podman start joshua-agent
-
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          path: ${{github.workspace}}/src
-  
+ 
       - name: run tests
         shell: bash
         working-directory: ${{github.workspace}}/fdb-joshua
