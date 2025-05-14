@@ -19,7 +19,6 @@ if dpkg --compare-versions "$EXISTING_VERSION" lt "$REQUIRED_VERSION"; then
 
   if dpkg --compare-versions "$AVAILABLE_APT_VERSION" lt "$REQUIRED_VERSION"; then
     echo "Available cmake $AVAILABLE_APT_VERSION is too old. Installing one from $CMAKE_URL."
-    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y wget
     TMP_DIR=`mktemp -d`
     wget -O $TMP_DIR/cmake.tar.gz $CMAKE_URL
     sudo mkdir -p /opt
