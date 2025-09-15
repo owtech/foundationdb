@@ -121,12 +121,14 @@ test_deploy_pkgs() {
 }
 
 RPM_INSTALL_CMD="dnf install -y"
-DEB_INSTALL_CMD="apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y"
+SOURCES_LIST_CONTENT="$(cat $BASE_DIR/debian10.sources.list)"
+DEB10_INSTALL_CMD="printf '%s\n' \"$SOURCES_LIST_CONTENT\" > /etc/apt/sources.list && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y"
+
 
 echo "Testing DEBs deploy..."
 test_deploy_pkgs \
   "$DEB_IMAGE" \
-  "$DEB_INSTALL_CMD" \
+  "$DEB10_INSTALL_CMD" \
   "foundationdb-server_${FULL_VERSION}_$MY_ARCH_DEB.deb" \
   "foundationdb-clients_${FULL_VERSION}_$MY_ARCH_DEB.deb" \
   Y
@@ -134,7 +136,7 @@ test_deploy_pkgs \
 echo "Testing versioned DEBs deploy..."
 test_deploy_pkgs \
   "$DEB_IMAGE" \
-  "$DEB_INSTALL_CMD" \
+  "$DEB10_INSTALL_CMD" \
   "foundationdb-$FULL_VERSION-server-versioned_${FULL_VERSION}_$MY_ARCH_DEB.deb" \
   "foundationdb-$FULL_VERSION-clients-versioned_${FULL_VERSION}_$MY_ARCH_DEB.deb" \
   N

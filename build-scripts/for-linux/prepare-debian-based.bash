@@ -1,6 +1,6 @@
 #!/bin/sh
 
-set -e
+set -ex
 
 BASE_DIR=`dirname $0`
 
@@ -33,6 +33,7 @@ $BASE_DIR/prepare-debian-based-swift.bash
 $BASE_DIR/prepare-debian-based-jemalloc.bash
 
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+  zlib1g-dev \
   liblz4-dev \
   libssl-dev
 
@@ -41,5 +42,5 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   libmono-system-runtime-serialization4.0-cil \
   libmono-system-xml-linq4.0-cil
 
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-  python3-sphinx-bootstrap-theme
+sudo DEBIAN_FRONTEND=noninteractive \
+  python3 -m pip install sphinx-bootstrap-theme || echo "sphinx-bootstrap-theme installed via pip"
