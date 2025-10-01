@@ -1,53 +1,49 @@
 set(FDBBACKUP_SRCS
 	Decode.cpp
-	backup.cpp)
+	backup.actor.cpp)
 
 add_flow_target(EXECUTABLE NAME fdbbackup SRCS ${FDBBACKUP_SRCS})
-target_include_directories(fdbbackup PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_include_directories(fdbbackup PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include" "${CMAKE_CURRENT_BINARY_DIR}/include")
 target_link_libraries(fdbbackup PRIVATE fdbclient)
 
 set(FDBCONVERT_SRCS
-	FileConverter.cpp)
+	FileConverter.actor.cpp)
 add_flow_target(EXECUTABLE NAME fdbconvert SRCS ${FDBCONVERT_SRCS})
-target_include_directories(fdbconvert PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_include_directories(fdbconvert PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include" "${CMAKE_CURRENT_BINARY_DIR}/include")
 target_link_libraries(fdbconvert PRIVATE fdbclient)
 
 set(FDBDECODE_SRCS
 	Decode.cpp
-	FileDecoder.cpp)
+	FileDecoder.actor.cpp)
 add_flow_target(EXECUTABLE NAME fdbdecode SRCS ${FDBDECODE_SRCS})
-target_include_directories(fdbdecode PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_include_directories(fdbdecode PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include" "${CMAKE_CURRENT_BINARY_DIR}/include")
 target_link_libraries(fdbdecode PRIVATE fdbclient)
 
 if(NOT OPEN_FOR_IDE)
-  add_custom_target(stripped_fdbbackup ALL DEPENDS strip_only_fdbbackup)
-  fdb_install(TARGETS fdbbackup DESTINATION bin COMPONENT clients)
+  if(GENERATE_DEBUG_PACKAGES)
+    fdb_install(TARGETS fdbbackup DESTINATION bin COMPONENT clients)
+    fdb_install(PROGRAMS $<TARGET_FILE:fdbbackup> DESTINATION bin COMPONENT clients RENAME backup_agent)
+    fdb_install(PROGRAMS $<TARGET_FILE:fdbbackup> DESTINATION bin COMPONENT clients RENAME fdbrestore)
+    fdb_install(PROGRAMS $<TARGET_FILE:fdbbackup> DESTINATION bin COMPONENT clients RENAME dr_agent)
+    fdb_install(PROGRAMS $<TARGET_FILE:fdbbackup> DESTINATION bin COMPONENT clients RENAME fdbdr)
+    fdb_install(TARGETS fdbconvert DESTINATION bin COMPONENT clients)
+  else()
+    add_custom_target(prepare_fdbbackup_install ALL DEPENDS strip_only_fdbbackup strip_only_fdbconvert)
+    fdb_install(PROGRAMS ${CMAKE_BINARY_DIR}/packages/bin/fdbbackup DESTINATION bin COMPONENT clients)
+    fdb_install(PROGRAMS ${CMAKE_BINARY_DIR}/packages/bin/fdbbackup DESTINATION bin COMPONENT clients RENAME backup_agent)
+    fdb_install(PROGRAMS ${CMAKE_BINARY_DIR}/packages/bin/fdbbackup DESTINATION bin COMPONENT clients RENAME fdbrestore)
+    fdb_install(PROGRAMS ${CMAKE_BINARY_DIR}/packages/bin/fdbbackup DESTINATION bin COMPONENT clients RENAME dr_agent)
+    fdb_install(PROGRAMS ${CMAKE_BINARY_DIR}/packages/bin/fdbbackup DESTINATION bin COMPONENT clients RENAME fdbdr)
+    fdb_install(PROGRAMS ${CMAKE_BINARY_DIR}/packages/bin/fdbconvert DESTINATION bin COMPONENT clients)
+  endif()
   symlink_files(
     LOCATION packages/bin
     SOURCE fdbbackup
-    TARGETS fdbdr dr_agent backup_agent fdbrestore)
+    TARGETS fdbdr dr_agent backup_agent fdbrestore fastrestore_tool)
   symlink_files(
     LOCATION bin
     SOURCE fdbbackup
-    TARGETS fdbdr dr_agent backup_agent fdbrestore)
-  # Install the relative symlinks created above, so all names share one binary
-  foreach(alias IN ITEMS backup_agent fdbrestore dr_agent fdbdr)
-    fdb_install(PROGRAMS ${CMAKE_BINARY_DIR}/bin/${alias} DESTINATION bin COMPONENT clients)
-  endforeach()
-
-  # Test version of backup.cpp without main() function
-  add_flow_target(EXECUTABLE NAME backup_tests SRCS backup.cpp)
-  target_include_directories(backup_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
-  target_link_libraries(backup_tests PRIVATE fdbclient)
-  target_compile_definitions(backup_tests PRIVATE EXCLUDE_MAIN_FUNCTION=1)
-  add_test(NAME BackupTests COMMAND backup_tests)
-
-  # Test version of FileDecoder.cpp without main() function
-  add_flow_target(EXECUTABLE NAME fdbdecode_tests SRCS Decode.cpp FileDecoder.cpp)
-  target_include_directories(fdbdecode_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
-  target_link_libraries(fdbdecode_tests PRIVATE fdbclient)
-  target_compile_definitions(fdbdecode_tests PRIVATE EXCLUDE_MAIN_FUNCTION=1)
-  add_test(NAME FileDecoderTests COMMAND fdbdecode_tests)
+    TARGETS fdbdr dr_agent backup_agent fdbrestore fastrestore_tool)
 endif()
 
 if (GPERFTOOLS_FOUND)
@@ -58,19 +54,5 @@ endif()
 if (NOT WIN32 AND NOT OPEN_FOR_IDE)
   enable_testing()
   add_test(NAME dir_backup_tests COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/dir_backup_test.sh ${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR})
-  add_test(NAME blob_backup_restore_tests COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/blob_backup_restore_test.sh ${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR})
-  # Same test but with the backup objects placed under a key prefix in the bucket
-  add_test(NAME blob_backup_restore_prefix_tests COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/blob_backup_restore_test.sh ${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR})
-  # Note: No --encrypt flag - BulkLoad doesn't support encryption yet
-  add_test(NAME s3_backup_bulkdump_bulkload_tests COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/s3_backup_bulkdump_bulkload.sh ${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR})
-  # BulkDump/BulkLoad with the backup objects placed under a key prefix in the bucket
-  add_test(NAME s3_backup_bulkdump_bulkload_prefix_tests COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/s3_backup_bulkdump_bulkload.sh ${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR})
-  set_tests_properties(dir_backup_tests
-    PROPERTIES ENVIRONMENT "${SANITIZER_OPTIONS}")
-  # Explicitly clear BACKUP_URL_KEY_PREFIX so an inherited environment value cannot turn
-  # the non-prefixed variants into prefixed runs.
-  set_tests_properties(blob_backup_restore_tests s3_backup_bulkdump_bulkload_tests
-    PROPERTIES ENVIRONMENT "${SANITIZER_OPTIONS};BACKUP_URL_KEY_PREFIX=")
-  set_tests_properties(blob_backup_restore_prefix_tests s3_backup_bulkdump_bulkload_prefix_tests
-    PROPERTIES ENVIRONMENT "${SANITIZER_OPTIONS};BACKUP_URL_KEY_PREFIX=prefix_ctests/nested")
+  add_test(NAME s3_backup_tests COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/s3_backup_test.sh ${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR})
 endif()
