@@ -12,10 +12,20 @@ if [ $1 -eq 1 ]; then
     /usr/bin/systemctl start foundationdb >/dev/null 2>&1
 
     if [ "$NEWDB" != "" ]; then
-        /usr/bin/fdbcli -C /etc/foundationdb/fdb.cluster --exec "configure new single memory" --timeout 20 >/dev/null 2>&1
+        /usr/bin/fdbcli -C /etc/foundationdb/fdb.cluster --exec "configure new single memory; status" --timeout 20
     fi
 else
-    /usr/bin/systemctl condrestart foundationdb >/dev/null 2>&1
+    DORESTART=1
+
+    if test -f /etc/foundationdb/owtech.conf; then
+        value=`grep -E "^RestartWhenUpdate" /etc/foundationdb/owtech.conf | awk -F "=" '{ print $2 }' | tr -d " " | tr "a-z" "A-Z"`
+        test "$value" = "NO" -o "$value" = "FALSE" -o "$value" = "0" && DORESTART=0
+    fi
+
+    if test $DORESTART -eq 1; then
+        systemctl --system daemon-reload > /dev/null || true
+        systemctl condrestart foundationdb.service > /dev/null || true
+    fi
 fi
 exit 0
 

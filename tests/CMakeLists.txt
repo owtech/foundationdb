@@ -394,7 +394,7 @@ if(WITH_PYTHON)
     add_fdb_test(
       TEST_FILES restarting/from_7.3.0/ConfigureStorageMigrationTestRestart-1.toml
       restarting/from_7.3.0/ConfigureStorageMigrationTestRestart-2.toml)
-      add_fdb_test(
+    add_fdb_test(
       TEST_FILES restarting/from_7.3.0/DrUpgradeRestart-1.toml
       restarting/from_7.3.0/DrUpgradeRestart-2.toml)
     add_fdb_test(

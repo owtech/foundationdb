@@ -38,9 +38,8 @@ if [ "$1" = configure ]; then
             systemctl start foundationdb.service
         else
             /etc/init.d/foundationdb start
+            update-rc.d foundationdb defaults
         fi
-
-        update-rc.d foundationdb defaults
 
         if [ "$NEWDB" != "" ]; then
             /usr/bin/fdbcli -C /etc/foundationdb/fdb.cluster --exec "configure new single memory; status" --timeout 20
@@ -54,14 +53,8 @@ if [ "$1" = configure ]; then
         fi
 
         if test $DORESTART -eq 1; then
-            if pidof systemd > /dev/null; then
-                # Use deb-systemd-invoke if available to respect policy-rc.d.
-                systemctl=$(command -v deb-systemd-invoke || command -v systemctl)
-                systemctl --system daemon-reload > /dev/null || true
-                systemctl condrestart foundationdb.service > /dev/null || true
-            else
-                /etc/init.d/foundationdb restart
-            fi
+            systemctl --system daemon-reload > /dev/null || true
+            systemctl condrestart foundationdb.service > /dev/null || true
         fi
     fi
 fi
