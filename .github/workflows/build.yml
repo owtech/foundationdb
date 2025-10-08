@@ -232,7 +232,7 @@ jobs:
           podman pull ${{ env.JOSHUA_AGENT_URL }}/joshua-agent:${{ env.JOSHUA_AGENT_TAG }}
           podman create --name joshua-agent -v /etc/foundationdb:/etc/foundationdb -it joshua-agent:${{ env.JOSHUA_AGENT_TAG }}
           podman start joshua-agent
- 
+
       - name: run tests
         shell: bash
         working-directory: ${{github.workspace}}/fdb-joshua
