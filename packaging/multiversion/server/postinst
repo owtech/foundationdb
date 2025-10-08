@@ -21,7 +21,7 @@ then
     chown -R foundationdb:foundationdb /etc/foundationdb
     chmod 775 /etc/foundationdb
     chmod 0664 /etc/foundationdb/fdb.cluster
-    /usr/bin/systemctl enable foundationdb >/dev/null 2>&1
-    /usr/bin/systemctl start foundationdb >/dev/null 2>&1
+    systemctl enable foundationdb >/dev/null 2>&1
+    systemctl start foundationdb >/dev/null 2>&1
     /usr/bin/fdbcli -C /etc/foundationdb/fdb.cluster --exec "configure new single memory; status" --timeout 20
 fi

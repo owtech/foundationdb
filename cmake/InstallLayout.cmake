@@ -144,10 +144,7 @@ math(EXPR ALTERNATIVES_PRIORITY "(${PROJECT_VERSION_MAJOR} * 1000) + (${PROJECT_
 set(script_dir "${PROJECT_BINARY_DIR}/packaging/multiversion/")
 file(MAKE_DIRECTORY "${script_dir}/server" "${script_dir}/clients")
 
-# Needs to to be named postinst for debian
-configure_file("${mv_packaging_dir}/server/postinst-deb" "${script_dir}/server/postinst" @ONLY)
-
-configure_file("${mv_packaging_dir}/server/postinst-rpm" "${script_dir}/server" @ONLY)
+configure_file("${mv_packaging_dir}/server/postinst" "${script_dir}/server" @ONLY)
 configure_file("${mv_packaging_dir}/server/prerm" "${script_dir}/server" @ONLY)
 set(LIB_DIR lib)
 configure_file("${mv_packaging_dir}/clients/postinst" "${script_dir}/clients" @ONLY)
@@ -281,7 +278,7 @@ set(CPACK_RPM_SERVER-VERSIONED_PACKAGE_NAME                "${server_versioned_p
 set(CPACK_RPM_SERVER-VERSIONED_FILE_NAME                   "${CPACK_RPM_SERVER-VERSIONED_PACKAGE_NAME}-${rpm_filename_suffix}")
 set(CPACK_RPM_SERVER-VERSIONED_DEBUGINFO_FILE_NAME         "${CPACK_RPM_SERVER-VERSIONED_PACKAGE_NAME}-debuginfo-${rpm_filename_suffix}")
 set(CPACK_RPM_SERVER-VERSIONED_PACKAGE_REQUIRES            "${CPACK_RPM_CLIENTS-VERSIONED_PACKAGE_NAME} = ${FDB_PACKAGE_VERSION}")
-set(CPACK_RPM_SERVER-VERSIONED_POST_INSTALL_SCRIPT_FILE    ${CMAKE_BINARY_DIR}/packaging/multiversion/server/postinst-rpm)
+set(CPACK_RPM_SERVER-VERSIONED_POST_INSTALL_SCRIPT_FILE    ${CMAKE_BINARY_DIR}/packaging/multiversion/server/postinst)
 set(CPACK_RPM_SERVER-VERSIONED_PRE_UNINSTALL_SCRIPT_FILE   ${CMAKE_BINARY_DIR}/packaging/multiversion/server/prerm)
 
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/packaging/emptydir")
@@ -393,18 +390,13 @@ if(NOT WIN32)
   install(FILES ${CMAKE_SOURCE_DIR}/packaging/make_public.py
     DESTINATION "usr/lib/foundationdb"
     COMPONENT server-deb)
-  install(FILES ${CMAKE_SOURCE_DIR}/packaging/rpm/foundationdb.service
+  install(FILES ${CMAKE_SOURCE_DIR}/packaging/foundationdb.service
     DESTINATION "lib/systemd/system"
     COMPONENT server-el7)
-  install(PROGRAMS ${CMAKE_SOURCE_DIR}/packaging/deb/foundationdb-init
-    DESTINATION "etc/init.d"
-    RENAME "foundationdb"
+  install(FILES ${CMAKE_SOURCE_DIR}/packaging/foundationdb.service
+    DESTINATION "lib/systemd/system"
     COMPONENT server-deb)
-  install(FILES ${CMAKE_SOURCE_DIR}/packaging/rpm/foundationdb.service
+  install(FILES ${CMAKE_SOURCE_DIR}/packaging/foundationdb.service
     DESTINATION "usr/lib/foundationdb-${FDB_VERSION}/lib/systemd/system"
-    COMPONENT server-versioned)
-  install(PROGRAMS ${CMAKE_SOURCE_DIR}/packaging/deb/foundationdb-init
-    DESTINATION "usr/lib/foundationdb-${FDB_VERSION}/etc/init.d"
-    RENAME "foundationdb"
     COMPONENT server-versioned)
 endif()
