@@ -60,10 +60,7 @@ math(EXPR ALTERNATIVES_PRIORITY "(${PROJECT_VERSION_MAJOR} * 1000) + (${PROJECT_
 set(script_dir "${PROJECT_BINARY_DIR}/packaging/multiversion/")
 file(MAKE_DIRECTORY "${script_dir}/server" "${script_dir}/clients")
 
-# Needs to to be named postinst for debian
-configure_file("${mv_packaging_dir}/server/postinst-deb" "${script_dir}/server/postinst" @ONLY)
-
-configure_file("${mv_packaging_dir}/server/postinst-rpm" "${script_dir}/server" @ONLY)
+configure_file("${mv_packaging_dir}/server/postinst" "${script_dir}/server" @ONLY)
 configure_file("${mv_packaging_dir}/server/prerm" "${script_dir}/server" @ONLY)
 set(LIB_DIR lib)
 configure_file("${mv_packaging_dir}/clients/postinst" "${script_dir}/clients" @ONLY)
@@ -285,18 +282,13 @@ if(NOT WIN32)
   install(FILES ${CMAKE_SOURCE_DIR}/packaging/make_public.py
     DESTINATION "usr/lib/foundationdb"
     COMPONENT server-deb)
-  install(FILES ${CMAKE_SOURCE_DIR}/packaging/rpm/foundationdb.service
+  install(FILES ${CMAKE_SOURCE_DIR}/packaging/foundationdb.service
     DESTINATION "lib/systemd/system"
     COMPONENT server-el9)
-  install(PROGRAMS ${CMAKE_SOURCE_DIR}/packaging/deb/foundationdb-init
-    DESTINATION "etc/init.d"
-    RENAME "foundationdb"
+  install(FILES ${CMAKE_SOURCE_DIR}/packaging/foundationdb.service
+    DESTINATION "lib/systemd/system"
     COMPONENT server-deb)
-  install(FILES ${CMAKE_SOURCE_DIR}/packaging/rpm/foundationdb.service
+  install(FILES ${CMAKE_SOURCE_DIR}/packaging/foundationdb.service
     DESTINATION "usr/lib/foundationdb-${FDB_VERSION}/lib/systemd/system"
-    COMPONENT server-versioned)
-  install(PROGRAMS ${CMAKE_SOURCE_DIR}/packaging/deb/foundationdb-init
-    DESTINATION "usr/lib/foundationdb-${FDB_VERSION}/etc/init.d"
-    RENAME "foundationdb"
     COMPONENT server-versioned)
 endif()

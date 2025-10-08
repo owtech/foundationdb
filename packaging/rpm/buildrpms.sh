@@ -27,7 +27,7 @@ mkdir -p -m 0755 $INSTDIR/var/lib/foundationdb/data
 
 install -m 0644 packaging/foundationdb.conf $INSTDIR/etc/foundationdb
 install -m 0755 packaging/rpm/foundationdb-init $INSTDIR/etc/rc.d/init.d/foundationdb
-install -m 0644 packaging/rpm/foundationdb.service $INSTDIR/lib/systemd/system/foundationdb.service
+install -m 0644 packaging/foundationdb.service $INSTDIR/lib/systemd/system/foundationdb.service
 install -m 0755 bin/fdbcli $INSTDIR/usr/bin
 install -m 0755 bin/fdbserver $INSTDIR/usr/sbin
 install -m 0755 bin/fdbmonitor $INSTDIR/usr/sbin
