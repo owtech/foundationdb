@@ -406,9 +406,7 @@ std::string DatabaseConfiguration::configureStringFromJSON(const StatusObject& j
 			continue;
 		}
 
-		if (!result.empty()) {
-			result += " ";
-		}
+		result += " ";
 		// All integers are assumed to be actual DatabaseConfig keys and are set with
 		// the hidden "<name>:=<intValue>" syntax of the configure command.
 		if (kv.second.type() == json_spirit::int_type) {
@@ -451,10 +449,7 @@ std::string DatabaseConfiguration::configureStringFromJSON(const StatusObject& j
 	// explicit log_engine we simply add " log_engine=ssd-2" to the output string if the input JSON did not contain a
 	// log_engine.
 	if (!json.contains("log_engine")) {
-		if (!result.empty()) {
-			result += " ";
-		}
-		result += "log_engine=ssd-2";
+		result += " log_engine=ssd-2";
 	}
 
 	return result;
