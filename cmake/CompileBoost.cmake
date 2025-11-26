@@ -86,6 +86,7 @@ function(compile_boost)
                        --with-libraries=${BOOTSTRAP_LIBRARIES}
                        --with-toolset=${BOOST_TOOLSET}
     BUILD_COMMAND      ${B2_COMMAND}
+                       -d0
                        link=static ${B2_ADDTTIONAL_BUILD_ARGS}
                        ${COMPILE_BOOST_BUILD_ARGS}
                        --prefix=${BOOST_INSTALL_DIR}

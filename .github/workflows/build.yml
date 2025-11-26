@@ -49,7 +49,7 @@ jobs:
             for: linux
             prepare: "debian-based"
             build_on: linux
-            parallel: 2
+            parallel: 5
             image: foundationdb-build:7.4.1-0.ow.build
             owner: ${GITHUB_REPOSITORY_OWNER@L}
     runs-on: ${{ matrix.run_on }}
