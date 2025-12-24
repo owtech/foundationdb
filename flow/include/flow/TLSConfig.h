@@ -174,7 +174,9 @@ public:
 
 	void setDisablePlainTextConnection(const bool val) { tlsDisablePlainTextConnection = val; }
 
-	void setPassword(const std::string& password) { tlsPassword = password; }
+	void setPassword(const std::string& password);
+
+	static bool encodePassword(const std::string& plainPassword, std::string& encoded);
 
 	void clearVerifyPeers() { tlsVerifyPeers.clear(); }
 
