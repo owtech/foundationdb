@@ -173,9 +173,7 @@ public:
 		tlsCAPath = "";
 	}
 
-	void setPassword(const std::string& password);
-
-	static bool encodePassword(const std::string& plainPassword, std::string& encoded);
+	void setPassword(const std::string& password) { tlsPassword = password; }
 
 	void clearVerifyPeers() { tlsVerifyPeers.clear(); }
 
