@@ -2070,6 +2070,7 @@ public:
 					                                                   used,
 					                                                   preferredSharing);
 					preferredSharing[first_resolver.worker.interf.locality.processId()] = 2;
+
 					// If one of the first process recruitments is forced to share a process, allow all of next
 					// recruitments to also share a process.
 					auto maxUsed = std::max({ first_commit_proxy.used, first_grv_proxy.used, first_resolver.used });
@@ -2260,8 +2261,8 @@ public:
 					updateKnownIds(&firstUsed);
 					updateKnownIds(&secondUsed);
 
-					updateIdUsed(rep.tLogs, firstUsed);
-					updateIdUsed(compare.tLogs, secondUsed);
+					updateIdUsed(rep.tLogs, ProcessClass::TLog, firstUsed);
+					updateIdUsed(compare.tLogs, ProcessClass::TLog, secondUsed);
 					compareWorkers(
 					    req.configuration, rep.tLogs, firstUsed, compare.tLogs, secondUsed, ProcessClass::TLog, "TLog");
 					updateIdUsed(rep.satelliteTLogs, ProcessClass::TLog, firstUsed);

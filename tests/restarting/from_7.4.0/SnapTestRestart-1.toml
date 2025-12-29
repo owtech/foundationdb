@@ -1,7 +1,7 @@
 [configuration]
 storageEngineExcludeTypes=[4,5]
 logAntiQuorum=0
-tenantModes=['disabled']
+tenantModes = ['disabled']
 encryptModes = ['disabled']
 
 [[knobs]]

@@ -231,7 +231,7 @@ ACTOR Future<Void> recruitLogRouters(ClusterControllerData* cluster,
 	    db->recoveryData->remoteDcIds.size() ? db->recoveryData->remoteDcIds[0] : Optional<Key>();
 
 	// Use getWorkersForRoleInDatacenter to get workers for all log routers at once
-	std::map<Optional<Standalone<StringRef>>, int> id_used;
+	ClusterControllerData::WorkerUsages id_used;
 	cluster->updateKnownIds(&id_used);
 
 	state std::vector<WorkerDetails> workers =

@@ -2188,8 +2188,8 @@ ACTOR Future<Void> commitBatchImpl(CommitBatchContext* pContext) {
 	pContext->pProxyCommitData->lastVersionTime = pContext->startTime;
 	++pContext->pProxyCommitData->stats.commitBatchIn;
 	pContext->setupTraceBatch();
-	pcontext->pProxyCommitData->stats.commitBatchBytes.addMeasurement(context.currentBatchMemBytesCount);
-	pcontext->pProxyCommitData->stats.commitBatchTransactions.addMeasurement(context.trs.size());
+	pContext->pProxyCommitData->stats.commitBatchBytes.addMeasurement(pContext->currentBatchMemBytesCount);
+	pContext->pProxyCommitData->stats.commitBatchTransactions.addMeasurement(pContext->trs.size());
 
 	/////// Phase 1: Pre-resolution processing (CPU bound except waiting for a version # which is separately pipelined
 	/// and *should* be available by now (unless empty commit); ordered; currently atomic but could yield)
