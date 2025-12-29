@@ -82,6 +82,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( CONCURRENT_LOG_ROUTER_READS,                             5 ); if( randomize && BUGGIFY ) CONCURRENT_LOG_ROUTER_READS = 1;
 	init( LOG_ROUTER_PEEK_FROM_SATELLITES_PREFERRED,               1 ); if( randomize && BUGGIFY ) LOG_ROUTER_PEEK_FROM_SATELLITES_PREFERRED = 0;
 	init( LOG_ROUTER_PEEK_SWITCH_DC_TIME,                       60.0 );
+	init( LOG_ROUTER_REPLACEMENT_GRACE_PERIOD,                  30.0 );
 	init( DISK_QUEUE_ADAPTER_MIN_SWITCH_TIME,                    1.0 );
 	init( DISK_QUEUE_ADAPTER_MAX_SWITCH_TIME,                    5.0 );
 	init( TLOG_SPILL_REFERENCE_MAX_PEEK_MEMORY_BYTES,            2e9 ); if ( randomize && BUGGIFY ) TLOG_SPILL_REFERENCE_MAX_PEEK_MEMORY_BYTES = 2e6;
@@ -112,6 +113,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( PUSH_STATS_SLOW_AMOUNT,                                  2 );
 	init( PUSH_STATS_SLOW_RATIO,                                 0.5 );
 	init( TLOG_POP_BATCH_SIZE,                                  1000 ); if ( randomize && BUGGIFY ) TLOG_POP_BATCH_SIZE = 10;
+	init( ENABLE_TLOG_TEMP_TAG_MESSAGES_RESERVE,               false );
 	init( TLOG_POPPED_VER_LAG_THRESHOLD_FOR_TLOGPOP_TRACE,     250e6 );
 	init( BLOCKING_PEEK_TIMEOUT,                                 0.4 );
 	init( ENABLE_DETAILED_TLOG_POP_TRACE,                      false ); if ( randomize && BUGGIFY ) ENABLE_DETAILED_TLOG_POP_TRACE = true;
@@ -345,13 +347,6 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( DD_STORAGE_WIGGLE_PAUSE_THRESHOLD,                      10 ); if( randomize && BUGGIFY ) DD_STORAGE_WIGGLE_PAUSE_THRESHOLD = 1000;
 	init( DD_STORAGE_WIGGLE_STUCK_THRESHOLD,                      20 );
 	init( DD_STORAGE_WIGGLE_MIN_SS_AGE_SEC,   isSimulated ? 2 : 35 * 60 * 60 * 24 ); if(randomize && BUGGIFY) DD_STORAGE_WIGGLE_MIN_SS_AGE_SEC = isSimulated ? 0: 120;
-	init( DD_TENANT_AWARENESS_ENABLED,                         false );
-	init( STORAGE_QUOTA_ENABLED,                                true ); if(isSimulated) STORAGE_QUOTA_ENABLED = deterministicRandom()->coinflip();
-	init( TENANT_CACHE_LIST_REFRESH_INTERVAL,                     30 ); if(isSimulated) TENANT_CACHE_LIST_REFRESH_INTERVAL = 5; if( randomize && BUGGIFY ) TENANT_CACHE_LIST_REFRESH_INTERVAL = deterministicRandom()->randomInt(1, 10);
-	init( TENANT_CACHE_STORAGE_USAGE_REFRESH_INTERVAL,           180 ); if(isSimulated) TENANT_CACHE_STORAGE_USAGE_REFRESH_INTERVAL = 10; if( randomize && BUGGIFY ) TENANT_CACHE_STORAGE_USAGE_REFRESH_INTERVAL = deterministicRandom()->randomInt(5, 15);
-	init( TENANT_CACHE_STORAGE_QUOTA_REFRESH_INTERVAL,            30 ); if(isSimulated) TENANT_CACHE_STORAGE_QUOTA_REFRESH_INTERVAL = 5; if( randomize && BUGGIFY ) TENANT_CACHE_STORAGE_QUOTA_REFRESH_INTERVAL = deterministicRandom()->randomInt(1, 10);
-	init( TENANT_CACHE_STORAGE_USAGE_TRACE_INTERVAL,             300 );
-	init( CP_FETCH_TENANTS_OVER_STORAGE_QUOTA_INTERVAL,            5 ); if( randomize && BUGGIFY ) CP_FETCH_TENANTS_OVER_STORAGE_QUOTA_INTERVAL = deterministicRandom()->randomInt(1, 10);
 	init( DD_BUILD_EXTRA_TEAMS_OVERRIDE,                          10 ); if( randomize && BUGGIFY ) DD_BUILD_EXTRA_TEAMS_OVERRIDE = 2;
 	init( DD_REMOVE_MAINTENANCE_ON_FAILURE,                     true ); if( randomize && BUGGIFY ) DD_REMOVE_MAINTENANCE_ON_FAILURE = false;
 	init( DD_SHARD_TRACKING_LOG_SEVERITY,                          1 );
@@ -693,7 +688,6 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( TAG_THROTTLE_MAX_EMPTY_QUEUE_BUDGET,                1000.0 );
 	init( START_TRANSACTION_MAX_QUEUE_SIZE,                      1e6 ); if ( randomize && BUGGIFY ) START_TRANSACTION_MAX_QUEUE_SIZE = 1000;
 	init( KEY_LOCATION_MAX_QUEUE_SIZE,                           1e6 );
-	init( TENANT_ID_REQUEST_MAX_QUEUE_SIZE,                      1e6 );
 
 	init( COMMIT_PROXY_LIVENESS_TIMEOUT,                        20.0 );
 	init( COMMIT_PROXY_MAX_LIVENESS_TIMEOUT,                   600.0 ); if ( randomize && BUGGIFY ) COMMIT_PROXY_MAX_LIVENESS_TIMEOUT = 20.0;
@@ -867,6 +861,8 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( SINGLETON_RECRUIT_BME_DELAY,                          10.0 );
 	init( RECORD_RECOVER_AT_IN_CSTATE,                         false ); if( randomize && BUGGIFY ) RECORD_RECOVER_AT_IN_CSTATE = deterministicRandom()->coinflip();
 	init( TRACK_TLOG_RECOVERY,                                  true ); if ( randomize && BUGGIFY ) TRACK_TLOG_RECOVERY = deterministicRandom()->coinflip();
+	init( CC_RERECRUIT_LOG_ROUTER_TIMEOUT,                       5.0 );
+	init( CC_RERECRUIT_LOG_ROUTER_ENABLED,                      true ); if ( randomize && BUGGIFY ) CC_RERECRUIT_LOG_ROUTER_ENABLED = deterministicRandom()->coinflip();
 
 	//Move Keys
 	init( SHARD_READY_DELAY,                                    0.25 );
@@ -1123,6 +1119,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( PHYSICAL_SHARD_MOVE_LOG_SEVERITY,                        1 );
 	init( FETCH_SHARD_BUFFER_BYTE_LIMIT,                        20e6 ); if( randomize && BUGGIFY ) FETCH_SHARD_BUFFER_BYTE_LIMIT = 1;
 	init( FETCH_SHARD_UPDATES_BYTE_LIMIT,                    2500000 ); if( randomize && BUGGIFY ) FETCH_SHARD_UPDATES_BYTE_LIMIT = 100;
+	init( TRACK_READ_LATENCIES_PER_TYPE,                       false ); if( randomize && BUGGIFY ) TRACK_READ_LATENCIES_PER_TYPE = true;
 
 	//Wait Failure
 	init( MAX_OUTSTANDING_WAIT_FAILURE_REQUESTS,                 250 ); if( randomize && BUGGIFY ) MAX_OUTSTANDING_WAIT_FAILURE_REQUESTS = 2;

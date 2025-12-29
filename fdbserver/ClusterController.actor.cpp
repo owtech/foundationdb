@@ -38,7 +38,6 @@
 #include "flow/ActorCollection.h"
 #include "fdbclient/ClusterConnectionMemoryRecord.h"
 #include "fdbclient/NativeAPI.actor.h"
-#include "fdbclient/TenantManagement.actor.h"
 #include "fdbserver/ApplyMetadataMutation.h"
 #include "fdbserver/BackupInterface.h"
 #include "fdbserver/BackupProgress.actor.h"
@@ -70,8 +69,6 @@
 #include "flow/Error.h"
 #include "flow/Trace.h"
 #include "flow/Util.h"
-
-#include "metacluster/MetaclusterMetrics.h"
 
 #include "flow/actorcompiler.h" // This must be the last #include.
 
@@ -223,6 +220,240 @@ bool ClusterControllerData::remoteTransactionSystemContainsDegradedServers() {
 	return false;
 }
 
+// Recruit failed log routers in parallel
+ACTOR Future<Void> recruitLogRouters(ClusterControllerData* cluster,
+                                     ClusterControllerData::DBInfo* db,
+                                     std::vector<int> tagIds,
+                                     int logSetIndex,
+                                     Reference<ILogSystem> logSystem,
+                                     LogSystemConfig config) {
+	state Optional<Key> targetDcId =
+	    db->recoveryData->remoteDcIds.size() ? db->recoveryData->remoteDcIds[0] : Optional<Key>();
+
+	// Use getWorkersForRoleInDatacenter to get workers for all log routers at once
+	std::map<Optional<Standalone<StringRef>>, int> id_used;
+	cluster->updateKnownIds(&id_used);
+
+	state std::vector<WorkerDetails> workers =
+	    cluster->getWorkersForRoleInDatacenter(targetDcId, ProcessClass::LogRouter, tagIds.size(), db->config, id_used);
+
+	if (workers.size() < tagIds.size()) {
+		TraceEvent(SevWarn, "NotEnoughWorkersForLogRouters", cluster->id)
+		    .detail("Required", tagIds.size())
+		    .detail("Available", workers.size())
+		    .detail("TargetDcId", targetDcId);
+		throw recruitment_failed();
+	}
+
+	// Replacement log routers will determine their own start version by querying
+	// the popped version from the peek cursor in LogRouter.cpp
+	TraceEvent("RecruitingLogRouters", cluster->id)
+	    .detail("Count", tagIds.size())
+	    .detail("LogSetIndex", logSetIndex)
+	    .detail("TargetDcId", targetDcId);
+
+	// Build requests for all log routers and send them in parallel
+	state std::vector<Future<ErrorOr<TLogInterface>>> recruitments;
+
+	for (int i = 0; i < tagIds.size(); i++) {
+		Tag routerTag = Tag(tagLocalityLogRouter, tagIds[i]);
+		InitializeLogRouterRequest req;
+		req.reqId = deterministicRandom()->randomUniqueID();
+		req.recoveryCount = db->recoveryData->cstate.myDBState.recoveryCount;
+		req.routerTag = routerTag;
+		// Start at version 0 - the log router will determine the actual start version
+		// by querying the popped version from the peek cursor
+		req.startVersion = 0;
+		req.locality = config.tLogs[logSetIndex].locality;
+		req.isReplacement = true;
+
+		for (auto& tLogSet : config.tLogs) {
+			if (!tLogSet.isLocal && tLogSet.tLogs.size() > 0) {
+				req.tLogLocalities = tLogSet.tLogLocalities;
+				req.tLogPolicy = tLogSet.tLogPolicy;
+				break;
+			}
+		}
+
+		if (db->recoveryData->logSystem.isValid()) {
+			auto lsConfig = db->recoveryData->logSystem->getLogSystemConfig();
+			if (lsConfig.recoveredAt.present()) {
+				req.recoverAt = lsConfig.recoveredAt.get();
+			}
+		}
+
+		req.allowDropInSim = g_network->isSimulated() && deterministicRandom()->coinflip();
+		CODE_PROBE(req.allowDropInSim, "Log router recruitment requests dropped in simulation");
+
+		TraceEvent("RecruitingLogRouterOnWorker", cluster->id)
+		    .detail("WorkerID", workers[i].interf.id())
+		    .detail("Tag", routerTag)
+		    .detail("TagId", tagIds[i]);
+
+		recruitments.push_back(workers[i].interf.logRouter.getReplyUnlessFailedFor(
+		    req, SERVER_KNOBS->TLOG_TIMEOUT, SERVER_KNOBS->MASTER_FAILURE_SLOPE_DURING_RECOVERY));
+	}
+
+	// Wait for all recruitments to complete
+	state Future<Void> timeout = delay(SERVER_KNOBS->CC_RERECRUIT_LOG_ROUTER_TIMEOUT);
+	wait(waitForAll(recruitments) || timeout);
+
+	if (timeout.isReady()) {
+		TraceEvent(SevWarn, "LogRoutersRecruitmentTimeout", cluster->id)
+		    .detail("TagCount", tagIds.size())
+		    .detail("LogSetIndex", logSetIndex);
+		throw recruitment_failed();
+	}
+
+	// Update all successfully recruited log routers
+	for (int i = 0; i < recruitments.size(); i++) {
+		ErrorOr<TLogInterface> result = recruitments[i].get();
+		if (result.isError()) {
+			TraceEvent(SevWarn, "LogRouterRecruitmentFailed", cluster->id)
+			    .error(result.getError())
+			    .detail("TagId", tagIds[i]);
+			throw recruitment_failed();
+		}
+
+		TLogInterface logRouterInterf = result.get();
+		Tag routerTag = Tag(tagLocalityLogRouter, tagIds[i]);
+
+		TraceEvent("LogRouterRecruited", cluster->id)
+		    .detail("Tag", routerTag)
+		    .detail("LogRouterID", logRouterInterf.id())
+		    .detail("WorkerID", workers[i].interf.id())
+		    .detail("LogSetIndex", logSetIndex);
+
+		// Update the log system configuration
+		logSystem->updateLogRouter(logSetIndex, tagIds[i], logRouterInterf);
+	}
+
+	// Trigger registration update to propagate to ServerDBInfo
+	db->recoveryData->registrationTrigger.trigger();
+
+	TraceEvent("LogRoutersRecruitmentComplete", cluster->id).detail("Count", tagIds.size());
+
+	return Void();
+}
+
+ACTOR Future<Void> monitorAndRecruitLogRouters(ClusterControllerData* self) {
+	loop {
+		// Wait until fully recovered
+		while (self->db.serverInfo->get().recoveryState < RecoveryState::FULLY_RECOVERED) {
+			wait(self->db.serverInfo->onChange());
+		}
+
+		ASSERT(self->db.recoveryData.isValid());
+		state uint64_t recoveryCount = self->db.recoveryData->cstate.myDBState.recoveryCount;
+		state Reference<ILogSystem> logSystem = self->db.recoveryData->logSystem;
+		state LogSystemConfig config = logSystem->getLogSystemConfig();
+
+		// Find the log set with log routers (should be remote/satellite)
+		state int logSetIndex = -1;
+
+		for (int i = 0; i < config.tLogs.size(); i++) {
+			if (config.tLogs[i].logRouters.size() > 0) {
+				ASSERT_WE_THINK(logSetIndex == -1); // only one log set should have log routers
+				logSetIndex = i;
+			}
+		}
+
+		if (logSetIndex == -1) {
+			TraceEvent("NoLogRoutersToMonitor", self->id).detail("RecoveryCount", recoveryCount).log();
+			// Wait for recovery to change before trying again
+			while (self->db.serverInfo->get().recoveryState == RecoveryState::FULLY_RECOVERED &&
+			       self->db.recoveryData.isValid() &&
+			       self->db.recoveryData->cstate.myDBState.recoveryCount == recoveryCount) {
+				wait(self->db.serverInfo->onChange());
+			}
+			continue;
+		}
+
+		TraceEvent("LogRouterMonitoringStart", self->id)
+		    .detail("LogSetIndex", logSetIndex)
+		    .detail("LogRouterCount", config.tLogs[logSetIndex].logRouters.size())
+		    .detail("IsLocal", config.tLogs[logSetIndex].isLocal)
+		    .detail("Locality", config.tLogs[logSetIndex].locality)
+		    .detail("RecoveryCount", recoveryCount);
+
+		state double failedRecuitDelay = 1.0;
+		loop {
+			// Check if recovery changed - if so, exit inner loop and restart monitoring for new recovery
+			if (!self->db.recoveryData.isValid() || !self->db.recoveryData->logSystem.isValid() ||
+			    self->db.serverInfo->get().recoveryState < RecoveryState::FULLY_RECOVERED ||
+			    self->db.recoveryData->cstate.myDBState.recoveryCount != recoveryCount) {
+				TraceEvent("LogRouterMonitoringEnded", self->id)
+				    .detail("Reason", "RecoveryChanged")
+				    .detail("OldRecoveryCount", recoveryCount)
+				    .detail("NewRecoveryCount",
+				            self->db.recoveryData.isValid() ? self->db.recoveryData->cstate.myDBState.recoveryCount
+				                                            : -1);
+				break; // Break inner loop, will restart monitoring for new recovery
+			}
+
+			// Build list of failure monitors for all log routers
+			state std::vector<Future<Void>> failures;
+
+			config = logSystem->getLogSystemConfig();
+
+			ASSERT(config.tLogs[logSetIndex].logRouters.size() > 0);
+			for (int i = 0; i < config.tLogs[logSetIndex].logRouters.size(); i++) {
+				ASSERT(config.tLogs[logSetIndex].logRouters[i].present());
+				auto& logRouter = config.tLogs[logSetIndex].logRouters[i];
+				failures.push_back(
+				    waitFailureClient(logRouter.interf().waitFailure,
+				                      SERVER_KNOBS->TLOG_TIMEOUT,
+				                      -SERVER_KNOBS->TLOG_TIMEOUT / SERVER_KNOBS->SECONDS_BEFORE_NO_FAILURE_DELAY,
+				                      /*trace=*/true));
+
+				TraceEvent("LogRouterMonitoring", self->id)
+				    .detail("TagId", i)
+				    .detail("RouterID", logRouter.interf().id());
+			}
+
+			// Wait for any log router to fail OR recovery to change
+			choose {
+				when(wait(quorum(failures, 1))) {
+					// Log router failed, continue to handle it
+				}
+				when(wait(self->db.serverInfo->onChange())) {
+					// Recovery state changed, loop back to check if we should exit
+					continue;
+				}
+			}
+
+			// Find which log routers failed and re-recruit them
+			state std::vector<int> failedTagIds;
+			state LogSystemConfig newConfig = logSystem->getLogSystemConfig();
+
+			for (int i = 0; i < failures.size(); i++) {
+				if (failures[i].isReady() || failures[i].isError()) {
+					failedTagIds.push_back(i);
+					TraceEvent(SevWarn, "LogRouterMonitoringFoundFailed", self->id).detail("TagId", i);
+				}
+			}
+
+			// Re-recruit all failed log routers in parallel
+			ASSERT_WE_THINK(!failedTagIds.empty());
+			try {
+				wait(recruitLogRouters(self, &self->db, failedTagIds, logSetIndex, logSystem, newConfig));
+				failedRecuitDelay = 1.0; // Reset backoff on success
+			} catch (Error& e) {
+				CODE_PROBE(true, "Log router re-recruitment failed");
+				failedRecuitDelay = std::min(failedRecuitDelay * 2, 60.0); // Exponential backoff up to 1 minute
+				TraceEvent(SevWarnAlways, "LogRoutersRecruitmentFailed", self->id)
+				    .error(e)
+				    .detail("FailedCount", failedTagIds.size())
+				    .detail("LogSetIndex", logSetIndex)
+				    .detail("NextRetryDelay", failedRecuitDelay);
+			}
+
+			// Wait a bit before restarting monitoring
+			wait(delay(failedRecuitDelay));
+		} // End of inner loop (monitoring this recovery)
+	} // End of outer loop (restart for each recovery)
+}
+
 ACTOR Future<Void> clusterWatchDatabase(ClusterControllerData* cluster,
                                         ClusterControllerData::DBInfo* db,
                                         ServerCoordinators coordinators) {
@@ -262,10 +493,8 @@ ACTOR Future<Void> clusterWatchDatabase(ClusterControllerData* cluster,
 			dbInfo.myLocality = db->serverInfo->get().myLocality;
 			dbInfo.client = ClientDBInfo();
 			dbInfo.client.encryptKeyProxy = db->serverInfo->get().client.encryptKeyProxy;
-			dbInfo.client.tenantMode = TenantAPI::tenantModeForClusterType(db->clusterType, db->config.tenantMode);
 			dbInfo.client.clusterId = db->serverInfo->get().client.clusterId;
 			dbInfo.client.clusterType = db->clusterType;
-			dbInfo.client.metaclusterName = db->metaclusterName;
 
 			TraceEvent("CCWDB", cluster->id)
 			    .detail("NewMaster", dbInfo.master.id().toString())
@@ -972,10 +1201,8 @@ void clusterRegisterMaster(ClusterControllerData* self, RegisterMasterRequest co
 	// Construct the client information
 	if (db->clientInfo->get().commitProxies != req.commitProxies ||
 	    db->clientInfo->get().grvProxies != req.grvProxies ||
-	    db->clientInfo->get().tenantMode != db->config.tenantMode ||
 	    db->clientInfo->get().clusterId != db->serverInfo->get().client.clusterId ||
-	    db->clientInfo->get().clusterType != db->clusterType ||
-	    db->clientInfo->get().metaclusterName != db->metaclusterName) {
+	    db->clientInfo->get().clusterType != db->clusterType) {
 		TraceEvent("PublishNewClientInfo", self->id)
 		    .detail("Master", dbInfo.master.id())
 		    .detail("GrvProxies", db->clientInfo->get().grvProxies)
@@ -983,14 +1210,10 @@ void clusterRegisterMaster(ClusterControllerData* self, RegisterMasterRequest co
 		    .detail("CommitProxies", db->clientInfo->get().commitProxies)
 		    .detail("GlobalConfigHistorySize", db->clientInfo->get().history.size())
 		    .detail("ReqCPs", req.commitProxies)
-		    .detail("TenantMode", db->clientInfo->get().tenantMode.toString())
-		    .detail("ReqTenantMode", db->config.tenantMode.toString())
 		    .detail("ClusterId", db->serverInfo->get().client.clusterId)
 		    .detail("ClientClusterId", db->clientInfo->get().clusterId)
 		    .detail("ClusterType", db->clientInfo->get().clusterType)
-		    .detail("ReqClusterType", db->clusterType)
-		    .detail("MetaclusterName", db->clientInfo->get().metaclusterName)
-		    .detail("ReqMetaclusterName", db->metaclusterName);
+		    .detail("ReqClusterType", db->clusterType);
 		isChanged = true;
 		// TODO why construct a new one and not just copy the old one and change proxies + id?
 		ClientDBInfo clientInfo;
@@ -999,10 +1222,8 @@ void clusterRegisterMaster(ClusterControllerData* self, RegisterMasterRequest co
 		clientInfo.commitProxies = req.commitProxies;
 		clientInfo.grvProxies = req.grvProxies;
 		clientInfo.history = db->clientInfo->get().history;
-		clientInfo.tenantMode = TenantAPI::tenantModeForClusterType(db->clusterType, db->config.tenantMode);
 		clientInfo.clusterId = db->serverInfo->get().client.clusterId;
 		clientInfo.clusterType = db->clusterType;
-		clientInfo.metaclusterName = db->metaclusterName;
 		db->clientInfo->set(clientInfo);
 		dbInfo.client = db->clientInfo->get();
 	}
@@ -1438,8 +1659,6 @@ ACTOR Future<Void> statusServer(FutureStream<StatusRequest> requests,
 			                                                                  self->dcLogServerVersionDifference,
 			                                                                  self->dcStorageServerVersionDifference,
 			                                                                  configBroadcaster,
-			                                                                  self->db.metaclusterRegistration,
-			                                                                  self->db.metaclusterMetrics,
 			                                                                  self->excludedDegradedServers)));
 
 			if (result.isError() && result.getError().code() == error_code_actor_cancelled)
@@ -2680,30 +2899,6 @@ ACTOR Future<Void> workerHealthMonitor(ClusterControllerData* self) {
 	}
 }
 
-ACTOR Future<Void> metaclusterMetricsUpdater(ClusterControllerData* self) {
-	state Future<Void> updaterDelay = Void();
-	loop {
-		choose {
-			when(wait(self->db.serverInfo->onChange())) {
-				updaterDelay = Void();
-			}
-			when(wait(self->db.clusterType == ClusterType::METACLUSTER_MANAGEMENT ? updaterDelay : Never())) {
-				try {
-					wait(store(self->db.metaclusterMetrics,
-					           metacluster::MetaclusterMetrics::getMetaclusterMetrics(self->cx)));
-				} catch (Error& e) {
-					// Ignore errors about the cluster changing type
-					if (e.code() != error_code_invalid_metacluster_operation) {
-						throw;
-					}
-				}
-
-				updaterDelay = delay(60.0);
-			}
-		}
-	}
-}
-
 // Update the DBInfo state with this processes cluster ID. If this process does
 // not have a cluster ID and one does not exist in the database, generate one.
 ACTOR Future<Void> updateClusterId(ClusterControllerData* self) {
@@ -2803,7 +2998,6 @@ ACTOR Future<Void> clusterControllerCore(ClusterControllerFullInterface interf,
 	self.addActor.send(monitorRatekeeper(&self));
 
 	self.addActor.send(monitorConsistencyScan(&self));
-	self.addActor.send(metaclusterMetricsUpdater(&self));
 	self.addActor.send(dbInfoUpdater(&self));
 	self.addActor.send(updateClusterId(&self));
 	self.addActor.send(handleGetEncryptionAtRestMode(&self, interf));
@@ -2816,6 +3010,11 @@ ACTOR Future<Void> clusterControllerCore(ClusterControllerFullInterface interf,
 	if (SERVER_KNOBS->CC_ENABLE_WORKER_HEALTH_MONITOR) {
 		self.addActor.send(workerHealthMonitor(&self));
 		self.addActor.send(updateRemoteDCHealth(&self));
+	}
+
+	if (SERVER_KNOBS->CC_RERECRUIT_LOG_ROUTER_ENABLED) {
+		// Start monitoring log routers for re-recruitment
+		self.addActor.send(monitorAndRecruitLogRouters(&self));
 	}
 
 	loop choose {

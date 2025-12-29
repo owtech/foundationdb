@@ -317,6 +317,7 @@ CSimpleOpt::SOption g_rgBackupModifyOptions[] = {
 	{ OPT_SNAPSHOTINTERVAL, "-s", SO_REQ_SEP },
 	{ OPT_SNAPSHOTINTERVAL, "--snapshot-interval", SO_REQ_SEP },
 	{ OPT_MOD_ACTIVE_INTERVAL, "--active-snapshot-interval", SO_REQ_SEP },
+	{ OPT_ENCRYPTION_KEY_FILE, "--encryption-key-file", SO_REQ_SEP },
 	TLS_OPTION_FLAGS,
 	SO_END_OF_OPTIONS
 };
@@ -1128,7 +1129,10 @@ static void printBackupUsage(bool devhelp) {
 	       "                 This option indicates to the backup agent that it will only need to record the log files, "
 	       "and ignore the range files.\n");
 	printf("  --encryption-key-file"
-	       "                 The AES-256-GCM key in the provided file is used for encrypting backup files.\n");
+	       "                 The AES-256-GCM key in the provided file is used for encrypting backup files.\n"
+	       "                 For modify operations, need to pass encryption key file only if Backup container URL is "
+	       "changed to "
+	       "re-encrypt all future backup files. \n");
 	printf("  --encrypt-files 0/1"
 	       "                 If passed, this argument will allow the user to override the database encryption state to "
 	       "either enable (1) or disable (0) encryption at rest with snapshot backups. This option refers to block "
@@ -3011,6 +3015,7 @@ struct BackupModifyOptions {
 	Optional<std::string> proxy;
 	Optional<int> snapshotIntervalSeconds;
 	Optional<int> activeSnapshotIntervalSeconds;
+	Optional<std::string> encryptionKeyFile;
 	bool hasChanges() const {
 		return destURL.present() || snapshotIntervalSeconds.present() || activeSnapshotIntervalSeconds.present();
 	}
@@ -3023,22 +3028,6 @@ ACTOR Future<Void> modifyBackup(Database db, std::string tagName, BackupModifyOp
 	}
 
 	state KeyBackedTag tag = makeBackupTag(tagName);
-
-	state Reference<IBackupContainer> bc;
-	if (options.destURL.present()) {
-		bc = openBackupContainer(exeBackup.toString().c_str(), options.destURL.get(), options.proxy, {});
-		try {
-			wait(timeoutError(bc->create(), 30));
-		} catch (Error& e) {
-			if (e.code() == error_code_actor_cancelled)
-				throw;
-			fprintf(stderr,
-			        "ERROR: Could not create backup container at '%s': %s\n",
-			        options.destURL.get().c_str(),
-			        e.what());
-			throw backup_error();
-		}
-	}
 
 	state Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(db));
 	loop {
@@ -3074,6 +3063,59 @@ ACTOR Future<Void> modifyBackup(Database db, std::string tagName, BackupModifyOp
 				throw backup_error();
 			}
 
+			if (options.destURL.present()) {
+				state Reference<IBackupContainer> prevContainer =
+				    wait(config.backupContainer().getOrThrow(tr, Snapshot::False, backup_invalid_info()));
+				std::string prevURL = prevContainer->getURL();
+				std::string newURL = options.destURL.get();
+				if (!prevURL.empty() && prevURL.back() == '/') {
+					prevURL.pop_back();
+				}
+				if (!newURL.empty() && newURL.back() == '/') {
+					newURL.pop_back();
+				}
+
+				if (prevURL == newURL) {
+					if ((options.encryptionKeyFile.present() && !prevContainer->getEncryptionKeyFileName().present()) ||
+					    (!options.encryptionKeyFile.present() && prevContainer->getEncryptionKeyFileName().present()) ||
+					    (options.encryptionKeyFile.present() && prevContainer->getEncryptionKeyFileName().present() &&
+					     options.encryptionKeyFile.get() != prevContainer->getEncryptionKeyFileName().get())) {
+						fprintf(stderr,
+						        "Destination URL matches the existing backup URL for tag '%s', "
+						        "but the encryption key file does not match.\n",
+						        tagName.c_str());
+						throw backup_error();
+					}
+				}
+
+				state Reference<IBackupContainer> bc;
+				TraceEvent("ModifyBackupSetNewContainer")
+				    .detail("TagName", tagName)
+				    .detail("DestURL", options.destURL.get())
+				    .detail("EncryptionKeyFile",
+				            options.encryptionKeyFile.present() ? options.encryptionKeyFile.get() : "None");
+				bc = openBackupContainer(
+				    exeBackup.toString().c_str(), options.destURL.get(), options.proxy, options.encryptionKeyFile);
+				try {
+					wait(timeoutError(bc->create(), 30));
+				} catch (Error& e) {
+					if (e.code() == error_code_actor_cancelled)
+						throw;
+					fprintf(stderr,
+					        "ERROR: Could not create backup container at '%s': %s\n",
+					        options.destURL.get().c_str(),
+					        e.what());
+					throw backup_error();
+				}
+
+				config.backupContainer().set(tr, bc);
+				wait(bc->writeEncryptionMetadata());
+			} else if (options.encryptionKeyFile.present()) {
+				fprintf(stdout,
+				        " Encryption key file specified without a new destination URL."
+				        " The encryption key will not be used.\n");
+			}
+
 			if (options.snapshotIntervalSeconds.present()) {
 				config.snapshotIntervalSeconds().set(tr, options.snapshotIntervalSeconds.get());
 			}
@@ -3083,10 +3125,6 @@ ACTOR Future<Void> modifyBackup(Database db, std::string tagName, BackupModifyOp
 				config.snapshotTargetEndVersion().set(tr,
 				                                      begin + ((int64_t)options.activeSnapshotIntervalSeconds.get() *
 				                                               CLIENT_KNOBS->CORE_VERSIONSPERSECOND));
-			}
-
-			if (options.destURL.present()) {
-				config.backupContainer().set(tr, bc);
 			}
 
 			wait(tr->commit());
@@ -3325,7 +3363,6 @@ static constexpr CSimpleOpt::SOption* const allOptionArrays[] = { g_rgOptions,
 // The last element in SOption arrays is always END_MARKER = SO_END_OF_OPTIONS.
 constexpr CSimpleOpt::SOption END_MARKER = SO_END_OF_OPTIONS;
 
-
 /**
  * Validates and processes a command-line option.
  *
@@ -3361,10 +3398,14 @@ static bool processOption(int argc, char* argv[], int& i, std::vector<char*>& op
 			size_t knownOptLen = strlen(knownOpt);
 			bool isPrefixOpt = knownOptLen > 1 && knownOpt[knownOptLen - 1] == '-';
 
-			if (option == knownOpt || (isPrefixOpt &&
-									   option.size() >= knownOptLen &&
-									   option.compare(0, knownOptLen, knownOpt) == 0))
-			{
+			// Create normalized versions for hyphen-underscore equivalence
+			std::string optNorm(option);
+			std::replace(optNorm.begin(), optNorm.end(), '-', '_');
+			std::string knownNorm(knownOpt, isPrefixOpt ? knownOptLen - 1 : knownOptLen);
+			std::replace(knownNorm.begin(), knownNorm.end(), '-', '_');
+
+			if (optNorm == knownNorm || (isPrefixOpt && optNorm.size() >= knownNorm.size() &&
+			                             optNorm.compare(0, knownNorm.size(), knownNorm) == 0)) {
 				if (opt[j].nArgType == SO_REQ_SEP && equalPos == std::string_view::npos) {
 					++i;
 					if (i >= argc) {
@@ -3377,7 +3418,7 @@ static bool processOption(int argc, char* argv[], int& i, std::vector<char*>& op
 			}
 		}
 	}
-	fmt::print(stderr, "ERROR: Unknown option '{}'\n", option);
+	fmt::print(stderr, "ERROR: unknown option '{}'\n", option);
 	return false;
 }
 
@@ -3456,10 +3497,12 @@ int main(int argc, char* argv[]) {
 
 		switch (programExe) {
 		case ProgramExe::AGENT:
-			args = std::make_unique<CSimpleOpt>(newArgC, newArgV, g_rgAgentOptions, SO_O_EXACT | SO_O_HYPHEN_TO_UNDERSCORE);
+			args = std::make_unique<CSimpleOpt>(
+			    newArgC, newArgV, g_rgAgentOptions, SO_O_EXACT | SO_O_HYPHEN_TO_UNDERSCORE);
 			break;
 		case ProgramExe::DR_AGENT:
-			args = std::make_unique<CSimpleOpt>(newArgC, newArgV, g_rgDBAgentOptions, SO_O_EXACT | SO_O_HYPHEN_TO_UNDERSCORE);
+			args = std::make_unique<CSimpleOpt>(
+			    newArgC, newArgV, g_rgDBAgentOptions, SO_O_EXACT | SO_O_HYPHEN_TO_UNDERSCORE);
 			break;
 		case ProgramExe::BACKUP:
 			// Display backup help, if no arguments
@@ -3535,8 +3578,8 @@ int main(int argc, char* argv[]) {
 					break;
 				case BackupType::UNDEFINED:
 				default:
-					args =
-					    std::make_unique<CSimpleOpt>(newArgC, newArgV, g_rgOptions, SO_O_EXACT | SO_O_HYPHEN_TO_UNDERSCORE);
+					args = std::make_unique<CSimpleOpt>(
+					    newArgC, newArgV, g_rgOptions, SO_O_EXACT | SO_O_HYPHEN_TO_UNDERSCORE);
 					break;
 				}
 			}
@@ -3549,6 +3592,7 @@ int main(int argc, char* argv[]) {
 			} else {
 				// Get the backup type
 				dbType = getDBType(newArgV[1]);
+
 				// Create the appropriate simple opt
 				switch (dbType) {
 				case DBType::START:
@@ -3574,8 +3618,8 @@ int main(int argc, char* argv[]) {
 					break;
 				case DBType::UNDEFINED:
 				default:
-					args =
-					    std::make_unique<CSimpleOpt>(newArgC, newArgV, g_rgOptions, SO_O_EXACT | SO_O_HYPHEN_TO_UNDERSCORE);
+					args = std::make_unique<CSimpleOpt>(
+					    newArgC, newArgV, g_rgOptions, SO_O_EXACT | SO_O_HYPHEN_TO_UNDERSCORE);
 					break;
 				}
 			}
@@ -3588,7 +3632,8 @@ int main(int argc, char* argv[]) {
 			// Get the restore operation type
 			restoreType = getRestoreType(newArgV[1]);
 			if (restoreType == RestoreType::UNKNOWN) {
-				args = std::make_unique<CSimpleOpt>(newArgC, newArgV, g_rgOptions, SO_O_EXACT | SO_O_HYPHEN_TO_UNDERSCORE);
+				args =
+				    std::make_unique<CSimpleOpt>(newArgC, newArgV, g_rgOptions, SO_O_EXACT | SO_O_HYPHEN_TO_UNDERSCORE);
 			} else {
 				args = std::make_unique<CSimpleOpt>(
 				    newArgC - 1, newArgV + 1, g_rgRestoreOptions, SO_O_EXACT | SO_O_HYPHEN_TO_UNDERSCORE);
@@ -3602,7 +3647,8 @@ int main(int argc, char* argv[]) {
 			// Get the restore operation type
 			restoreType = getRestoreType(newArgV[1]);
 			if (restoreType == RestoreType::UNKNOWN) {
-				args = std::make_unique<CSimpleOpt>(newArgC, newArgV, g_rgOptions, SO_O_EXACT | SO_O_HYPHEN_TO_UNDERSCORE);
+				args =
+				    std::make_unique<CSimpleOpt>(newArgC, newArgV, g_rgOptions, SO_O_EXACT | SO_O_HYPHEN_TO_UNDERSCORE);
 			} else {
 				args = std::make_unique<CSimpleOpt>(
 				    newArgC - 1, newArgV + 1, g_rgRestoreOptions, SO_O_EXACT | SO_O_HYPHEN_TO_UNDERSCORE);
@@ -3960,6 +4006,7 @@ int main(int argc, char* argv[]) {
 				break;
 			case OPT_ENCRYPTION_KEY_FILE:
 				encryptionKeyFile = args->OptionArg();
+				modifyOptions.encryptionKeyFile = encryptionKeyFile;
 				break;
 			case OPT_RESTORECONTAINER:
 				restoreContainer = args->OptionArg();
@@ -4258,8 +4305,8 @@ int main(int argc, char* argv[]) {
 		    .detail("Proxy", proxy.orDefault(""))
 		    .trackLatest("ProgramStart");
 
-		// Ordinarily, this is done when the network is run. However, network thread should be set before TraceEvents
-		// are logged. This thread will eventually run the network, so call it now.
+		// Ordinarily, this is done when the network is run. However, network thread should be set before
+		// TraceEvents are logged. This thread will eventually run the network, so call it now.
 		TraceEvent::setNetworkThread();
 
 		// Sets up blob credentials, including one from the environment FDB_BLOB_CREDENTIALS.
@@ -4318,8 +4365,8 @@ int main(int argc, char* argv[]) {
 			return result.present();
 		};
 
-		// The fastrestore tool does not yet support multiple ranges and is incompatible with tenants
-		// or other features that back up data in the system keys
+		// The fastrestore tool does not yet support multiple ranges and is incompatible with
+		// features that back up data in the system keys.
 		if (!restoreSystemKeys && !restoreUserKeys && backupKeys.empty() &&
 		    programExe != ProgramExe::FASTRESTORE_TOOL) {
 			addDefaultBackupRanges(backupKeys);
@@ -4356,7 +4403,8 @@ int main(int argc, char* argv[]) {
 			case BackupType::START: {
 				if (!initCluster())
 					return FDB_EXIT_ERROR;
-				// Test out the backup url to make sure it parses.  Doesn't test to make sure it's actually writeable.
+				// Test out the backup url to make sure it parses.  Doesn't test to make sure it's actually
+				// writeable.
 				openBackupContainer(newArgV[0], destinationContainer, proxy, encryptionKeyFile);
 				f = stopAfter(submitBackup(db,
 				                           destinationContainer,
@@ -4639,8 +4687,8 @@ int main(int argc, char* argv[]) {
 				printf("[TODO][ERROR] FastRestore does not support RESTORE_ABORT yet!\n");
 				throw restore_error();
 				//					f = stopAfter( map(ba.abortRestore(db, KeyRef(tagName)),
-				//[tagName](FileBackupAgent::ERestoreState s) -> Void { 						printf("Tag: %s  State:
-				//%s\n", tagName.c_str(),
+				//[tagName](FileBackupAgent::ERestoreState s) -> Void { 						printf("Tag: %s
+				// State: %s\n", tagName.c_str(),
 				// FileBackupAgent::restoreStateText(s).toString().c_str()); 						return Void();
 				//					}) );
 				break;
@@ -4650,9 +4698,8 @@ int main(int argc, char* argv[]) {
 				// If no tag is specifically provided then print all tag status, don't just use "default"
 				if (tagProvided)
 					tag = tagName;
-				//					f = stopAfter( map(ba.restoreStatus(db, KeyRef(tag)), [](std::string s) -> Void {
-				//						printf("%s\n", s.c_str());
-				//						return Void();
+				//					f = stopAfter( map(ba.restoreStatus(db, KeyRef(tag)), [](std::string s) -> Void
+				//{ 						printf("%s\n", s.c_str()); 						return Void();
 				//					}) );
 				break;
 			default:
@@ -4786,10 +4833,10 @@ int main() {
 	printf("=== Running ParsedArgs Tests ===\n");
 
 	auto testOptionParsing = [](std::initializer_list<const char*> args,
-								const std::vector<std::string>& expectedOptions = {},
-								bool shouldSucceed = true,
-								const char* testName = "",
-								bool expectCSimpleOptions = false) -> bool {
+	                            const std::vector<std::string>& expectedOptions = {},
+	                            bool shouldSucceed = true,
+	                            const char* testName = "",
+	                            bool expectCSimpleOptions = false) -> bool {
 		printf("\n--- Test: %s ---\n", testName);
 		static std::vector<std::string> persistentArgs;
 		persistentArgs.clear();
@@ -4805,8 +4852,8 @@ int main() {
 		}
 		argv.push_back(nullptr);
 
-		int argcNew {};
-		char** argvNew {};
+		int argcNew{};
+		char** argvNew{};
 
 		printf("DEBUG: argc: %d\n", argc);
 		for (int i = 0; i < argv.size(); ++i) {
@@ -4822,9 +4869,9 @@ int main() {
 
 		if (success != shouldSucceed) {
 			printf("%s: FAIL - Expected %s but got %s\n",
-					testName,
-					shouldSucceed ? "success" : "failure",
-					success ? "success" : "failure");
+			       testName,
+			       shouldSucceed ? "success" : "failure",
+			       success ? "success" : "failure");
 			return false;
 		}
 		if (!shouldSucceed) {
@@ -4869,9 +4916,9 @@ int main() {
 
 					int optId = simpleOpt->OptionId();
 					printf("CSimpleOpt found option: id=%d, text='%s', arg='%s'\n",
-							optId,
-							simpleOpt->OptionText(),
-							simpleOpt->OptionArg() ? simpleOpt->OptionArg() : "null");
+					       optId,
+					       simpleOpt->OptionText(),
+					       simpleOpt->OptionArg() ? simpleOpt->OptionArg() : "null");
 				}
 
 				if (!foundExpectedOptions) {
@@ -4893,44 +4940,70 @@ int main() {
 	allPassed &= testOptionParsing({ "fdbbackup", "status" }, { "status" }, true, "1.1 Single command");
 	allPassed &= testOptionParsing({ "fdbbackup" }, {}, true, "1.2 No commands");
 	allPassed &= testOptionParsing({ "fdbbackup", "unknown" }, { "unknown" }, true, "1.3 Unknown command");
-	allPassed &= testOptionParsing({ "fdbbackup", "unknown1", "unknown2" }, { "unknown1", "unknown2"}, true, "1.4 Several unknown commands");
+	allPassed &= testOptionParsing(
+	    { "fdbbackup", "unknown1", "unknown2" }, { "unknown1", "unknown2" }, true, "1.4 Several unknown commands");
 
 	printf("\n2) Command Positioning Tests:\n");
-	allPassed &= testOptionParsing({ "fdbbackup", "start", "--cluster-file", "/cluster" }, { "start", "--cluster-file", "/cluster" },
-								true, "2.1 Command before options");
-	allPassed &= testOptionParsing({ "fdbbackup", "--cluster-file", "/cluster", "start" }, { "start", "--cluster-file", "/cluster" },
-								true, "2.2 Command after options");
-	allPassed &= testOptionParsing({ "fdbbackup", "--cluster-file", "/cluster", "list", "--json" }, { "list", "--cluster-file", "/cluster", "--json" },
-								true, "2.3 Options before and after command");
+	allPassed &= testOptionParsing({ "fdbbackup", "start", "--cluster-file", "/cluster" },
+	                               { "start", "--cluster-file", "/cluster" },
+	                               true,
+	                               "2.1 Command before options");
+	allPassed &= testOptionParsing({ "fdbbackup", "--cluster-file", "/cluster", "start" },
+	                               { "start", "--cluster-file", "/cluster" },
+	                               true,
+	                               "2.2 Command after options");
+	allPassed &= testOptionParsing({ "fdbbackup", "--cluster-file", "/cluster", "list", "--json" },
+	                               { "list", "--cluster-file", "/cluster", "--json" },
+	                               true,
+	                               "2.3 Options before and after command");
 
 	printf("\n3) Option Parameter Tests:\n");
-	allPassed &= testOptionParsing({ "fdbbackup", "start", "-C", "/cluster" }, { "start", "-C", "/cluster" },
-								true, "3.1 Short option with parameter");
-	allPassed &= testOptionParsing({ "fdbbackup", "start", "--snapshot-interval", "30" }, { "start", "--snapshot-interval", "30" },
-								true, "3.2 Option with parameter");
-	allPassed &= testOptionParsing({ "fdbbackup", "start", "--logdir", "/logs", "--trace-format", "json" }, { "start", "--logdir", "/logs", "--trace-format", "json" },
-								true, "3.3 Multiple options with parameters");
+	allPassed &= testOptionParsing({ "fdbbackup", "start", "-C", "/cluster" },
+	                               { "start", "-C", "/cluster" },
+	                               true,
+	                               "3.1 Short option with parameter");
+	allPassed &= testOptionParsing({ "fdbbackup", "start", "--snapshot-interval", "30" },
+	                               { "start", "--snapshot-interval", "30" },
+	                               true,
+	                               "3.2 Option with parameter");
+	allPassed &= testOptionParsing({ "fdbbackup", "start", "--logdir", "/logs", "--trace-format", "json" },
+	                               { "start", "--logdir", "/logs", "--trace-format", "json" },
+	                               true,
+	                               "3.3 Multiple options with parameters");
 
 	printf("\n4) Equal Sign Parameter Tests:\n");
-	allPassed &= testOptionParsing({ "fdbbackup", "start", "--cluster-file=/cluster" }, { "start", "--cluster-file=/cluster" },
-								true, "4.1 Option with equals");
+	allPassed &= testOptionParsing({ "fdbbackup", "start", "--cluster-file=/cluster" },
+	                               { "start", "--cluster-file=/cluster" },
+	                               true,
+	                               "4.1 Option with equals");
 	allPassed &= testOptionParsing({ "fdbbackup", "start", "--snapshot-interval", "30", "--cluster-file=/cluster" },
-								{ "start", "--snapshot-interval", "30", "--cluster-file=/cluster" },
-								true, "4.2 Multiple options using both equals and space separators");
+	                               { "start", "--snapshot-interval", "30", "--cluster-file=/cluster" },
+	                               true,
+	                               "4.2 Multiple options using both equals and space separators");
 
 	printf("\n5) Prefix Option Tests:\n");
-	allPassed &= testOptionParsing({ "fdbbackup", "start", "--knob-max_workers", "10" }, { "start", "--knob-max_workers", "10" },
-								true, "5.1 Knob option with parameter");
+	allPassed &= testOptionParsing({ "fdbbackup", "start", "--knob-max_workers", "10" },
+	                               { "start", "--knob-max_workers", "10" },
+	                               true,
+	                               "5.1 Knob option with parameter");
 
 	printf("\n6) Global flag options and CSimpleOpt Tests:\n");
-	allPassed &= testOptionParsing({ "fdbbackup", "--version", "-h" }, {"--version", "-h"}, true, "6.1 Version flag", true);
+	allPassed &=
+	    testOptionParsing({ "fdbbackup", "--version", "-h" }, { "--version", "-h" }, true, "6.1 Version flag", true);
 
 	printf("\n7) Error Tests:\n");
 	allPassed &= testOptionParsing({ "fdbbackup", "start", "--unknown-option" }, {}, false, "7.1 Unknown option");
 	allPassed &= testOptionParsing({ "fdbbackup", "start", "--cluster-file" }, {}, false, "7.2 Missing parameter");
-	allPassed &= testOptionParsing({ "fdbbackup", "start", "--cluster-file", "--help" }, {"start", "--cluster-file", "--help"}, true, "7.3 Option as parameter");
-	allPassed &= testOptionParsing({ "fdbbackup", "start", "--cluster-file=/cluster", "-C=" }, {"start", "--cluster-file=/cluster", "-C="}, true, "7.4 Option with empty parameter value using equals");
-	allPassed &= testOptionParsing({ "fdbbackup", "start", "-C=" }, {"start", "-C="}, true, "7.5 Empty parameter value with equals");
+	allPassed &= testOptionParsing({ "fdbbackup", "start", "--cluster-file", "--help" },
+	                               { "start", "--cluster-file", "--help" },
+	                               true,
+	                               "7.3 Option as parameter");
+	allPassed &= testOptionParsing({ "fdbbackup", "start", "--cluster-file=/cluster", "-C=" },
+	                               { "start", "--cluster-file=/cluster", "-C=" },
+	                               true,
+	                               "7.4 Option with empty parameter value using equals");
+	allPassed &= testOptionParsing(
+	    { "fdbbackup", "start", "-C=" }, { "start", "-C=" }, true, "7.5 Empty parameter value with equals");
 
 	printf("\n=== %s ===\n", allPassed ? "All tests PASSED!" : "Some tests FAILED!");
 	return allPassed ? 0 : 1;

@@ -42,7 +42,6 @@
 #include "fdbrpc/FailureMonitor.h"
 #include "fdbrpc/Locality.h"
 #include "fdbrpc/ReplicationPolicy.h"
-#include "fdbrpc/TokenSign.h"
 #include "fdbrpc/SimulatorKillType.h"
 
 enum ClogMode { ClogDefault, ClogAll, ClogSend, ClogReceive };
@@ -429,9 +428,6 @@ public:
 
 	double checkDisabled(const std::string& desc) const;
 
-	// generate authz token for use in simulation environment
-	WipedString makeToken(int64_t tenantId, uint64_t ttlSecondsFromNow);
-
 	// FIXME: simulation is generally discussed as being deterministic and single-threaded. So
 	// explain why we need thread_local variables here and a mutex just below.
 	static thread_local ProcessInfo* currentProcess;
@@ -474,6 +470,9 @@ extern Future<Void> waitUntilDiskReady(Reference<DiskParameters> parameters, int
 
 // Enables connection failures, i.e., clogging, in simulation
 void enableConnectionFailures(std::string const& context, double duration);
+
+// Return the maximum number of satellite logs that can be used based on the number of machines in simulation.
+int getMaxSatelliteLogs();
 
 FDB_BOOLEAN_PARAM(ForceDisable);
 // Disables connection failures, i.e., clogging, in simulation.

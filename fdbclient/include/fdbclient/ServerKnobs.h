@@ -95,6 +95,7 @@ public:
 	int CONCURRENT_LOG_ROUTER_READS;
 	int LOG_ROUTER_PEEK_FROM_SATELLITES_PREFERRED; // 0==peek from primary, non-zero==peek from satellites
 	double LOG_ROUTER_PEEK_SWITCH_DC_TIME;
+	double LOG_ROUTER_REPLACEMENT_GRACE_PERIOD; // Grace period for replacement log routers to appear in ServerDBInfo
 	double DISK_QUEUE_ADAPTER_MIN_SWITCH_TIME;
 	double DISK_QUEUE_ADAPTER_MAX_SWITCH_TIME;
 	int64_t TLOG_SPILL_REFERENCE_MAX_PEEK_MEMORY_BYTES;
@@ -120,6 +121,7 @@ public:
 	double PUSH_STATS_SLOW_AMOUNT;
 	double PUSH_STATS_SLOW_RATIO;
 	int TLOG_POP_BATCH_SIZE;
+	bool ENABLE_TLOG_TEMP_TAG_MESSAGES_RESERVE;
 	double BLOCKING_PEEK_TIMEOUT;
 	bool PEEK_BATCHING_EMPTY_MSG;
 	double PEEK_BATCHING_EMPTY_MSG_INTERVAL;
@@ -343,18 +345,7 @@ public:
 	int DD_STORAGE_WIGGLE_STUCK_THRESHOLD; // How many times bestTeamStuck accumulate will pause storage wiggle
 	int64_t
 	    DD_STORAGE_WIGGLE_MIN_SS_AGE_SEC; // Minimal age of a correct-configured server before it's chosen to be wiggled
-	bool DD_TENANT_AWARENESS_ENABLED;
-	bool STORAGE_QUOTA_ENABLED; // Whether storage quota enforcement for tenant groups and all the relevant storage
-	                            // usage / quota monitors are enabled.
-	int TENANT_CACHE_LIST_REFRESH_INTERVAL; // How often the TenantCache is refreshed
-	int TENANT_CACHE_STORAGE_USAGE_REFRESH_INTERVAL; // How often the storage bytes used by each tenant is refreshed
-	                                                 // in the TenantCache
-	int TENANT_CACHE_STORAGE_QUOTA_REFRESH_INTERVAL; // How often the storage quota allocated to each tenant is
-	                                                 // refreshed in the TenantCache
-	int TENANT_CACHE_STORAGE_USAGE_TRACE_INTERVAL; // The minimum interval between consecutive trace events logging the
-	                                               // storage bytes used by a tenant group
-	int CP_FETCH_TENANTS_OVER_STORAGE_QUOTA_INTERVAL; // How often the commit proxies send requests to the data
-	                                                  // distributor to fetch the list of tenants over storage quota
+
 	bool ENABLE_STORAGE_QUEUE_AWARE_TEAM_SELECTION; // Experimental! Enable to avoid moving data to a team which has a
 	                                                // long storage queue
 	double DD_LONG_STORAGE_QUEUE_TEAM_MAJORITY_PERCENTILE; // p% amount teams which have longer queues (team queue size
@@ -368,6 +359,7 @@ public:
 	int64_t REBALANCE_STORAGE_QUEUE_SHARD_PER_KSEC_MIN;
 	bool DD_ENABLE_REBALANCE_STORAGE_QUEUE_WITH_LIGHT_WRITE_SHARD; // Enable to allow storage queue rebalancer to move
 	                                                               // light-traffic shards out of the overloading server
+
 	double DD_WAIT_TSS_DATA_MOVE_DELAY;
 	bool DD_VALIDATE_SERVER_TEAM_COUNT_AFTER_BUILD_TEAM; // Enable to validate server team count per server after build
 	                                                     // team
@@ -684,7 +676,7 @@ public:
 	double TAG_THROTTLE_MAX_EMPTY_QUEUE_BUDGET;
 	int START_TRANSACTION_MAX_QUEUE_SIZE;
 	int KEY_LOCATION_MAX_QUEUE_SIZE;
-	int TENANT_ID_REQUEST_MAX_QUEUE_SIZE;
+
 	double COMMIT_PROXY_LIVENESS_TIMEOUT;
 	double COMMIT_PROXY_MAX_LIVENESS_TIMEOUT;
 
@@ -897,6 +889,8 @@ public:
 	double SINGLETON_RECRUIT_BME_DELAY;
 	bool RECORD_RECOVER_AT_IN_CSTATE;
 	bool TRACK_TLOG_RECOVERY;
+	double CC_RERECRUIT_LOG_ROUTER_TIMEOUT;
+	bool CC_RERECRUIT_LOG_ROUTER_ENABLED;
 
 	// Move Keys
 	double SHARD_READY_DELAY;
@@ -1184,6 +1178,7 @@ public:
 	int PHYSICAL_SHARD_MOVE_LOG_SEVERITY;
 	int FETCH_SHARD_BUFFER_BYTE_LIMIT;
 	int FETCH_SHARD_UPDATES_BYTE_LIMIT;
+	bool TRACK_READ_LATENCIES_PER_TYPE;
 
 	// Wait Failure
 	int MAX_OUTSTANDING_WAIT_FAILURE_REQUESTS;

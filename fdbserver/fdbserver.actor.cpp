@@ -89,6 +89,7 @@
 #include "flow/flow.h"
 #include "flow/network.h"
 #include "flow/SimpleCounter.h"
+#include "fdbclient/BackupAgent.actor.h"
 
 #include "flow/swift.h"
 #include "flow/swift_concurrency_hooks.h"
@@ -1902,6 +1903,7 @@ private:
 				flushAndExit(FDB_EXIT_ERROR);
 			}
 		}
+		fileBackupAgentProxy = proxy;
 
 		setThreadLocalDeterministicRandomSeed(randomSeed);
 
@@ -2331,6 +2333,17 @@ int main(int argc, char* argv[]) {
 
 		if (role == ServerRole::Simulation) {
 			TraceEvent("Simulation").detail("TestFile", opts.testFile);
+
+			// Log test configuration before starting simulation
+			// This ensures config is available in trace logs even if test crashes
+			std::string joshuaSeed = getenv("JOSHUA_SEED") ? getenv("JOSHUA_SEED") : "UNKNOWN";
+			TraceEvent("TestConfiguring")
+			    .detail("TestFile", opts.testFile)
+			    .detail("RandomSeed", opts.randomSeed)
+			    .detail("BuggifyEnabled", opts.buggifyEnabled)
+			    .detail("FaultInjectionEnabled", opts.faultInjectionEnabled)
+			    .detail("JoshuaSeed", joshuaSeed);
+			flushTraceFileVoid(); // Force flush before test starts to ensure it's written even if crash occurs
 
 			auto histogramReportActor = histogramReport();
 			auto metricsReportActor = metricsReport();

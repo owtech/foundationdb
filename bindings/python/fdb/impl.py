@@ -162,8 +162,6 @@ def add_operation(fname, v):
     )
     setattr(globals()["Database"], fname, f)
     setattr(globals()["Transaction"], fname, f)
-    setattr(globals()["Tenant"], fname, f)
-
 
 def fill_operations():
     _dict = getattr(_opts, "MutationType")
@@ -225,8 +223,8 @@ def transactional(*tr_args, **tr_kwargs):
     one of two actions, depending on the type of the parameter passed
     to the function at call time.
 
-    If given a Database or Tenant, a Transaction will be created and
-    passed into the wrapped code in place of the Database or Tenant.
+    If given a Database, a Transaction will be created and
+    passed into the wrapped code in place of the Database.
     After the function is complete, the newly created transaction
     will be committed.
 
@@ -1292,20 +1290,6 @@ class _TransactionCreator(_FDBBase):
         return TransactionCreator
 
 
-def process_tenant_name(name):
-    if isinstance(name, tuple):
-        return pack(name)
-    elif isinstance(name, bytes):
-        return name
-    else:
-        raise TypeError(
-            "Tenant name must be of type "
-            + bytes.__name__
-            + " or of type "
-            + tuple.__name__
-        )
-
-
 class Database(_TransactionCreator):
     def __init__(self, dpointer):
         self.dpointer = dpointer
@@ -1318,13 +1302,24 @@ class Database(_TransactionCreator):
     def _set_option(self, option, param, length):
         self.capi.fdb_database_set_option(self.dpointer, option, param, length)
 
+    # XXX Adding this back temporarily to test C bindings changes to ensure
+    # that 7.x tenant-having python libraries can pass startup with 8.0.0
+    # libfdb_c.so. Client code that actually calls tenant related APIs will
+    # of course not obtain useful functionality. Returning `None` here seems
+    # both necessary and sufficient to ensure that clients don't think that
+    # they are able to obtain tenant-related functionality.
+    #
+    # TODO(gglass): remove once we think the C library has been fixed
+    # up.  We don't want to ship this stuff in 8.0.0 python bindings
+    # as that would perpetuate these unwanted dependencies on the C
+    # library.
     def open_tenant(self, name):
-        tname = process_tenant_name(name)
+        tname = name  # this is a bug
         pointer = ctypes.c_void_p()
         self.capi.fdb_database_open_tenant(
             self.dpointer, tname, len(tname), ctypes.byref(pointer)
         )
-        return Tenant(pointer.value)
+        return None
 
     def create_transaction(self):
         pointer = ctypes.c_void_p()
@@ -1333,22 +1328,6 @@ class Database(_TransactionCreator):
 
     def get_client_status(self):
         return Key(self.capi.fdb_database_get_client_status(self.dpointer))
-
-
-class Tenant(_TransactionCreator):
-    def __init__(self, tpointer):
-        self.tpointer = tpointer
-
-    def __del__(self):
-        self.capi.fdb_tenant_destroy(self.tpointer)
-
-    def create_transaction(self):
-        pointer = ctypes.c_void_p()
-        self.capi.fdb_tenant_create_transaction(self.tpointer, ctypes.byref(pointer))
-        return Transaction(pointer.value, self)
-
-    def get_id(self):
-        return FutureInt64(self.capi.fdb_tenant_get_id(self.tpointer))
 
 
 fill_operations()
@@ -1693,6 +1672,18 @@ def init_c_api():
     _capi.fdb_database_destroy.argtypes = [ctypes.c_void_p]
     _capi.fdb_database_destroy.restype = None
 
+    # XXX Adding this back temporarily to test C bindings changes to put
+    # this stuff back in, to avoid breaking 7.x tenant-having python libraries
+    # that want to load these symbols on process startup.
+    #
+    # TODO(gglass): remove once we think the C library has been fixed
+    # up.  We don't want to ship this stuff in 8.0.0 python bindings
+    # as that would perpetuate these unwanted dependencies on the C
+    # library.  Alternatively, only initialize this stuff in a non-default
+    # mode to be used only by internal testing with the very specific
+    # goal of ensuring that the C library has symbols to satisfy
+    # 7.x python client libraries.  Like "SIMULATE_7X_PYTHON_BINDINGS"
+    # mode.
     _capi.fdb_database_open_tenant.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,

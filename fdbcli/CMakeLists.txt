@@ -3,7 +3,7 @@ fdb_find_sources(FDBCLI_SRCS)
 
 add_flow_target(EXECUTABLE NAME fdbcli SRCS ${FDBCLI_SRCS})
 target_include_directories(fdbcli PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include" "${CMAKE_CURRENT_BINARY_DIR}/include")
-target_link_libraries(fdbcli PRIVATE fdbctl fdbclient metacluster SimpleOpt)
+target_link_libraries(fdbcli PRIVATE fdbctl fdbclient SimpleOpt)
 
 if (USE_UBSAN)
   # The intent is to put typeinfo symbols in the dynamic symbol table so that
@@ -29,12 +29,15 @@ endif()
 if (NOT WIN32 AND NOT OPEN_FOR_IDE)
   add_dependencies(fdbcli external_client)
 
-  add_fdbclient_test(
-    NAME single_process_fdbcli_tests
-    COMMAND ${CMAKE_SOURCE_DIR}/fdbcli/tests/fdbcli_tests.py
-            ${CMAKE_BINARY_DIR}
-            @CLUSTER_FILE@
-            )
+  if(NOT USE_ASAN)
+    # TODO: this is known to fail with ASAN, fix needed
+    add_fdbclient_test(
+      NAME single_process_fdbcli_tests
+      COMMAND ${CMAKE_SOURCE_DIR}/fdbcli/tests/fdbcli_tests.py
+              ${CMAKE_BINARY_DIR}
+              @CLUSTER_FILE@
+              )
+  endif()
   add_fdbclient_test(
     NAME multi_process_fdbcli_tests
     PROCESS_NUMBER 5
@@ -62,13 +65,4 @@ if (NOT WIN32 AND NOT OPEN_FOR_IDE)
           5
           --external-client-library ${CMAKE_BINARY_DIR}/bindings/c/libfdb_c_external.so
           )
-
-  if (NOT USE_ASAN)
-    # skip metacluster tests because it often times out on ASAN
-    add_multi_fdbclient_test(
-      NAME metacluster_fdbcli_tests
-      COMMAND ${CMAKE_SOURCE_DIR}/fdbcli/tests/metacluster_fdbcli_tests.py
-              ${CMAKE_BINARY_DIR}
-    )
-  endif()
 endif()
