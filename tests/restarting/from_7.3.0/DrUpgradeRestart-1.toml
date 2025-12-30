@@ -2,7 +2,6 @@
 extraDatabaseMode = "Local"
 storageEngineExcludeTypes = [4,5]
 encryptModes = ['disabled']
-tenantModes=['disabled']
 
 
 [[test]]
