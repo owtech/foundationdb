@@ -2,6 +2,37 @@
 Release Notes
 #############
 
+7.3.75
+======
+* Same as 7.3.74 release with AVX enabled.
+
+7.3.74
+======
+* Update rocksdb version to 8.11.5. `(PR #12690) <https://github.com/apple/foundationdb/pull/12690>`_
+
+7.3.73
+======
+* Same as 7.3.72 release with AVX enabled.
+
+7.3.72
+======
+* Added backup encryption support and related status/CLI improvements. `(PR #12580) <https://github.com/apple/foundationdb/pull/12580>`_, `(PR #12590) <https://github.com/apple/foundationdb/pull/12590>`_, `(PR #12621) <https://github.com/apple/foundationdb/pull/12621>`_, and `(PR #12658) <https://github.com/apple/foundationdb/pull/12658>`_
+* Fixed a backup decode range file bug when interpreting keys and values. `(PR #12399) <https://github.com/apple/foundationdb/pull/12399>`_
+
+7.3.71
+======
+* Same as 7.3.71 release with AVX enabled.
+
+7.3.70
+======
+* Fixed handleTssMismatches crashes. `(PR #12377) <https://github.com/apple/foundationdb/pull/12377>`_
+* Improved TLS handshake mechanism. `(PR #12348) <https://github.com/apple/foundationdb/pull/12348>`_
+* Fixed restarting test failures. `(PR #12324) <https://github.com/apple/foundationdb/pull/12324>`_
+* Suppressed PingLatency events. `(PR #12316) <https://github.com/apple/foundationdb/pull/12316>`_
+* Fixed "Unknown error" when configuring regions. `(PR #12313) <https://github.com/apple/foundationdb/pull/12313>`_
+* Replaced '...' with actual random data in simulation workloads. `(PR #12273) <https://github.com/apple/foundationdb/pull/12273>`_
+* Added TLS performance counters. `(PR #12278) <https://github.com/apple/foundationdb/pull/12278>`_ and `(PR #12296) <https://github.com/apple/foundationdb/pull/12296>`_
+
 7.3.69
 ======
 * Same as 7.3.68 release with AVX enabled.

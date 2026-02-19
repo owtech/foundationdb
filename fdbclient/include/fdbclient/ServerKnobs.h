@@ -830,9 +830,9 @@ public:
 	                                                         // remote log routers are experiencing degradation
 	                                                         // (latency) with their peers. Gray failure may trigger
 	                                                         // recovery based on this.
-	bool CC_ENABLE_REMOTE_LOG_ROUTER_MONITORING; // When enabled, gray failure tries to detect whether
-	                                             // remote log routers are disconnected from their peers. Gray failure
-	                                             // may trigger recovery based on this.
+	bool CC_ENABLE_REMOTE_LOG_ROUTER_DISCONNECT_MONITORING; // When enabled, gray failure tries to detect whether
+	                                                        // remote log routers are disconnected from their peers.
+	                                                        // Gray failure may trigger recovery based on this.
 	bool CC_ENABLE_REMOTE_TLOG_DEGRADATION_MONITORING; // When enabled, gray failure tries to detect whether remote
 	                                                   // tlogs are experiencing degradation (latency) with their peers.
 	                                                   // Gray failure may trigger recovery based on this.
@@ -1242,6 +1242,7 @@ public:
 	int CONFIGURATION_ROWS_TO_FETCH;
 	bool DISABLE_DUPLICATE_LOG_WARNING;
 	double HISTOGRAM_REPORT_INTERVAL;
+	double GENERIC_METRICS_REPORT_INTERVAL;
 
 	// Timekeeper
 	int64_t TIME_KEEPER_DELAY;

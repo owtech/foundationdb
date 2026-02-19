@@ -74,6 +74,9 @@
 #include "fdbserver/pubsub.h"
 #include "fdbserver/OnDemandStore.h"
 #include "fdbserver/workloads/workloads.actor.h"
+#ifdef WITH_ROCKSDB
+#include "fdbserver/FDBRocksDBVersion.h"
+#endif
 #include "flow/ArgParseUtil.h"
 #include "flow/DeterministicRandom.h"
 #include "flow/Platform.h"
@@ -87,6 +90,8 @@
 #include "flow/FaultInjection.h"
 #include "flow/flow.h"
 #include "flow/network.h"
+#include "flow/SimpleCounter.h"
+#include "fdbclient/BackupAgent.actor.h"
 
 #include "flow/swift.h"
 #include "flow/swift_concurrency_hooks.h"
@@ -410,6 +415,14 @@ ACTOR Future<Void> histogramReport() {
 	}
 }
 
+ACTOR Future<Void> metricsReport() {
+	loop {
+		wait(delay(SERVER_KNOBS->GENERIC_METRICS_REPORT_INTERVAL));
+
+		simpleCounterReport();
+	}
+}
+
 void testSerializationSpeed() {
 	double tstart;
 	double build = 0, serialize = 0, deserialize = 0, copy = 0, deallocate = 0;
@@ -578,6 +591,17 @@ static void printVersion() {
 	printf("FoundationDB " FDB_VT_PACKAGE_NAME " (v" FDB_VT_VERSION ")\n");
 	printf("source version %s\n", getSourceVersion());
 	printf("protocol %" PRIx64 "\n", currentProtocolVersion().version());
+#ifdef WITH_ROCKSDB
+	if (FDB_ROCKSDB_GIT_HASH[0] != '\0') {
+		printf("rocksdb %d.%d.%d (commit %s)\n",
+		       FDB_ROCKSDB_MAJOR,
+		       FDB_ROCKSDB_MINOR,
+		       FDB_ROCKSDB_PATCH,
+		       FDB_ROCKSDB_GIT_HASH);
+	} else {
+		printf("rocksdb %d.%d.%d\n", FDB_ROCKSDB_MAJOR, FDB_ROCKSDB_MINOR, FDB_ROCKSDB_PATCH);
+	}
+#endif
 }
 
 static void printHelpTeaser(const char* name) {
@@ -1819,6 +1843,7 @@ private:
 				flushAndExit(FDB_EXIT_ERROR);
 			}
 		}
+		fileBackupAgentProxy = proxy;
 
 		setThreadLocalDeterministicRandomSeed(randomSeed);
 
@@ -2008,11 +2033,6 @@ int main(int argc, char* argv[]) {
 		// Enables profiling on this thread (but does not start it)
 		registerThreadForProfiling();
 
-#ifdef _WIN32
-		// Windows needs a gentle nudge to format floats correctly
-		//_set_output_format(_TWO_DIGIT_EXPONENT);
-#endif
-
 		auto opts = CLIOptions::parseArgs(argc, argv);
 		const auto role = opts.role;
 
@@ -2085,8 +2105,8 @@ int main(int argc, char* argv[]) {
 			flushAndExit(FDB_EXIT_SUCCESS);
 		}
 
-		// Initialize the thread pool
 		CoroThreadPool::init();
+
 		// Ordinarily, this is done when the network is run. However, network thread should be set before TraceEvents
 		// are logged. This thread will eventually run the network, so call it now.
 		TraceEvent::setNetworkThread();
@@ -2252,6 +2272,7 @@ int main(int argc, char* argv[]) {
 			TraceEvent("Simulation").detail("TestFile", opts.testFile);
 
 			auto histogramReportActor = histogramReport();
+			auto metricsReportActor = metricsReport();
 
 			CLIENT_KNOBS->trace();
 			FLOW_KNOBS->trace();
@@ -2441,7 +2462,8 @@ int main(int argc, char* argv[]) {
 				                      opts.configDBType,
 				                      opts.consistencyCheckUrgentMode));
 				actors.push_back(histogramReport());
-				// actors.push_back( recurring( []{}, .001 ) );  // for ASIO latency measurement
+				actors.push_back(metricsReport());
+
 #ifdef FLOW_GRPC_ENABLED
 				if (opts.grpcAddressStrs.size() > 0) {
 					FlowGrpc::init(&opts.tlsConfig, NetworkAddress::parse(opts.grpcAddressStrs[0]));
@@ -2498,6 +2520,7 @@ int main(int argc, char* argv[]) {
 			setupRunLoopProfiler();
 			auto m =
 			    startSystemMonitor(opts.dataFolder, opts.dcId, opts.zoneId, opts.zoneId, opts.localities.dataHallId());
+			auto metricsReportActor = metricsReport();
 			f = stopAfter(runTests(opts.connectionFile,
 			                       TEST_TYPE_UNIT_TESTS,
 			                       TEST_HERE,

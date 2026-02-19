@@ -180,6 +180,7 @@ struct BackupDescription {
 	Optional<Version> minRestorableVersion;
 	std::string extendedDetail; // Freeform container-specific info.
 	bool partitioned; // If this backup contains partitioned mutation logs.
+	bool fileLevelEncryption; // If this backup contains encrypted files.
 
 	// Resolves the versions above to timestamps using a given database's TimeKeeper data.
 	// toString will use this information if present.
@@ -311,7 +312,11 @@ public:
 	Optional<std::string> const& getProxy() const { return proxy; }
 	Optional<std::string> const& getEncryptionKeyFileName() const { return encryptionKeyFileName; }
 
+	virtual Future<Void> writeEncryptionMetadata() = 0;
+
 	static std::string lastOpenError;
+
+	virtual Future<Void> encryptionSetupComplete() const = 0;
 
 	// TODO: change the following back to `private` once blob obj access is refactored
 protected:

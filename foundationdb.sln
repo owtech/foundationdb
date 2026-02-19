@@ -1,0 +1,61 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "flow", "flow", "{EAB3E87B-3F47-B4F0-2D5F-E75331CBE572}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "contrib", "contrib", "{DC86B9B8-E164-C9AB-EC7D-48AD2D60FC78}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "fdbclient", "fdbclient", "{0263B530-A90D-964D-7D82-CAD7A0E32C05}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "coveragetool", "flow\coveragetool\coveragetool.csproj", "{6842B9F2-CC7A-8C6E-25A5-D3AA3CD0B39B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "actorcompiler", "flow\actorcompiler\actorcompiler.csproj", "{A1A9EB52-38C3-BDAE-D8E3-3191E9AC6C1B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TraceLogHelper", "contrib\TraceLogHelper\TraceLogHelper.csproj", "{DEC48BEB-9968-DB78-A117-CDC1A81D963E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestHarness", "contrib\TestHarness\TestHarness.csproj", "{86775E4B-2DE1-401B-D871-7347FBC95A5B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "vexillographer", "fdbclient\vexillographer\vexillographer.csproj", "{3C74E271-4C8A-B263-A6AE-D012181359D2}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6842B9F2-CC7A-8C6E-25A5-D3AA3CD0B39B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6842B9F2-CC7A-8C6E-25A5-D3AA3CD0B39B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6842B9F2-CC7A-8C6E-25A5-D3AA3CD0B39B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6842B9F2-CC7A-8C6E-25A5-D3AA3CD0B39B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A1A9EB52-38C3-BDAE-D8E3-3191E9AC6C1B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A1A9EB52-38C3-BDAE-D8E3-3191E9AC6C1B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A1A9EB52-38C3-BDAE-D8E3-3191E9AC6C1B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A1A9EB52-38C3-BDAE-D8E3-3191E9AC6C1B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DEC48BEB-9968-DB78-A117-CDC1A81D963E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DEC48BEB-9968-DB78-A117-CDC1A81D963E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DEC48BEB-9968-DB78-A117-CDC1A81D963E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DEC48BEB-9968-DB78-A117-CDC1A81D963E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{86775E4B-2DE1-401B-D871-7347FBC95A5B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{86775E4B-2DE1-401B-D871-7347FBC95A5B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{86775E4B-2DE1-401B-D871-7347FBC95A5B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{86775E4B-2DE1-401B-D871-7347FBC95A5B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3C74E271-4C8A-B263-A6AE-D012181359D2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3C74E271-4C8A-B263-A6AE-D012181359D2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3C74E271-4C8A-B263-A6AE-D012181359D2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3C74E271-4C8A-B263-A6AE-D012181359D2}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{6842B9F2-CC7A-8C6E-25A5-D3AA3CD0B39B} = {EAB3E87B-3F47-B4F0-2D5F-E75331CBE572}
+		{A1A9EB52-38C3-BDAE-D8E3-3191E9AC6C1B} = {EAB3E87B-3F47-B4F0-2D5F-E75331CBE572}
+		{DEC48BEB-9968-DB78-A117-CDC1A81D963E} = {DC86B9B8-E164-C9AB-EC7D-48AD2D60FC78}
+		{86775E4B-2DE1-401B-D871-7347FBC95A5B} = {DC86B9B8-E164-C9AB-EC7D-48AD2D60FC78}
+		{3C74E271-4C8A-B263-A6AE-D012181359D2} = {0263B530-A90D-964D-7D82-CAD7A0E32C05}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {E3602DCE-A81A-47B0-ACFA-5403815D9917}
+	EndGlobalSection
+EndGlobal

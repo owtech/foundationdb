@@ -1037,6 +1037,7 @@ bool TLSPolicy::verify_peer(bool preverified, X509_STORE_CTX* store_ctx, const N
 
 	return verifier.isOk();
 }
+
 struct CryptoLibHandle {
 	void* lib = nullptr;
 	void* func = nullptr;

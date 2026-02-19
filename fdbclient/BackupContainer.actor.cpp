@@ -134,6 +134,7 @@ std::string BackupDescription::toString() const {
 	info.append(format("URL: %s\n", url.c_str()));
 	info.append(format("Restorable: %s\n", maxRestorableVersion.present() ? "true" : "false"));
 	info.append(format("Partitioned logs: %s\n", partitioned ? "true" : "false"));
+	info.append(format("File-level encryption: %s\n", fileLevelEncryption ? "true" : "false"));
 
 	auto formatVersion = [&](Version v) {
 		std::string s;
@@ -192,6 +193,7 @@ std::string BackupDescription::toJSON() const {
 	doc.setKey("URL", url.c_str());
 	doc.setKey("Restorable", maxRestorableVersion.present());
 	doc.setKey("Partitioned", partitioned);
+	doc.setKey("FileLevelEncryption", fileLevelEncryption);
 
 	auto formatVersion = [&](Version v) {
 		JsonBuilderObject doc;

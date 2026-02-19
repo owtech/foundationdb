@@ -910,6 +910,7 @@ void LogCommand(std::string line, UID randomID, std::string errMsg) {
 	printf("%s\n", errMsg.c_str());
 	TraceEvent(SevInfo, "CLICommandLog", randomID).detail("Command", line).detail("Error", errMsg);
 }
+
 struct CLIOptions {
 	std::string program_name;
 	int exit_code = -1;

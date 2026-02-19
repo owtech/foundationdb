@@ -39,6 +39,7 @@ enum class AuditType : uint8_t {
 	ValidateReplica = 2,
 	ValidateLocationMetadata = 3,
 	ValidateStorageServerShard = 4,
+	ValidateRestore = 5,
 };
 
 struct AuditStorageState {
@@ -68,7 +69,7 @@ struct AuditStorageState {
 		                  ", [Range]: " + Traceable<KeyRangeRef>::toString(range) +
 		                  ", [Type]: " + std::to_string(type) + ", [Phase]: " + std::to_string(phase);
 		if (!error.empty()) {
-			res += "[Error]: " + error;
+			res += ", [Error]: " + error;
 		}
 
 		return res;
@@ -94,7 +95,6 @@ struct AuditStorageRequest {
 	constexpr static FileIdentifier file_identifier = 13804341;
 
 	AuditStorageRequest() = default;
-	// for audit user data
 	AuditStorageRequest(UID id, KeyRange range, AuditType type)
 	  : id(id), range(range), type(static_cast<uint8_t>(type)) {}
 

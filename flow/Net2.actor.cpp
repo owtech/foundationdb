@@ -143,6 +143,8 @@ public:
 	// INetworkConnections interface
 	Future<Reference<IConnection>> connect(NetworkAddress toAddr, tcp::socket* existingSocket = nullptr) override;
 	Future<Reference<IConnection>> connectExternal(NetworkAddress toAddr) override;
+	Future<Reference<IConnection>> connectExternalWithHostname(NetworkAddress toAddr,
+	                                                           const std::string& hostname) override;
 	Future<Reference<IUDPSocket>> createUDPSocket(NetworkAddress toAddr) override;
 	Future<Reference<IUDPSocket>> createUDPSocket(bool isV6) override;
 	// The mock DNS methods should only be used in simulation.
@@ -321,16 +323,6 @@ public:
 	DoubleMetricHandle countLaunchTime;
 	DoubleMetricHandle countReactTime;
 	BoolMetricHandle awakeMetric;
-	Int64MetricHandle countClientTLSHandshakesOnSideThreads;
-	Int64MetricHandle countClientTLSHandshakesOnMainThread;
-	Int64MetricHandle countServerTLSHandshakesOnSideThreads;
-	Int64MetricHandle countServerTLSHandshakesOnMainThread;
-	Int64MetricHandle countClientTLSHandshakesTimedout;
-	Int64MetricHandle countServerTLSHandshakesTimedout;
-	Int64MetricHandle countServerTLSHandshakeThrottled;
-	Int64MetricHandle countClientTLSHandshakeThrottled;
-	Int64MetricHandle countServerTLSHandshakeLocked;
-	Int64MetricHandle countClientTLSHandshakeLocked;
 
 	EventMetricHandle<SlowTask> slowTaskMetric;
 
@@ -915,7 +907,9 @@ public:
 				if (iter->second.first >= FLOW_KNOBS->TLS_CLIENT_CONNECTION_THROTTLE_ATTEMPTS) {
 					TraceEvent("TLSOutgoingConnectionThrottlingWarning").suppressFor(1.0).detail("PeerIP", addr);
 					wait(delay(FLOW_KNOBS->CONNECTION_MONITOR_TIMEOUT));
-					g_net2->countClientTLSHandshakeThrottled++;
+					static SimpleCounter<int64_t>* countClientTLSHandshakeThrottled =
+					    SimpleCounter<int64_t>::makeCounter("/Net2/TLS/ClientTLSHandshakeThrottled");
+					countClientTLSHandshakeThrottled->increment(1);
 					throw connection_failed();
 				}
 			} else {
@@ -948,6 +942,51 @@ public:
 		}
 	}
 
+	// Connect with hostname for SNI (Server Name Indication) support
+	ACTOR static Future<Reference<IConnection>> connectWithHostname(
+	    boost::asio::io_service* ios,
+	    Reference<ReferencedObject<boost::asio::ssl::context>> context,
+	    NetworkAddress addr,
+	    std::string hostname) {
+		std::pair<IPAddress, uint16_t> peerIP = std::make_pair(addr.ip, addr.port);
+		auto iter(g_network->networkInfo.serverTLSConnectionThrottler.find(peerIP));
+		if (iter != g_network->networkInfo.serverTLSConnectionThrottler.end()) {
+			if (now() < iter->second.second) {
+				if (iter->second.first >= FLOW_KNOBS->TLS_CLIENT_CONNECTION_THROTTLE_ATTEMPTS) {
+					TraceEvent("TLSOutgoingConnectionThrottlingWarning").suppressFor(1.0).detail("PeerIP", addr);
+					wait(delay(FLOW_KNOBS->CONNECTION_MONITOR_TIMEOUT));
+					throw connection_failed();
+				}
+			} else {
+				g_network->networkInfo.serverTLSConnectionThrottler.erase(peerIP);
+			}
+		}
+
+		state Reference<SSLConnection> self(new SSLConnection(*ios, context));
+		self->peer_address = addr;
+		self->sni_hostname = hostname; // Store hostname for SNI during handshake
+
+		// Store hostname for SNI use during handshake
+
+		try {
+			auto to = tcpEndpoint(self->peer_address);
+			BindPromise p("N2_ConnectError", self->id);
+			Future<Void> onConnected = p.getFuture();
+			self->socket.async_connect(to, std::move(p));
+
+			wait(onConnected);
+
+			// SNI will be set later in doConnectHandshake before SSL handshake
+
+			self->init();
+			return self;
+		} catch (Error&) {
+			// Either the connection failed, or was cancelled by the caller
+			self->closeSocket();
+			throw;
+		}
+	}
+
 	// This is not part of the IConnection interface, because it is wrapped by IListener::accept()
 	void accept(NetworkAddress peerAddr) {
 		this->peer_address = peerAddr;
@@ -968,7 +1007,9 @@ public:
 			// FIXME: see comment elsewhere about making this the only path.
 			if ((FLOW_KNOBS->DISABLE_MAINTHREAD_TLS_HANDSHAKE && N2::g_net2->sslHandshakerThreadsStarted > 0) ||
 			    N2::g_net2->sslPoolHandshakesInProgress < N2::g_net2->sslHandshakerThreadsStarted) {
-				g_net2->countServerTLSHandshakesOnSideThreads++;
+				static SimpleCounter<int64_t>* countServerTLSHandshakesOnSideThreads =
+				    SimpleCounter<int64_t>::makeCounter("/Net2/TLS/ServerTLSHandshakesOnSideThreads");
+				countServerTLSHandshakesOnSideThreads->increment(1);
 				holder = Hold(&N2::g_net2->sslPoolHandshakesInProgress);
 				auto handshake =
 				    new SSLHandshakerThread::Handshake(self->ssl_sock, boost::asio::ssl::stream_base::server);
@@ -977,7 +1018,9 @@ public:
 				N2::g_net2->sslHandshakerPool->post(handshake);
 			} else {
 				// Otherwise use flow network thread
-				g_net2->countServerTLSHandshakesOnMainThread++;
+				static SimpleCounter<int64_t>* countServerTLSHandshakesOnMainThread =
+				    SimpleCounter<int64_t>::makeCounter("/Net2/TLS/ServerTLSHandshakesOnMainThread");
+				countServerTLSHandshakesOnMainThread->increment(1);
 				BindPromise p("N2_AcceptHandshakeError"_audit, self->id);
 				p.setPeerAddr(self->getPeerAddress());
 				onHandshook = p.getFuture();
@@ -1004,7 +1047,9 @@ public:
 					    .detail("PeerIP", peerIP.first.toString());
 					wait(delay(FLOW_KNOBS->CONNECTION_MONITOR_TIMEOUT));
 					self->closeSocket();
-					g_net2->countServerTLSHandshakeThrottled++;
+					static SimpleCounter<int64_t>* countServerTLSHandshakeThrottled =
+					    SimpleCounter<int64_t>::makeCounter("/Net2/TLS/ServerTLSHandshakeThrottled");
+					countServerTLSHandshakeThrottled->increment(1);
 					throw connection_failed();
 				}
 			} else {
@@ -1015,7 +1060,9 @@ public:
 		wait(g_network->networkInfo.handshakeLock->take(
 		    getTaskPriorityFromInt(FLOW_KNOBS->TLS_HANDSHAKE_FLOWLOCK_PRIORITY)));
 		state FlowLock::Releaser releaser(*g_network->networkInfo.handshakeLock);
-		g_net2->countServerTLSHandshakeLocked++;
+		static SimpleCounter<int64_t>* countServerTLSHandshakeLocked =
+		    SimpleCounter<int64_t>::makeCounter("/Net2/TLS/ServerTLSHandshakeLocked");
+		countServerTLSHandshakeLocked->increment(1);
 
 		Promise<Void> connected;
 		doAcceptHandshake(self, connected);
@@ -1025,7 +1072,9 @@ public:
 					return Void();
 				}
 				when(wait(delay(FLOW_KNOBS->CONNECTION_MONITOR_TIMEOUT))) {
-					g_net2->countServerTLSHandshakesTimedout++;
+					static SimpleCounter<int64_t>* countServerTLSHandshakesTimedout =
+					    SimpleCounter<int64_t>::makeCounter("/Net2/TLS/ServerTLSHandshakesTimedout");
+					countServerTLSHandshakesTimedout->increment(1);
 					throw connection_failed();
 				}
 			}
@@ -1057,6 +1106,15 @@ public:
 			                   self->peer_address,
 			                   [conn = self.getPtr()](bool verifyOk) { conn->has_trusted_peer = verifyOk; });
 
+			// Set SNI hostname if we have one (for connections made with hostname)
+			if (!self->sni_hostname.empty()) {
+				int result = SSL_set_tlsext_host_name(self->ssl_sock.native_handle(), self->sni_hostname.c_str());
+				TraceEvent("SSLSetSNIResult")
+				    .detail("Hostname", self->sni_hostname)
+				    .detail("Result", result)
+				    .detail("Addr", self->peer_address);
+			}
+
 			// If the background handshakers are not all busy, use one
 
 			// FIXME: this should probably be changed never to use the
@@ -1068,7 +1126,9 @@ public:
 			// thousand incremental threads.
 			if ((FLOW_KNOBS->DISABLE_MAINTHREAD_TLS_HANDSHAKE && N2::g_net2->sslHandshakerThreadsStarted > 0) ||
 			    N2::g_net2->sslPoolHandshakesInProgress < N2::g_net2->sslHandshakerThreadsStarted) {
-				g_net2->countClientTLSHandshakesOnSideThreads++;
+				static SimpleCounter<int64_t>* countClientTLSHandshakesOnSideThreads =
+				    SimpleCounter<int64_t>::makeCounter("/Net2/TLS/ClientTLSHandshakesOnSideThreads");
+				countClientTLSHandshakesOnSideThreads->increment(1);
 				holder = Hold(&N2::g_net2->sslPoolHandshakesInProgress);
 				auto handshake =
 				    new SSLHandshakerThread::Handshake(self->ssl_sock, boost::asio::ssl::stream_base::client);
@@ -1077,7 +1137,9 @@ public:
 				N2::g_net2->sslHandshakerPool->post(handshake);
 			} else {
 				// Otherwise use flow network thread
-				g_net2->countClientTLSHandshakesOnMainThread++;
+				static SimpleCounter<int64_t>* countClientTLSHandshakesOnMainThread =
+				    SimpleCounter<int64_t>::makeCounter("/Net2/TLS/ClientTLSHandshakesOnMainThread");
+				countClientTLSHandshakesOnMainThread->increment(1);
 				BindPromise p("N2_ConnectHandshakeError"_audit, self->id);
 				p.setPeerAddr(self->getPeerAddress());
 				onHandshook = p.getFuture();
@@ -1096,7 +1158,9 @@ public:
 		wait(g_network->networkInfo.handshakeLock->take(
 		    getTaskPriorityFromInt(FLOW_KNOBS->TLS_HANDSHAKE_FLOWLOCK_PRIORITY)));
 		state FlowLock::Releaser releaser(*g_network->networkInfo.handshakeLock);
-		g_net2->countClientTLSHandshakeLocked++;
+		static SimpleCounter<int64_t>* countClientTLSHandshakeLocked =
+		    SimpleCounter<int64_t>::makeCounter("/Net2/TLS/ClientTLSHandshakeLocked");
+		countClientTLSHandshakeLocked->increment(1);
 
 		Promise<Void> connected;
 		doConnectHandshake(self, connected);
@@ -1106,7 +1170,9 @@ public:
 					return Void();
 				}
 				when(wait(delay(FLOW_KNOBS->CONNECTION_MONITOR_TIMEOUT))) {
-					g_net2->countClientTLSHandshakesTimedout++;
+					static SimpleCounter<int64_t>* countClientTLSHandshakesTimedout =
+					    SimpleCounter<int64_t>::makeCounter("/Net2/TLS/ClientTLSHandshakesTimedout");
+					countClientTLSHandshakesTimedout->increment(1);
 					throw connection_failed();
 				}
 			}
@@ -1225,6 +1291,7 @@ private:
 	NetworkAddress peer_address;
 	Reference<ReferencedObject<boost::asio::ssl::context>> sslContext;
 	bool has_trusted_peer;
+	std::string sni_hostname; // For Server Name Indication
 
 	void init() {
 		// Socket settings that have to be set after connect or accept succeeds
@@ -1498,16 +1565,6 @@ void Net2::initMetrics() {
 	slowTaskMetric.init("Net2.SlowTask"_sr);
 	countLaunchTime.init("Net2.CountLaunchTime"_sr);
 	countReactTime.init("Net2.CountReactTime"_sr);
-	countClientTLSHandshakesOnSideThreads.init("Net2.CountClientTLSHandshakesOnSideThreads"_sr);
-	countClientTLSHandshakesOnMainThread.init("Net2.CountClientTLSHandshakesOnMainThread"_sr);
-	countServerTLSHandshakesOnSideThreads.init("Net2.CountServerTLSHandshakesOnSideThreads"_sr);
-	countServerTLSHandshakesOnMainThread.init("Net2.CountServerTLSHandshakesOnMainThread"_sr);
-	countClientTLSHandshakesTimedout.init("Net2.CountClientTLSHandshakesTimedout"_sr);
-	countServerTLSHandshakesTimedout.init("Net2.CountServerTLSHandshakesTimedout"_sr);
-	countServerTLSHandshakeThrottled.init("Net2.CountServerTLSHandshakeThrottled"_sr);
-	countClientTLSHandshakeThrottled.init("Net2.CountClientTLSHandshakeThrottled"_sr);
-	countServerTLSHandshakeLocked.init("Net2.CountServerTLSHandshakeLocked"_sr);
-	countClientTLSHandshakeLocked.init("Net2.CountClientTLSHandshakeLocked"_sr);
 	taskQueue.initMetrics();
 }
 
@@ -1911,6 +1968,14 @@ Future<Reference<IConnection>> Net2::connect(NetworkAddress toAddr, tcp::socket*
 }
 
 Future<Reference<IConnection>> Net2::connectExternal(NetworkAddress toAddr) {
+	return connect(toAddr);
+}
+
+Future<Reference<IConnection>> Net2::connectExternalWithHostname(NetworkAddress toAddr, const std::string& hostname) {
+	if (toAddr.isTLS()) {
+		initTLS(ETLSInitState::CONNECT);
+		return SSLConnection::connectWithHostname(&this->reactor.ios, this->sslContextVar.get(), toAddr, hostname);
+	}
 	return connect(toAddr);
 }
 

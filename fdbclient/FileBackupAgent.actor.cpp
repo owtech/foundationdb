@@ -1843,14 +1843,25 @@ Standalone<VectorRef<KeyValueRef>> decodeRangeFileBlock(const Standalone<StringR
 		throw restore_unsupported_file_version();
 
 	// Read begin key, if this fails then block was invalid.
-	uint32_t kLen = reader.consumeNetworkUInt32();
-	const uint8_t* k = reader.consume(kLen);
-	results.push_back(results.arena(), KeyValueRef(KeyRef(k, kLen), ValueRef()));
+	uint32_t beginKeyLen = reader.consumeNetworkUInt32();
+	const uint8_t* beginKey = reader.consume(beginKeyLen);
+	results.push_back(results.arena(), KeyValueRef(KeyRef(beginKey, beginKeyLen), ValueRef()));
 
 	// Read kv pairs and end key
 	while (1) {
 		// If eof reached or first value len byte is 0xFF then a valid block end was reached.
 		if (reader.eof() || *reader.rptr == 0xFF) {
+			break;
+		}
+
+		// Read a key, which must exist or the block is invalid
+		uint32_t kLen = reader.consumeNetworkUInt32();
+		const uint8_t* k = reader.consume(kLen);
+
+		// If eof reached or first value len byte is 0xFF then a valid block end was reached.
+		if (reader.eof() || *reader.rptr == 0xFF) {
+			// The last block in the file, will have Read End key.
+			results.push_back(results.arena(), KeyValueRef(KeyRef(k, kLen), ValueRef()));
 			break;
 		}
 
@@ -2991,18 +3002,13 @@ struct BackupSnapshotDispatchTask : BackupTaskFuncBase {
 		// In this context "all" refers to all of the shards relevant for this particular backup
 		state int countAllShards = countShardsDone + countShardsNotDone;
 
+		// NOTE: Don't finish here even if countShardsNotDone == 0. We need to dispatch tasks first.
+		// The completion check after dispatch (with dispatchedInThisIteration guard) prevents
+		// finishing in the same iteration we dispatch the last tasks.
 		if (countShardsNotDone == 0) {
-			TraceEvent("FileBackupSnapshotDispatchFinished")
+			TraceEvent("FileBackupSnapshotDispatchAllDoneBeforeDispatch")
 			    .detail("BackupUID", config.getUid())
-			    .detail("AllShards", countAllShards)
-			    .detail("ShardsDone", countShardsDone)
-			    .detail("ShardsNotDone", countShardsNotDone)
-			    .detail("SnapshotBeginVersion", snapshotBeginVersion)
-			    .detail("SnapshotTargetEndVersion", snapshotTargetEndVersion)
-			    .detail("CurrentVersion", recentReadVersion)
-			    .detail("SnapshotIntervalSeconds", snapshotIntervalSeconds);
-			Params.snapshotFinished().set(task, true);
-			return Void();
+			    .detail("Note", "Will check again after dispatch loop");
 		}
 
 		// Decide when the next snapshot dispatch should run.
@@ -3076,6 +3082,9 @@ struct BackupSnapshotDispatchTask : BackupTaskFuncBase {
 		    .detail("CurrentVersion", recentReadVersion)
 		    .detail("TimeElapsed", timeElapsed)
 		    .detail("SnapshotIntervalSeconds", snapshotIntervalSeconds);
+
+		// Track whether we dispatched any tasks in this iteration
+		state bool dispatchedInThisIteration = false;
 
 		// Dispatch random shards to catch up to the expected progress
 		while (countShardsToDispatch > 0) {
@@ -3209,6 +3218,7 @@ struct BackupSnapshotDispatchTask : BackupTaskFuncBase {
 
 					wait(waitForAll(addTaskFutures));
 					wait(tr->commit());
+					dispatchedInThisIteration = true;
 					break;
 				} catch (Error& e) {
 					wait(tr->onError(e));
@@ -3216,7 +3226,10 @@ struct BackupSnapshotDispatchTask : BackupTaskFuncBase {
 			}
 		}
 
-		if (countShardsNotDone == 0) {
+		// Only finish if all shards are done AND we didn't dispatch any tasks this iteration.
+		// This prevents the bug where we mark snapshot finished immediately after dispatching
+		// the last batch of tasks, before they actually complete.
+		if (countShardsNotDone == 0 && !dispatchedInThisIteration) {
 			TraceEvent("FileBackupSnapshotDispatchFinished")
 			    .detail("BackupUID", config.getUid())
 			    .detail("AllShards", countAllShards)
@@ -4179,6 +4192,9 @@ struct StartFullBackupTaskFunc : BackupTaskFuncBase {
 				config.startMutationLogs(tr, backupRange, destUidValue);
 			}
 		}
+
+		Reference<IBackupContainer> bc = wait(config.backupContainer().getOrThrow(tr));
+		wait(bc->writeEncryptionMetadata());
 
 		config.stateEnum().set(tr, EBackupState::STATE_RUNNING);
 
@@ -5146,36 +5162,41 @@ struct RestoreLogDataPartitionedTaskFunc : RestoreFileTaskFuncBase {
 	                                      Version end) {
 		// mergeSort all iterator until all are exhausted
 		// it stores all mutations for the next min version, in new format
-		state bool atLeastOneIteratorHasNext = true;
-		state Version minVersion, lastMinVersion = invalidVersion;
-		while (atLeastOneIteratorHasNext) {
-			std::pair<Version, bool> minVersionAndHasNext = wait(findNextVersion(iterators));
-			minVersion = minVersionAndHasNext.first;
-			atLeastOneIteratorHasNext = minVersionAndHasNext.second;
-			ASSERT_LT(lastMinVersion, minVersion);
-			lastMinVersion = minVersion;
+		try {
+			state bool atLeastOneIteratorHasNext = true;
+			state Version minVersion, lastMinVersion = invalidVersion;
+			while (atLeastOneIteratorHasNext) {
+				std::pair<Version, bool> minVersionAndHasNext = wait(findNextVersion(iterators));
+				minVersion = minVersionAndHasNext.first;
+				atLeastOneIteratorHasNext = minVersionAndHasNext.second;
+				ASSERT_LT(lastMinVersion, minVersion);
+				lastMinVersion = minVersion;
 
-			if (atLeastOneIteratorHasNext) {
-				std::vector<Standalone<VectorRef<VersionedMutation>>> mutationsSingleVersion =
-				    wait(getMutationsForVersion(iterators, minVersion));
+				if (atLeastOneIteratorHasNext) {
+					std::vector<Standalone<VectorRef<VersionedMutation>>> mutationsSingleVersion =
+					    wait(getMutationsForVersion(iterators, minVersion));
 
-				if (minVersion < begin) {
-					// skip generating mutations, because this is not within desired range
-					// this is already handled by the previous taskfunc
-					continue;
-				} else if (minVersion >= end) {
-					// all valid data has been consumed
-					break;
+					if (minVersion < begin) {
+						// skip generating mutations, because this is not within desired range
+						// this is already handled by the previous taskfunc
+						continue;
+					} else if (minVersion >= end) {
+						// all valid data has been consumed
+						break;
+					}
+
+					// transform from new format to old format(param1, param2) for this version.
+					// This transformation has to be done version by version.
+					Standalone<VectorRef<KeyValueRef>> oldFormatMutations =
+					    generateOldFormatMutations(minVersion, mutationsSingleVersion);
+					mutationStream.send(oldFormatMutations);
 				}
-
-				// transform from new format to old format(param1, param2) for this version.
-				// This transformation has to be done version by version.
-				Standalone<VectorRef<KeyValueRef>> oldFormatMutations =
-				    generateOldFormatMutations(minVersion, mutationsSingleVersion);
-				mutationStream.send(oldFormatMutations);
 			}
+			mutationStream.sendError(end_of_stream());
+		} catch (Error& e) {
+			TraceEvent(SevWarn, "FileRestoreLogReadError").error(e);
+			mutationStream.sendError(e);
 		}
-		mutationStream.sendError(end_of_stream());
 		return Void();
 	}
 
@@ -5203,7 +5224,8 @@ struct RestoreLogDataPartitionedTaskFunc : RestoreFileTaskFuncBase {
 	ACTOR static Future<Void> writeMutations(Database cx,
 	                                         std::vector<Standalone<VectorRef<KeyValueRef>>> mutations,
 	                                         Key mutationLogPrefix,
-	                                         Reference<Task> task) {
+	                                         Reference<Task> task,
+	                                         Reference<TaskBucket> taskBucket) {
 		state Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(cx));
 		state Standalone<VectorRef<KeyValueRef>> oldFormatMutations;
 		state int mutationIndex = 0;
@@ -5239,7 +5261,9 @@ struct RestoreLogDataPartitionedTaskFunc : RestoreFileTaskFuncBase {
 					txBytes += v.expectedSize();
 					++mutationCount;
 				}
+				wait(taskBucket->keepRunning(tr, task));
 				wait(tr->commit());
+
 				int64_t oldBytes = Params.bytesWritten().get(task);
 				Params.bytesWritten().set(task, oldBytes + txBytes);
 				DisabledTraceEvent("FileRestorePartitionedLogCommittData")
@@ -5350,7 +5374,7 @@ struct RestoreLogDataPartitionedTaskFunc : RestoreFileTaskFuncBase {
 				// batching mutations from multiple versions together before writing to the database
 				state int64_t bytes = oneVersionData.expectedSize();
 				if (totalBytes + bytes > CLIENT_KNOBS->RESTORE_WRITE_TX_SIZE) {
-					wait(writeMutations(cx, mutations, restore.mutationLogPrefix(), task));
+					wait(writeMutations(cx, mutations, restore.mutationLogPrefix(), task, taskBucket));
 					mutations.clear();
 					totalBytes = 0;
 				}
@@ -5359,7 +5383,7 @@ struct RestoreLogDataPartitionedTaskFunc : RestoreFileTaskFuncBase {
 			} catch (Error& e) {
 				if (e.code() == error_code_end_of_stream) {
 					if (mutations.size() > 0) {
-						wait(writeMutations(cx, mutations, restore.mutationLogPrefix(), task));
+						wait(writeMutations(cx, mutations, restore.mutationLogPrefix(), task, taskBucket));
 					}
 					break;
 				} else {
@@ -7063,7 +7087,10 @@ public:
 				                                .removePrefix(removePrefix)
 				                                .withPrefix(addPrefix);
 				RangeResult existingRows = wait(tr->getRange(restoreIntoRange, 1));
-				if (existingRows.size() > 0) {
+				// Allow restoring over existing data only when using the validation restore prefix.
+				// validateRestoreLogKeys.begin (\xff\x02/rlog/) is the designated prefix for validation restores.
+				// Using any other prefix with existing data could corrupt user data.
+				if (existingRows.size() > 0 && addPrefix != validateRestoreLogKeys.begin) {
 					throw restore_destination_not_empty();
 				}
 			}
@@ -7726,9 +7753,19 @@ public:
 			throw restore_error();
 		}
 
-		state Reference<IBackupContainer> bc = IBackupContainer::openContainer(url.toString(), proxy, {});
+		state Reference<IBackupContainer> bc =
+		    IBackupContainer::openContainer(url.toString(), proxy, encryptionKeyFileName);
 
 		state BackupDescription desc = wait(bc->describeBackup(true));
+
+		if (desc.fileLevelEncryption && !encryptionKeyFileName.present()) {
+			fprintf(stderr, "ERROR: Backup is encrypted, please provide the encryption key file path.\n");
+			throw restore_error();
+		} else if (!desc.fileLevelEncryption && encryptionKeyFileName.present()) {
+			fprintf(stderr, "ERROR: Backup is not encrypted, please remove the encryption key file path.\n");
+			throw restore_error();
+		}
+
 		if (cxOrig.present()) {
 			wait(desc.resolveVersionTimes(cxOrig.get()));
 		}
@@ -7909,6 +7946,7 @@ public:
 		}
 
 		state Reference<IBackupContainer> bc = wait(backupConfig.backupContainer().getOrThrow(cx.getReference()));
+
 		bc = fileBackup::getBackupContainerWithProxy(bc);
 
 		if (fastRestore) {
