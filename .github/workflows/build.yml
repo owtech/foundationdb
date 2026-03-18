@@ -183,70 +183,8 @@ jobs:
 
   tests:
     needs: [calc_ver, build]
-    runs-on: ubuntu-latest
-    env:
-      JOSHUA_DB_VER: "6.3.15"
-      N_OF_TESTS: 500  # to fit in 360 minutes job run limit
-      JOSHUA_AGENT_URL: "docker.io/1inker"
-      JOSHUA_AGENT_TAG: "rhel8-20220816"
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          path: ${{github.workspace}}/src
-
-      - name: Install dependencies
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y sudo wget crudini git python3 python3-pip
-          sudo pip3 install wheel setuptools python-dateutil lxml boto3
-
-      - name: Install FoundationDb
-        shell: bash
-        run: |
-          mkdir deb
-          pushd deb
-          MY_ARCH=`dpkg-architecture -q DEB_BUILD_ARCH`
-          wget https://github.com/apple/foundationdb/releases/download/${{ env.JOSHUA_DB_VER }}/foundationdb-clients_${{ env.JOSHUA_DB_VER }}-1_${MY_ARCH}.deb https://github.com/apple/foundationdb/releases/download/${{ env.JOSHUA_DB_VER }}/foundationdb-server_${{ env.JOSHUA_DB_VER }}-1_${MY_ARCH}.deb
-          sudo apt-get install -y ./foundationdb-clients_${{ env.JOSHUA_DB_VER }}-1_${MY_ARCH}.deb ./foundationdb-server_${{ env.JOSHUA_DB_VER }}-1_${MY_ARCH}.deb
-          popd
-          sudo systemctl stop foundationdb
-          MY_IP=`hostname -I | awk '{print $1}'`
-          sudo sed -i s/127.0.0.1/$MY_IP/ /etc/foundationdb/fdb.cluster
-          sudo crudini --set /etc/foundationdb/foundationdb.conf fdbserver memory 4GiB
-          sudo systemctl start foundationdb
-          pip3 install 'foundationdb==${{ env.JOSHUA_DB_VER }}'
-
-      - name: Download the correctness package
-        uses: actions/download-artifact@v4
-        id: download_correctness
-        with:
-          name: correctness-${{needs.calc_ver.outputs.full_ver}}.tar.gz
-
-      - name: 'Echo download path'
-        run: echo ${{steps.download_correctness.outputs.download-path}}
-
-      - name: Display structure of downloaded files
-        run: ls -R
-        working-directory: ${{github.workspace}}
-
-      - name: Download joshua
-        shell: bash
-        run: |
-          git clone https://github.com/FoundationDB/fdb-joshua.git
-
-      - name: run joshua-agent
-        shell: bash
-        run: |
-          podman pull ${{ env.JOSHUA_AGENT_URL }}/joshua-agent:${{ env.JOSHUA_AGENT_TAG }}
-          podman create --name joshua-agent -v /etc/foundationdb:/etc/foundationdb -it joshua-agent:${{ env.JOSHUA_AGENT_TAG }}
-          podman start joshua-agent
-
-      - name: run tests
-        shell: bash
-        working-directory: ${{github.workspace}}/fdb-joshua
-        run: |
-          podman ps
-          ${{github.workspace}}/src/build-scripts/for-linux/test-joshua.bash ${{github.workspace}}/correctness-${{needs.calc_ver.outputs.full_ver}}.tar.gz ${{env.N_OF_TESTS}}
+    uses: ./.github/workflows/run-tests.yml
+    with:
+      full_ver: ${{needs.calc_ver.outputs.full_ver}}
+      build_run_id: ${{ github.run_id }}
+    secrets: inherit
