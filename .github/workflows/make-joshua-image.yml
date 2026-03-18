@@ -1,0 +1,42 @@
+---
+name: Make joshua agent image
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["*.joshua-image"]
+
+jobs:
+  build-joshua-image:
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-latest
+
+    env:
+      IMAGE_NAME: joshua-agent
+      REGISTRY: ghcr.io
+
+    steps:
+      - name: Clone fdb-joshua
+        run: git clone https://github.com/FoundationDB/fdb-joshua.git
+
+      - name: Build image
+        working-directory: fdb-joshua
+        run: |
+          COMMIT_HASH=$(git rev-parse --short=10 HEAD)
+          DATE_STR=$(date +"%Y%m%d%H%M%S")
+          IMG_TAG="${DATE_STR}-${COMMIT_HASH}"
+          REPO_OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+
+          FULL_IMAGE_NAME="${REGISTRY}/${REPO_OWNER}/${IMAGE_NAME}:${IMG_TAG}"
+
+          echo "FULL_IMAGE_NAME=${FULL_IMAGE_NAME}" >> "$GITHUB_ENV"
+
+          podman build -t "${FULL_IMAGE_NAME}" .
+
+      - name: Log in to registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u "${GITHUB_REPOSITORY_OWNER,,}" --password-stdin
+
+      - name: Push image
+        run: podman push "${FULL_IMAGE_NAME}"
