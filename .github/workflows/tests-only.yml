@@ -1,0 +1,19 @@
+name: Tests only
+
+on:
+  workflow_dispatch:
+    inputs:
+      full_ver:
+        description: 'Version of the build to test (e.g. 7.4.0-3.1.ow)'
+        required: true
+      build_run_id:
+        description: 'Run ID of the build workflow (find it in the URL of the build run)'
+        required: true
+
+jobs:
+  tests:
+    uses: ./.github/workflows/run-tests.yml
+    with:
+      full_ver: ${{ github.event.inputs.full_ver }}
+      build_run_id: ${{ github.event.inputs.build_run_id }}
+    secrets: inherit
