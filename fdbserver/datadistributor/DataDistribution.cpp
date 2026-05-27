@@ -298,6 +298,14 @@ Future<Void> StorageWiggler::finishWiggle() {
 	    });
 }
 
+Future<Void> waitForAcceptingCommits(Reference<AsyncVar<ServerDBInfo> const> db) {
+	TraceEvent("DDWaitForAcceptingCommitsStart").log();
+	while (db->get().recoveryState < RecoveryState::ACCEPTING_COMMITS) {
+		TraceEvent("DDWaitForAcceptingCommits").detail("RecoveryState", (int)db->get().recoveryState);
+		co_await db->onChange();
+	}
+}
+
 Future<Void> remoteRecovered(Reference<AsyncVar<ServerDBInfo> const> db) {
 	TraceEvent("DDTrackerStarting").log();
 	while (db->get().recoveryState < RecoveryState::ALL_LOGS_RECRUITED) {
@@ -2899,7 +2907,12 @@ Future<Void> dataDistribution(Reference<DataDistributor> self,
 				                                self->configuration,
 				                                self->remoteDcIds,
 				                                Optional<std::vector<Optional<Key>>>(),
-				                                self->initialized.getFuture() && remoteRecovered(self->dbInfo),
+				                                // In multi-region configurations DD only needs the cluster to
+				                                // reach ACCEPTING_COMMITS before continuing startup. Waiting for
+				                                // ALL_LOGS_RECRUITED can hang during degraded failover scenarios
+				                                // such as when the primary DC is down.
+				                                self->initialized.getFuture() &&
+				                                    waitForAcceptingCommits(self->dbInfo),
 				                                zeroHealthyTeams[1],
 				                                IsPrimary::False,
 				                                processingUnhealthy,
