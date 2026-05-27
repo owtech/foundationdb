@@ -108,10 +108,15 @@ bool logEpochsMayBeLosingData(StatusObjectReader statusObjCluster) {
 	}
 
 	bool sawLogEpoch = false;
+
 	for (StatusObjectReader logEpoch : statusObjCluster.last().get_array()) {
 		sawLogEpoch = true;
 		bool possiblyLosingData = true;
-		if (!logEpoch.get("possibly_losing_data", possiblyLosingData) || possiblyLosingData) {
+		int satFaultTolerance = -1;
+
+		if (!logEpoch.get("possibly_losing_data", possiblyLosingData) ||
+			(possiblyLosingData &&
+				(!logEpoch.get("satellite_log_fault_tolerance", satFaultTolerance) || satFaultTolerance < 0))) {
 			return true;
 		}
 	}
@@ -739,7 +744,10 @@ void printStatus(StatusObjectReader statusObj,
 											if (logInterface.get("healthy", healthy) && !healthy) {
 												logInterface.get("id", id);
 												logInterface.get("address", address);
-												missing_log_interfaces += format("%s,%s ", id.c_str(), address.c_str());
+												missing_log_interfaces +=
+												    format("%s,%s ",
+												           id.c_str(),
+												           address.empty() ? "unknown" : address.c_str());
 											}
 										}
 									}
