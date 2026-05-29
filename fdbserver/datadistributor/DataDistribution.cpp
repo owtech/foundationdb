@@ -2911,8 +2911,7 @@ Future<Void> dataDistribution(Reference<DataDistributor> self,
 				                                // reach ACCEPTING_COMMITS before continuing startup. Waiting for
 				                                // ALL_LOGS_RECRUITED can hang during degraded failover scenarios
 				                                // such as when the primary DC is down.
-				                                self->initialized.getFuture() &&
-				                                    waitForAcceptingCommits(self->dbInfo),
+				                                self->initialized.getFuture() && waitForAcceptingCommits(self->dbInfo),
 				                                zeroHealthyTeams[1],
 				                                IsPrimary::False,
 				                                processingUnhealthy,
