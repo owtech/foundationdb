@@ -199,6 +199,7 @@ struct PerpetualWiggleStatsWorkload : public TestWorkload {
 		                                {},
 		                                {},
 		                                Future<Void>(Void()),
+										Future<Void>(Void()),
 		                                makeReference<AsyncVar<bool>>(true),
 		                                IsPrimary::True,
 		                                makeReference<AsyncVar<bool>>(false),

@@ -2881,6 +2881,7 @@ Future<Void> dataDistribution(Reference<DataDistributor> self,
 			    self->primaryDcId,
 			    self->configuration.usableRegions > 1 ? self->remoteDcIds : std::vector<Optional<Key>>(),
 			    self->initialized.getFuture(),
+			    self->initialized.getFuture(),
 			    zeroHealthyTeams[0],
 			    IsPrimary::True,
 			    processingUnhealthy,
@@ -2907,10 +2908,10 @@ Future<Void> dataDistribution(Reference<DataDistributor> self,
 				                                self->configuration,
 				                                self->remoteDcIds,
 				                                Optional<std::vector<Optional<Key>>>(),
-				                                // In multi-region configurations DD only needs the cluster to
-				                                // reach ACCEPTING_COMMITS before continuing startup. Waiting for
-				                                // ALL_LOGS_RECRUITED can hang during degraded failover scenarios
-				                                // such as when the primary DC is down.
+				                                // Remote TC must wait for ALL_LOGS_RECRUITED before actually
+				                                // starting (building teams, moving data), but reports Healthy
+				                                // status at ACCEPTING_COMMITS for faster visibility.
+				                                self->initialized.getFuture() && remoteRecovered(self->dbInfo),
 				                                self->initialized.getFuture() && waitForAcceptingCommits(self->dbInfo),
 				                                zeroHealthyTeams[1],
 				                                IsPrimary::False,

@@ -193,6 +193,7 @@ struct DDTeamCollectionInitParams {
 	std::vector<Optional<Key>> includedDCs;
 	Optional<std::vector<Optional<Key>>> otherTrackedDCs;
 	Future<Void> readyToStart;
+	Future<Void> onHealthy;
 	Reference<AsyncVar<bool>> zeroHealthyTeams;
 	IsPrimary primary;
 	Reference<AsyncVar<bool>> processingUnhealthy;
