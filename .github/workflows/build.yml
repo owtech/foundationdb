@@ -55,7 +55,7 @@ jobs:
             prepare: "debian-based"
             build_on: linux
             parallel: 5
-            image: foundationdb-build:7.4.0-3.ow.build
+            image: foundationdb-build:8.0.0-0.ow.build
             owner: ${GITHUB_REPOSITORY_OWNER@L}
     runs-on: ${{ matrix.run_on }}
     steps:
@@ -109,8 +109,8 @@ jobs:
     needs: [calc_ver, build]
     runs-on: ubuntu-latest
     env:
-      RPM_IMAGE: oraclelinux:8
-      DEB_IMAGE: debian:10
+      RPM_IMAGE: oraclelinux:9
+      DEB_IMAGE: debian:11
 
     steps:
       - name: Checkout

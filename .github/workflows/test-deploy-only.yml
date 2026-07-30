@@ -1,0 +1,49 @@
+name: Test Deploy Only
+
+on:
+  workflow_dispatch:
+    inputs:
+      full_ver:
+        description: 'Version of the build to test (e.g. 7.4.0-3.1.ow)'
+        required: true
+      build_run_id:
+        description: 'Run ID of the build workflow (find it in the URL of the build run)'
+        required: true
+      rpm_image:
+        description: 'RPM-based Linux image (default: oraclelinux:9)'
+        required: false
+        default: 'oraclelinux:9'
+      deb_image:
+        description: 'DEB-based Linux image (default: debian:11)'
+        required: false
+        default: 'debian:11'
+
+jobs:
+  test_deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download the foundationdb distro
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{github.workspace}}/bld/download
+          run-id: ${{ github.event.inputs.build_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Make a normal distro directory from the downloaded artifacts
+        shell: bash
+        run: |
+          ls -Rl ${{github.workspace}}/bld/download
+          mkdir -p ${{github.workspace}}/bld/linux/packages
+          mv -v ${{github.workspace}}/bld/download/*/* ${{github.workspace}}/bld/linux/packages/
+
+      - name: Run tests
+        shell: bash
+        run: |
+          ${{github.workspace}}/build-scripts/for-linux/test-deploy.bash \
+            ${{ github.event.inputs.full_ver }} \
+            ${{github.workspace}}/bld/linux/packages \
+            ${{ github.event.inputs.rpm_image }} \
+            ${{ github.event.inputs.deb_image }}

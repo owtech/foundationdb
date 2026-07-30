@@ -3,15 +3,15 @@
 # Test deploying foundationdb on rpm-and deb-based linux
 # $1 - full Foundationdb version, ex. 7.1.29-0.ow.1
 # $2 - distr dir. Default is bld/linux/packages relative to the current dir
-# $3 - a rpm-based linux docker image. Default is oraclelinux:8
+# $3 - a rpm-based linux docker image. Default is oraclelinux:9
 # $4 - a deb-based linux docker image. Default is debian:10
 
 set -e
 
 FULL_VERSION="$1"
 DISTR_DIR="$(readlink -f ${2:-bld/linux/packages})"
-RPM_IMAGE=${3:-oraclelinux:8}
-DEB_IMAGE=${4:-debian:10}
+RPM_IMAGE=${3:-oraclelinux:9}
+DEB_IMAGE=${4:-debian:11}
 
 CONTAINER_NAME="test_deploy"
 CONTAINER_DISTR_DIR="/mnt/distr"
@@ -105,7 +105,7 @@ remove_container_if_exists() {
 
 prepare_systemd_script() {
   case "$1" in
-    *debian:10*)
+      *debian:10*)
       cat <<'EOF'
 echo 'deb http://archive.debian.org/debian buster main' > /etc/apt/sources.list
 echo 'deb http://archive.debian.org/debian buster-updates main' >> /etc/apt/sources.list
@@ -115,7 +115,14 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y systemd systemd-sysv dbus proc
 exec /lib/systemd/systemd
 EOF
       ;;
-    *oraclelinux:8*)
+    *debian:11*)
+      cat <<'EOF'
+apt-get update
+DEBIAN_FRONTEND=noninteractive apt-get install -y systemd systemd-sysv dbus procps
+exec /lib/systemd/systemd
+EOF
+      ;;
+    *oraclelinux:9*)
       echo 'exec /lib/systemd/systemd'
       ;;
     *)

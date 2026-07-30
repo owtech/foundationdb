@@ -47,6 +47,7 @@ function(fdb_setup_googlebenchmark)
       message(FATAL_ERROR "Build step for Benchmark has Failed. ${results}")
     endif()
 
+    #pthread is required for benchmark to work properly on Linux
     if(CMAKE_THREAD_LIBS_INIT)
       list(APPEND BENCHMARK_CXX_LIBRARIES ${CMAKE_THREAD_LIBS_INIT})
     elseif(UNIX)

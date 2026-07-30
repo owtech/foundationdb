@@ -1,5 +1,5 @@
 # Any debian-based image is suitable
-ARG IMAGE=debian:10
+ARG IMAGE=debian:11
 FROM ${IMAGE}
 
 ARG PROJECT_NAME
@@ -7,11 +7,9 @@ ARG FOR_OS=linux
 
 # The prroject directory must be mounted to /mnt/project
 
-COPY debian10.sources.list /etc/apt/sources.list
-
 RUN \
   apt update && \
-  apt install -y sudo apt-utils && \
+  apt install -y sudo && \
   useradd -mN runner && \
   echo "runner ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/90-runner
 
