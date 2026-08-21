@@ -145,6 +145,7 @@ enum {
 	OPT_BACKUPKEYS_FILTER,
 	OPT_INCREMENTALONLY,
 	OPT_ENCRYPTION_KEY_FILE,
+	OPT_ENCRYPTION_BLOCK_SIZE,
 
 	// Backup Modify
 	OPT_MOD_ACTIVE_INTERVAL,
@@ -282,6 +283,7 @@ CSimpleOpt::SOption g_rgBackupStartOptions[] = {
 	{ OPT_BLOB_CREDENTIALS, "--blob-credentials", SO_REQ_SEP },
 	{ OPT_INCREMENTALONLY, "--incremental", SO_NONE },
 	{ OPT_ENCRYPTION_KEY_FILE, "--encryption-key-file", SO_REQ_SEP },
+	{ OPT_ENCRYPTION_BLOCK_SIZE, "--encryption-block-size", SO_REQ_SEP },
 	{ OPT_ENCRYPT_FILES, "--encrypt-files", SO_REQ_SEP },
 	TLS_OPTION_FLAGS,
 	SO_END_OF_OPTIONS
@@ -1133,6 +1135,9 @@ static void printBackupUsage(bool devhelp) {
 	       "                 For modify operations, need to pass encryption key file only if Backup container URL is "
 	       "changed to "
 	       "re-encrypt all future backup files. \n");
+	printf("  --encryption-block-size"
+	       "                 Block size in bytes for file encryption. Only used with fdbbackup start command. Default "
+	       "is 1048576 (1MB).\n");
 	printf("  --encrypt-files 0/1"
 	       "                 If passed, this argument will allow the user to override the database encryption state to "
 	       "either enable (1) or disable (0) encryption at rest with snapshot backups. This option refers to block "
@@ -2003,7 +2008,8 @@ ACTOR Future<Void> submitBackup(Database db,
                                 StopWhenDone stopWhenDone,
                                 UsePartitionedLog usePartitionedLog,
                                 IncrementalBackupOnly incrementalBackupOnly,
-                                Optional<std::string> encryptionKeyFile) {
+                                Optional<std::string> encryptionKeyFile,
+                                int encryptionBlockSize) {
 	try {
 		state FileBackupAgent backupAgent;
 		ASSERT(!backupRanges.empty());
@@ -2057,7 +2063,8 @@ ACTOR Future<Void> submitBackup(Database db,
 			                              stopWhenDone,
 			                              usePartitionedLog,
 			                              incrementalBackupOnly,
-			                              encryptionKeyFile));
+			                              encryptionKeyFile,
+			                              encryptionBlockSize));
 
 			// Wait for the backup to complete, if requested
 			if (waitForCompletion) {
@@ -2332,7 +2339,8 @@ ACTOR Future<Void> changeDBBackupResumed(Database src, Database dest, bool pause
 Reference<IBackupContainer> openBackupContainer(const char* name,
                                                 const std::string& destinationContainer,
                                                 const Optional<std::string>& proxy,
-                                                const Optional<std::string>& encryptionKeyFile) {
+                                                const Optional<std::string>& encryptionKeyFile,
+                                                int encryptionBlockSize) {
 	// Error, if no dest container was specified
 	if (destinationContainer.empty()) {
 		fprintf(stderr, "ERROR: No backup destination was specified.\n");
@@ -2342,7 +2350,7 @@ Reference<IBackupContainer> openBackupContainer(const char* name,
 
 	Reference<IBackupContainer> c;
 	try {
-		c = IBackupContainer::openContainer(destinationContainer, proxy, encryptionKeyFile);
+		c = IBackupContainer::openContainer(destinationContainer, proxy, encryptionKeyFile, encryptionBlockSize);
 	} catch (Error& e) {
 		std::string msg = format("ERROR: '%s' on URL '%s'", e.what(), destinationContainer.c_str());
 		if (e.code() == error_code_backup_invalid_url && !IBackupContainer::lastOpenError.empty()) {
@@ -2408,9 +2416,10 @@ ACTOR Future<Void> runRestore(Database db,
 	try {
 		state FileBackupAgent backupAgent;
 
-		state Reference<IBackupContainer> bc =
-		    openBackupContainer(exeRestore.toString().c_str(), container, proxy, encryptionKeyFile);
-
+		// encryptionBlockSize is passed 0 because we don't know about the block size yet and it will be read in the
+		// describeBackup call after this.
+		state Reference<IBackupContainer> bc = openBackupContainer(
+		    exeRestore.toString().c_str(), container, proxy, encryptionKeyFile, /*encryptionBlockSize=*/0);
 		// If targetVersion is unset then use the maximum restorable version from the backup description
 		if (targetVersion == invalidVersion) {
 			if (verbose)
@@ -2513,7 +2522,8 @@ ACTOR Future<Void> runFastRestoreTool(Database db,
 		if (performRestore) {
 			if (dbVersion == invalidVersion) {
 				TraceEvent("FastRestoreTool").detail("TargetRestoreVersion", "Largest restorable version");
-				BackupDescription desc = wait(IBackupContainer::openContainer(container, proxy, {})->describeBackup());
+				BackupDescription desc =
+				    wait(IBackupContainer::openContainer(container, proxy, {}, 0)->describeBackup());
 				if (!desc.maxRestorableVersion.present()) {
 					fprintf(stderr, "The specified backup is not restorable to any version.\n");
 					throw restore_error();
@@ -2552,7 +2562,7 @@ ACTOR Future<Void> runFastRestoreTool(Database db,
 
 			restoreVersion = dbVersion;
 		} else {
-			state Reference<IBackupContainer> bc = IBackupContainer::openContainer(container, proxy, {});
+			state Reference<IBackupContainer> bc = IBackupContainer::openContainer(container, proxy, {}, 0);
 			state BackupDescription description = wait(bc->describeBackup());
 
 			if (dbVersion <= 0) {
@@ -2599,7 +2609,7 @@ ACTOR Future<Void> dumpBackupData(const char* name,
                                   Optional<std::string> proxy,
                                   Version beginVersion,
                                   Version endVersion) {
-	state Reference<IBackupContainer> c = openBackupContainer(name, destinationContainer, proxy, {});
+	state Reference<IBackupContainer> c = openBackupContainer(name, destinationContainer, proxy, {}, 0);
 
 	if (beginVersion < 0 || endVersion < 0) {
 		BackupDescription desc = wait(c->describeBackup());
@@ -2633,8 +2643,7 @@ ACTOR Future<Void> expireBackupData(const char* name,
                                     Database db,
                                     bool force,
                                     Version restorableAfterVersion,
-                                    std::string restorableAfterDatetime,
-                                    Optional<std::string> encryptionKeyFile) {
+                                    std::string restorableAfterDatetime) {
 	if (!endDatetime.empty()) {
 		Version v = wait(timeKeeperVersionFromDatetime(endDatetime, db));
 		endVersion = v;
@@ -2653,7 +2662,7 @@ ACTOR Future<Void> expireBackupData(const char* name,
 	}
 
 	try {
-		Reference<IBackupContainer> c = openBackupContainer(name, destinationContainer, proxy, encryptionKeyFile);
+		Reference<IBackupContainer> c = openBackupContainer(name, destinationContainer, proxy, {}, 0);
 
 		state IBackupContainer::ExpireProgress progress;
 		state std::string lastProgress;
@@ -2705,7 +2714,7 @@ ACTOR Future<Void> deleteBackupContainer(const char* name,
                                          std::string destinationContainer,
                                          Optional<std::string> proxy) {
 	try {
-		state Reference<IBackupContainer> c = openBackupContainer(name, destinationContainer, proxy, {});
+		state Reference<IBackupContainer> c = openBackupContainer(name, destinationContainer, proxy, {}, 0);
 		state int numDeleted = 0;
 		state Future<Void> done = c->deleteContainer(&numDeleted);
 
@@ -2742,10 +2751,9 @@ ACTOR Future<Void> describeBackup(const char* name,
                                   Optional<std::string> proxy,
                                   bool deep,
                                   Optional<Database> cx,
-                                  bool json,
-                                  Optional<std::string> encryptionKeyFile) {
+                                  bool json) {
 	try {
-		Reference<IBackupContainer> c = openBackupContainer(name, destinationContainer, proxy, encryptionKeyFile);
+		Reference<IBackupContainer> c = openBackupContainer(name, destinationContainer, proxy, {}, 0);
 		state BackupDescription desc = wait(c->describeBackup(deep));
 		if (cx.present())
 			wait(desc.resolveVersionTimes(cx.get()));
@@ -2843,7 +2851,7 @@ ACTOR Future<Void> queryBackup(const char* name,
 	state JsonBuilderArray rangeFilesJson;
 	state JsonBuilderArray logFilesJson;
 	try {
-		state Reference<IBackupContainer> bc = openBackupContainer(name, destinationContainer, proxy, {});
+		state Reference<IBackupContainer> bc = openBackupContainer(name, destinationContainer, proxy, {}, 0);
 		BackupDescription desc = wait(bc->describeBackup());
 		// Use continuous log end version for the maximum restorable version for the key ranges when a restorable
 		// version doesn't exist.
@@ -3095,9 +3103,13 @@ ACTOR Future<Void> modifyBackup(Database db, std::string tagName, BackupModifyOp
 				    .detail("TagName", tagName)
 				    .detail("DestURL", options.destURL.get())
 				    .detail("EncryptionKeyFile",
-				            options.encryptionKeyFile.present() ? options.encryptionKeyFile.get() : "None");
-				bc = openBackupContainer(
-				    exeBackup.toString().c_str(), options.destURL.get(), options.proxy, options.encryptionKeyFile);
+				            options.encryptionKeyFile.present() ? options.encryptionKeyFile.get() : "None")
+				    .detail("EncryptionBlockSize", prevContainer->getEncryptionBlockSize());
+				bc = openBackupContainer(exeBackup.toString().c_str(),
+				                         options.destURL.get(),
+				                         options.proxy,
+				                         options.encryptionKeyFile,
+				                         prevContainer->getEncryptionBlockSize());
 				try {
 					wait(timeoutError(bc->create(), 30));
 				} catch (Error& e) {
@@ -3111,7 +3123,7 @@ ACTOR Future<Void> modifyBackup(Database db, std::string tagName, BackupModifyOp
 				}
 
 				config.backupContainer().set(tr, bc);
-				wait(bc->writeEncryptionMetadata());
+				wait(bc->writeEncryptionMetadata(bc->getEncryptionBlockSize()));
 			} else if (options.encryptionKeyFile.present()) {
 				fprintf(stdout,
 				        " Encryption key file specified without a new destination URL."
@@ -3598,7 +3610,8 @@ int main(int argc, char* argv[]) {
 				return FDB_EXIT_ERROR;
 			} else {
 				// Get the backup type
-				dbType = getDBType(newArgV[1]);
+				dbType = getDBType(argv[1]);
+
 				// Create the appropriate simple opt
 				switch (dbType) {
 				case DBType::START:
@@ -3734,6 +3747,7 @@ int main(int argc, char* argv[]) {
 		bool jsonOutput = false;
 		DeleteData deleteData{ false };
 		Optional<std::string> encryptionKeyFile;
+		int encryptionBlockSize = 0;
 
 		BackupModifyOptions modifyOptions;
 
@@ -4016,6 +4030,20 @@ int main(int argc, char* argv[]) {
 				encryptionKeyFile = args->OptionArg();
 				modifyOptions.encryptionKeyFile = encryptionKeyFile;
 				break;
+			case OPT_ENCRYPTION_BLOCK_SIZE:
+				try {
+					encryptionBlockSize = std::stoi(args->OptionArg());
+				} catch (std::exception&) {
+					fprintf(stderr, "ERROR: Invalid encryption block size `%s'\n", args->OptionArg());
+					printHelpTeaser(argv[0]);
+					return FDB_EXIT_ERROR;
+				}
+				if (encryptionBlockSize <= 0) {
+					fprintf(stderr, "ERROR: Invalid encryption block size `%s'\n", args->OptionArg());
+					printHelpTeaser(argv[0]);
+					return FDB_EXIT_ERROR;
+				}
+				break;
 			case OPT_RESTORECONTAINER:
 				restoreContainer = args->OptionArg();
 				// If the url starts with '/' then prepend "file://" for backwards compatibility
@@ -4033,7 +4061,7 @@ int main(int argc, char* argv[]) {
 				addPrefix = decode_hex_string(args->OptionArg(), err);
 				if (err) {
 					fprintf(stderr, "ERROR: Could not parse add prefix\n");
-					printHelpTeaser(newArgV[0]);
+					printHelpTeaser(argv[0]);
 					return FDB_EXIT_ERROR;
 				}
 				break;
@@ -4043,7 +4071,7 @@ int main(int argc, char* argv[]) {
 				removePrefix = decode_hex_string(args->OptionArg(), err);
 				if (err) {
 					fprintf(stderr, "ERROR: Could not parse remove prefix\n");
-					printHelpTeaser(newArgV[0]);
+					printHelpTeaser(argv[0]);
 					return FDB_EXIT_ERROR;
 				}
 				break;
@@ -4353,6 +4381,15 @@ int main(int argc, char* argv[]) {
 			return result.present();
 		};
 
+		if (encryptionKeyFile.present() && encryptionBlockSize == 0) {
+			encryptionBlockSize = DEFAULT_ENCRYPTION_BLOCK_SIZE;
+		}
+
+		if (encryptionBlockSize > 0 && !encryptionKeyFile.present()) {
+			fprintf(stderr, "ERROR: --encryption-block-size option requires --encryption-key-file to be set\n");
+			return FDB_EXIT_ERROR;
+		}
+
 		// The fastrestore tool does not yet support multiple ranges and is incompatible with tenants
 		// or other features that back up data in the system keys
 		if (!restoreSystemKeys && !restoreUserKeys && backupKeys.empty() &&
@@ -4393,7 +4430,7 @@ int main(int argc, char* argv[]) {
 					return FDB_EXIT_ERROR;
 				// Test out the backup url to make sure it parses.  Doesn't test to make sure it's actually
 				// writeable.
-				openBackupContainer(newArgV[0], destinationContainer, proxy, encryptionKeyFile);
+				openBackupContainer(argv[0], destinationContainer, proxy, encryptionKeyFile, encryptionBlockSize);
 				f = stopAfter(submitBackup(db,
 				                           destinationContainer,
 				                           proxy,
@@ -4407,7 +4444,8 @@ int main(int argc, char* argv[]) {
 				                           stopWhenDone,
 				                           usePartitionedLog,
 				                           incrementalBackupOnly,
-				                           encryptionKeyFile));
+				                           encryptionKeyFile,
+				                           encryptionBlockSize));
 				break;
 			}
 
@@ -4476,8 +4514,7 @@ int main(int argc, char* argv[]) {
 				                               db,
 				                               forceAction,
 				                               expireRestorableAfterVersion,
-				                               expireRestorableAfterDatetime,
-				                               encryptionKeyFile));
+				                               expireRestorableAfterDatetime));
 				break;
 
 			case BackupType::DELETE_BACKUP:
@@ -4498,8 +4535,7 @@ int main(int argc, char* argv[]) {
 				                             proxy,
 				                             describeDeep,
 				                             describeTimestamps ? Optional<Database>(db) : Optional<Database>(),
-				                             jsonOutput,
-				                             encryptionKeyFile));
+				                             jsonOutput));
 				break;
 
 			case BackupType::LIST:

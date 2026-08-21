@@ -22,6 +22,7 @@
 
 #include <numeric>
 
+#include "fdbrpc/DDSketch.h"
 #include "fdbserver/DataDistribution.actor.h"
 #include "fdbserver/MovingWindow.h"
 
@@ -240,9 +241,16 @@ public:
 
 	int activeRelocations;
 	int queuedRelocations;
+	int pendingGateRelocations; // forwarded by pipelineGateActor but not yet consumed by DDQueue
 	int64_t bytesWritten;
 	int teamSize;
 	int singleRegionTeamSize;
+
+	int pipelineSize() const { return pendingGateRelocations + activeRelocations + queuedRelocations; }
+
+	void updatePipelineFull();
+
+	Reference<AsyncVar<bool>> pipelineFull;
 
 	std::map<UID, Busyness> busymap; // UID is serverID
 	std::map<UID, Busyness> destBusymap; // UID is serverID
@@ -257,6 +265,10 @@ public:
 	// rebalance on time bases because the read workload sample update has delay after the previous moving
 	std::map<UID, double> lastAsSource;
 	ServerCounter serverCounter;
+
+	// Declared before inFlightActors so it outlives the relocator actors (reverse destruction order).
+	DDSketch<double> relocatorLatency;
+	DDSketch<double> relocatorErrorLatency;
 
 	KeyRangeMap<RelocateData> inFlight;
 	// Track all actors that relocates specified keys to a good place; Key: keyRange; Value: actor

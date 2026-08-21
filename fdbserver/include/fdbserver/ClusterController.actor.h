@@ -2124,6 +2124,7 @@ public:
 					                                                   used,
 					                                                   preferredSharing);
 					preferredSharing[first_resolver.worker.interf.locality.processId()] = 2;
+
 					// If one of the first process recruitments is forced to share a process, allow all of next
 					// recruitments to also share a process.
 					auto maxUsed = std::max({ first_commit_proxy.used, first_grv_proxy.used, first_resolver.used });
