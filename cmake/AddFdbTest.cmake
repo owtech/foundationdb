@@ -396,6 +396,10 @@ function(prepare_binding_test_files build_directory target_name target_dependenc
 
   add_dependencies(${target_name} python_binding)
   set(generated_binding_files python/fdb/fdboptions.py python/fdb/apiversion.py)
+  # Ensure Python binding files are generated before we try to copy them
+  if(WITH_PYTHON_BINDING)
+    add_dependencies(${target_name} fdb_python_options)
+  endif()
   if(WITH_JAVA_BINDING)
     set(not_fdb_release_string "")
     add_custom_command(
@@ -590,10 +594,8 @@ endif()
 set(test_venv_cmd "")
 string(APPEND test_venv_cmd "${Python3_EXECUTABLE} -m venv ${test_venv_dir} ")
 string(APPEND test_venv_cmd "&& ${test_venv_activate} ")
-string(APPEND test_venv_cmd "&& pip install --upgrade pip ")
-string(APPEND test_venv_cmd "&& pip install -r ${CMAKE_SOURCE_DIR}/tests/TestRunner/requirements.txt")
-# NOTE: At this stage we are in the virtual environment and Python3_EXECUTABLE is not available anymore
-string(APPEND test_venv_cmd "&& (cd ${CMAKE_BINARY_DIR}/bindings/python && python3 -m pip install .) ")
+string(APPEND test_venv_cmd "&& pip install --retries 9 -r ${CMAKE_SOURCE_DIR}/tests/TestRunner/requirements.txt ")
+string(APPEND test_venv_cmd "&& pip install ${CMAKE_BINARY_DIR}/bindings/python ")
 add_test(
   NAME test_venv_setup
   COMMAND bash -c ${test_venv_cmd}

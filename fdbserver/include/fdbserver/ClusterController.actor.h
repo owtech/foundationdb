@@ -1055,8 +1055,9 @@ public:
 
 		ASSERT(resultSet.size() >= required && resultSet.size() <= desired);
 
-		for (auto& result : resultSet)
+		for (auto& result : resultSet) {
 			id_used[result.interf.locality.processId()].addRole(ProcessClass::TLog);
+		}
 
 		return std::vector<WorkerDetails>(resultSet.begin(), resultSet.end());
 	}

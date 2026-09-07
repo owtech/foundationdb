@@ -76,9 +76,12 @@ struct SubmitBackupWorkload : TestWorkload {
 			                                    backupRanges,
 			                                    true,
 			                                    self->stopWhenDone,
-			                                    UsePartitionedLog::False,
+			                                    MutationLogType::DEFAULT,
 			                                    self->incremental,
-			                                    self->encryptionKeyFileName));
+			                                    self->encryptionKeyFileName,
+			                                    self->encryptionKeyFileName.present() ? DEFAULT_ENCRYPTION_BLOCK_SIZE
+			                                                                          : 0,
+			                                    /*blobManifestUrl=*/{}));
 		} catch (Error& e) {
 			TraceEvent("BackupSubmitError").error(e);
 			if (e.code() != error_code_backup_duplicate) {

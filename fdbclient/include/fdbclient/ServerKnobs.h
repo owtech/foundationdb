@@ -124,6 +124,7 @@ public:
 	double BG_REBALANCE_MAX_POLLING_INTERVAL;
 	double BG_REBALANCE_SWITCH_CHECK_INTERVAL;
 	double DD_QUEUE_LOGGING_INTERVAL;
+	double DD_RELOCATOR_LATENCY_LOGGING_INTERVAL;
 	double DD_QUEUE_COUNTER_REFRESH_INTERVAL;
 	double DD_QUEUE_COUNTER_MAX_LOG; // max number of servers for which trace events will be generated in each round of
 	                                 // DD_QUEUE_COUNTER_REFRESH_INTERVAL duration
@@ -136,6 +137,7 @@ public:
 	double MERGE_RELOCATION_PARALLELISM_PER_TEAM;
 	int DD_QUEUE_MAX_KEY_SERVERS;
 	int DD_REBALANCE_PARALLELISM;
+	int DD_MAX_PIPELINE_MOVES; // Hard cap on total relocations DD tracks (queued + in-flight).
 	int DD_REBALANCE_RESET_AMOUNT;
 	double INFLIGHT_PENALTY_HEALTHY;
 	double INFLIGHT_PENALTY_REDUNDANT;
@@ -525,6 +527,10 @@ public:
 	bool SHARDED_ROCKSDB_REUSE_ITERATORS;
 	bool ROCKSDB_READ_RANGE_REUSE_BOUNDED_ITERATORS;
 	int ROCKSDB_READ_RANGE_BOUNDED_ITERATORS_MAX_LIMIT;
+	// By default all reads to rocksdb are cached. If this knob is set to true, based on
+	// txn.ReadOptions.CacheResult, rocksdb caching is enabled/disabled accordingly for that read.
+	bool ROCKSDB_USE_CACHE_RESULT_OPTION;
+	double ROCKSDB_PROBABILITY_DISABLE_CACHE_SIM;
 	int64_t ROCKSDB_WRITE_RATE_LIMITER_BYTES_PER_SEC;
 	int ROCKSDB_WRITE_RATE_LIMITER_FAIRNESS;
 	bool ROCKSDB_WRITE_RATE_LIMITER_AUTO_TUNE;
@@ -603,6 +609,7 @@ public:
 	int ROCKSDB_WRITEBATCH_PROTECTION_BYTES_PER_KEY;
 	int ROCKSDB_MEMTABLE_PROTECTION_BYTES_PER_KEY;
 	int ROCKSDB_BLOCK_PROTECTION_BYTES_PER_KEY;
+	bool ROCKSDB_ENABLE_CACHE_USAGE_OVERRIDES;
 	bool ROCKSDB_ENABLE_NONDETERMINISM; // Whether rocksdb nondeterministic behavior should be enabled in simulation.
 	                                    // Note that turning this on in simulation could lead to non-deterministic runs
 	                                    // since we rely on rocksdb metadata. This knob also applies to sharded rocks
@@ -749,7 +756,6 @@ public:
 
 	// Backup Worker
 	double BACKUP_TIMEOUT; // master's reaction time for backup failure
-	double BACKUP_NOOP_POP_DELAY;
 	int BACKUP_FILE_BLOCK_BYTES;
 	int64_t BACKUP_WORKER_LOCK_BYTES;
 	double BACKUP_UPLOAD_DELAY;
@@ -874,6 +880,9 @@ public:
 	double SERVER_READY_QUORUM_TIMEOUT;
 	double REMOVE_RETRY_DELAY;
 	int MOVE_KEYS_KRM_LIMIT;
+	int FINISH_MOVE_KEYS_MAX_RETRIES; // Max retries in finishMoveKeys before returning move to queue; set very high to
+	                                  // disable
+	int START_MOVE_KEYS_MAX_RETRIES; // Max retries in startMoveKeys before throwing start_move_keys_too_many_retries
 	int MOVE_KEYS_KRM_LIMIT_BYTES; // This must be sufficiently larger than CLIENT_KNOBS->KEY_SIZE_LIMIT
 	                               // (fdbclient/Knobs.h) to ensure that at least two entries will be returned from an
 	                               // attempt to read a key range map
@@ -1070,6 +1079,9 @@ public:
 	// Rolling window duration over which the average bytes moved by DD is calculated for the 'MovingData' trace event.
 	double DD_TRACE_MOVE_BYTES_AVERAGE_INTERVAL;
 	int64_t MOVING_WINDOW_SAMPLE_SIZE;
+	// Probability of running the consistency check between teams and teamsByServerIDs
+	// in getTeamByServers (simulation only).
+	double DD_TEAMS_BY_SERVER_IDS_CONSISTENCY_CHECK_PROB_SIM;
 
 	// Storage Server
 	double STORAGE_LOGGING_DELAY;
@@ -1239,6 +1251,7 @@ public:
 	// Status
 	double STATUS_MIN_TIME_BETWEEN_REQUESTS;
 	double MAX_STATUS_REQUESTS_PER_SECOND;
+	double STATUS_TIMEOUT_BUFFER;
 	int CONFIGURATION_ROWS_TO_FETCH;
 	bool DISABLE_DUPLICATE_LOG_WARNING;
 	double HISTOGRAM_REPORT_INTERVAL;

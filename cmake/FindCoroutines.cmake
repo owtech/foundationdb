@@ -249,7 +249,7 @@ if(CXX_COROUTINES_HAVE_COROUTINES)
 
   # Try to compile a simple coroutines program without any compiler flags
   set(CMAKE_REQUIRED_LIBRARIES ${CMAKE_THREAD_LIBS_INIT})
-
+  
   check_cxx_source_compiles("${code}" CXX_COROUTINES_NO_AWAIT_NEEDED)
 
   set(can_link ${CXX_COROUTINES_NO_AWAIT_NEEDED})

@@ -25,6 +25,7 @@
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <random>
 #include <regex>
 #include <string>
 #include <unordered_set>
@@ -1037,6 +1038,13 @@ ACTOR static Future<Void> monitorClientDBInfoChange(DatabaseContext* cx,
 					curCommitProxies = clientDBInfo->get().commitProxies;
 					curGrvProxies = clientDBInfo->get().grvProxies;
 					proxiesChangeTrigger->trigger();
+					// Eagerly rebuild the published proxy ModelInterface the instant the
+					// proxy list changes, so a killed proxy's RequestStream is dropped from
+					// cx->commitProxies/grvProxies on clientInfo rotation rather than waiting
+					// for the next transaction's lazy getCommitProxies()/getGrvProxies().
+					if (CLIENT_KNOBS->DBCONTEXT_EAGER_PROXY_UPDATE) {
+						cx->updateProxies();
+					}
 				}
 			}
 			when(wait(actors.getResult())) {
@@ -1155,6 +1163,201 @@ ACTOR Future<Void> updateCachedRanges(DatabaseContext* self, std::map<UID, Stora
 	} catch (Error& e) {
 		TraceEvent(SevError, "UpdateCachedRangesFailed").error(e);
 		throw;
+	}
+}
+
+// Evicts cached ranges mapping to any server address in the input addresses set
+// Yields every LOCATION_CACHE_PEER_EVICTOR_SCAN_CHUNK ranges
+ACTOR static Future<Void> invalidateCacheByAddresses(DatabaseContext* self,
+                                                     std::unordered_set<NetworkAddress> addresses) {
+	// Initial checks
+	if (addresses.empty()) {
+		return Void();
+	}
+	state int rangeChunkThreshold = CLIENT_KNOBS->LOCATION_CACHE_PEER_EVICTOR_SCAN_CHUNK;
+	ASSERT(rangeChunkThreshold >= 1);
+
+	// State across phase 1 and phase 2 below
+	state std::vector<KeyRange> rangesToInvalidate;
+	state double startT = now();
+
+	// Phase 1: scan the cache in chunks, and compute invalid ranges
+	TraceEvent("LocationCacheInvalidatedByAddresses_Phase1_Begin")
+	    .detail("DbId", self->dbId)
+	    .detail("AddressCount", addresses.size());
+	state Key cursor = allKeys.begin;
+	state int phase1RangesScanned = 0;
+	state int phase1Yields = 0;
+
+	loop {
+		TraceEvent("LocationCacheInvalidatedByAddresses_Phase1_ChunkIter")
+		    .suppressFor(5.0)
+		    .detail("DbId", self->dbId)
+		    .detail("AddressCount", addresses.size())
+		    .detail("InvalidatedRanges", rangesToInvalidate.size())
+		    .detail("RangeChunkThreshold", rangeChunkThreshold)
+		    .detail("Phase1RangesScanned", phase1RangesScanned)
+		    .detail("Phase1Yields", phase1Yields);
+
+		// Process as many ranges as possible within chunk threshold
+		auto iter = self->locationCache.rangeContaining(cursor);
+		auto endIter = self->locationCache.ranges().end();
+		bool rangesRemaining = false;
+		int currRangesScanned = 0;
+		for (; iter != endIter; ++iter) {
+			if (currRangesScanned >= rangeChunkThreshold) {
+				rangesRemaining = true;
+				break;
+			}
+			++currRangesScanned;
+			cursor = iter->end();
+			if (!iter->value()) {
+				continue;
+			}
+			auto& loc = iter->value();
+			for (int i = 0; i < loc->size(); ++i) {
+				if (addresses.contains(loc->getInterface(i).address())) {
+					rangesToInvalidate.push_back(KeyRange(KeyRangeRef(iter->begin(), iter->end())));
+					break;
+				}
+			}
+		}
+		phase1RangesScanned += currRangesScanned;
+
+		if (!rangesRemaining) {
+			TraceEvent("LocationCacheInvalidatedByAddresses_Phase1_End")
+			    .detail("DbId", self->dbId)
+			    .detail("AddressCount", addresses.size())
+			    .detail("InvalidatedRanges", rangesToInvalidate.size())
+			    .detail("RangeChunkThreshold", rangeChunkThreshold)
+			    .detail("Phase1RangesScanned", phase1RangesScanned)
+			    .detail("Phase1Yields", phase1Yields)
+			    .detail("Phase1Duration", now() - startT);
+			break;
+		}
+
+		++phase1Yields;
+		TraceEvent("LocationCacheInvalidatedByAddresses_Phase1_Yield")
+		    .suppressFor(5.0)
+		    .detail("DbId", self->dbId)
+		    .detail("AddressCount", addresses.size())
+		    .detail("InvalidatedRanges", rangesToInvalidate.size())
+		    .detail("RangeChunkThreshold", rangeChunkThreshold)
+		    .detail("Phase1RangesScanned", phase1RangesScanned)
+		    .detail("Phase1Yields", phase1Yields);
+		wait(yield());
+	}
+
+	// Phase 2: invalidate the cache based on invalid ranges computed in Phase 1
+	TraceEvent("LocationCacheInvalidatedByAddresses_Phase2_Begin")
+	    .detail("DbId", self->dbId)
+	    .detail("AddressCount", addresses.size())
+	    .detail("InvalidatedRanges", rangesToInvalidate.size());
+	state int phase2Idx = 0;
+	state int phase2Yields = 0;
+	state double phase2StartT = now();
+	for (; phase2Idx < rangesToInvalidate.size(); phase2Idx++) {
+		self->locationCache.insert(rangesToInvalidate[phase2Idx], Reference<LocationInfo>());
+		if ((phase2Idx + 1) % rangeChunkThreshold == 0) {
+			++phase2Yields;
+			TraceEvent("LocationCacheInvalidatedByAddresses_Phase2_Yield")
+			    .suppressFor(5.0)
+			    .detail("DbId", self->dbId)
+			    .detail("AddressCount", addresses.size())
+			    .detail("InvalidatedRanges", rangesToInvalidate.size())
+			    .detail("RangeChunkThreshold", rangeChunkThreshold)
+			    .detail("Phase2RangesScanned", phase2Idx + 1)
+			    .detail("Phase2Yields", phase2Yields);
+			wait(yield());
+		}
+	}
+	TraceEvent("LocationCacheInvalidatedByAddresses_Phase2_End")
+	    .detail("DbId", self->dbId)
+	    .detail("AddressCount", addresses.size())
+	    .detail("InvalidatedRanges", rangesToInvalidate.size())
+	    .detail("RangeChunkThreshold", rangeChunkThreshold)
+	    .detail("Phase2RangesScanned", phase2Idx)
+	    .detail("Phase2Yields", phase2Yields)
+	    .detail("Phase2Duration", now() - phase2StartT)
+	    .detail("OverallDuration", now() - startT);
+
+	return Void();
+}
+
+// Periodically samples FlowTransport's persistent per-address connect-failed
+// counter and evicts any address whose count advanced since the previous tick
+// (a "flap"). This is a direct ConnectionTimeout (CTO) signal: every connect failure increments
+// the counter, and any positive delta within an evictor interval indicates an
+// address that is still being targeted by RPCs but cannot establish a
+// connection.
+ACTOR static Future<Void> locationCachePeerEvictorActor(DatabaseContext* cx) {
+	state double evictorDelay = CLIENT_KNOBS->LOCATION_CACHE_PEER_EVICTOR_DELAY;
+	state int evictorFailedThreshold = CLIENT_KNOBS->LOCATION_CACHE_PEER_EVICTOR_FAILED_THRESHOLD;
+	ASSERT(evictorDelay > 0);
+	ASSERT(evictorFailedThreshold >= 0);
+	// Per-address snapshot of FlowTransport's persistent connect-failed counter
+	// taken on the previous tick. The delta to the current count is the flap
+	// signal: a positive delta means the address is still being targeted by RPCs
+	// but cannot connect.
+	state std::unordered_map<NetworkAddress, int64_t> lastConnectFailedSnapshot;
+	loop {
+		try {
+			wait(delay(evictorDelay));
+
+			std::unordered_set<NetworkAddress> deadAddressSet;
+			const auto& persistent = FlowTransport::transport().getPersistentConnectFailedCounts();
+			for (const auto& [addr, cur] : persistent) {
+				if (!addr.isValid()) {
+					continue;
+				}
+				int64_t prev = 0;
+				auto snapIt = lastConnectFailedSnapshot.find(addr);
+				if (snapIt != lastConnectFailedSnapshot.end()) {
+					prev = snapIt->second;
+				}
+				// If the persistent counter went backwards, the entry was TTL-pruned and re-added
+				// since the last sweep (its count reset to a small value). Count from zero in that
+				// case so a genuine post-reset connect failure isn't missed for a sweep.
+				int64_t delta = (cur.count >= prev) ? (cur.count - prev) : cur.count;
+				lastConnectFailedSnapshot[addr] = cur.count;
+				if (delta > evictorFailedThreshold) {
+					TraceEvent("LocationCachePeerEvictor_FoundDeadAddr")
+					    .suppressFor(5.0)
+					    .detail("DbId", cx->dbId)
+					    .detail("Addr", addr)
+					    .detail("ConnectFailedDelta", delta)
+					    .detail("ConnectFailedTotal", cur.count);
+					deadAddressSet.insert(addr);
+				}
+			}
+			// Drop snapshot entries for addrs FlowTransport no longer reports a counter
+			// for, so this map stays bounded alongside the persistent one.
+			for (auto it = lastConnectFailedSnapshot.begin(); it != lastConnectFailedSnapshot.end();) {
+				if (persistent.find(it->first) == persistent.end()) {
+					TraceEvent("LocationCachePeerEvictor_ClearAddrInSnapshot")
+					    .suppressFor(5.0)
+					    .detail("DbId", cx->dbId)
+					    .detail("Addr", it->first);
+					it = lastConnectFailedSnapshot.erase(it);
+				} else {
+					++it;
+				}
+			}
+			if (!deadAddressSet.empty()) {
+				TraceEvent("LocationCachePeerEvictor_DeadAddrSummary")
+				    .detail("DbId", cx->dbId)
+				    .detail("DeadAddrSetSize", deadAddressSet.size());
+			}
+			wait(invalidateCacheByAddresses(cx, deadAddressSet));
+		} catch (Error& e) {
+			// actor_cancelled must propagate so ~DatabaseContext can tear down the
+			// evictor; any other error should not kill the loop (that would stop the
+			// eviction sweep).
+			if (e.code() == error_code_actor_cancelled) {
+				throw;
+			}
+			TraceEvent(SevWarn, "LocationCachePeerEvictor_Error").error(e).detail("DbId", cx->dbId);
+		}
 	}
 }
 
@@ -1620,6 +1823,9 @@ DatabaseContext::DatabaseContext(Reference<AsyncVar<Reference<IClusterConnection
 	tssMismatchHandler = handleTssMismatches(this);
 	clientStatusUpdater.actor = clientStatusUpdateActor(this);
 	cacheListMonitor = monitorCacheList(this);
+	if (CLIENT_KNOBS->LOCATION_CACHE_PEER_EVICTOR_ENABLED) {
+		locationCachePeerEvictor = locationCachePeerEvictorActor(this);
+	}
 
 	smoothMidShardSize.reset(CLIENT_KNOBS->INIT_MID_SHARD_BYTES);
 	globalConfig = std::make_unique<GlobalConfig>(this);
@@ -1941,6 +2147,7 @@ DatabaseContext::~DatabaseContext() {
 	initializeChangeFeedCache = Void();
 	storage = nullptr;
 	changeFeedStorageCommitter = Void();
+	locationCachePeerEvictor.cancel();
 	if (grvUpdateHandler.isValid()) {
 		grvUpdateHandler.cancel();
 	}
@@ -6850,6 +7057,7 @@ ACTOR static Future<Void> tryCommit(Reference<TransactionState> trState, CommitT
 					    req.transaction.read_snapshot + CLIENT_KNOBS->MAX_WRITE_TRANSACTION_LIFE_VERSIONS,
 					    req.idempotencyId));
 					if (commitResult.present()) {
+						trState->committedVersion = commitResult.get().commitVersion;
 						Standalone<StringRef> ret = makeString(10);
 						placeVersionstamp(
 						    mutateString(ret), commitResult.get().commitVersion, commitResult.get().batchIndex);
@@ -7044,6 +7252,18 @@ Future<Void> Transaction::commit() {
 	ASSERT(!committing.isValid());
 	committing = commitAndWatch(this);
 	return committing;
+}
+
+// Returns a thread-local mt19937_64 seeded once with 32 bytes of OS entropy.
+// Used for AUTOMATIC_IDEMPOTENCY ID generation in non-simulation runs.
+static std::mt19937_64& getIdempotencyRng() {
+	static thread_local std::mt19937_64 rng = []() {
+		uint32_t seed_data[8];
+		platform::getRandomBytes(seed_data, sizeof(seed_data));
+		std::seed_seq seq(seed_data, seed_data + 8);
+		return std::mt19937_64(seq);
+	}();
+	return rng;
 }
 
 void Transaction::setOption(FDBTransactionOptions::Option option, Optional<StringRef> value) {
@@ -7297,9 +7517,15 @@ void Transaction::setOption(FDBTransactionOptions::Option option, Optional<Strin
 	case FDBTransactionOptions::AUTOMATIC_IDEMPOTENCY:
 		validateOptionValueNotPresent(value);
 		if (!tr.idempotencyId.valid()) {
-			tr.idempotencyId = IdempotencyIdRef(
-			    tr.arena,
-			    IdempotencyIdRef(BinaryWriter::toValue(deterministicRandom()->randomUniqueID(), Unversioned())));
+			StringRef id = makeString(16, tr.arena);
+			if (g_network->isSimulated()) {
+				deterministicRandom()->randomBytes(mutateString(id), 16);
+			} else {
+				auto& rng = getIdempotencyRng();
+				uint64_t buf[2] = { rng(), rng() };
+				memcpy(mutateString(id), buf, 16);
+			}
+			tr.idempotencyId = IdempotencyIdRef(id);
 		}
 		trState->automaticIdempotency = true;
 		break;
@@ -8144,6 +8370,8 @@ ACTOR Future<std::pair<Optional<StorageMetrics>, int>> waitStorageMetrics(
     int expectedShardCount,
     Optional<Reference<TransactionState>> trState) {
 	state Span span("NAPI:WaitStorageMetrics"_loc, generateSpanID(cx->transactionTracingSample));
+	state double startTime = now();
+	state int retryCount = 0;
 	loop {
 		if (trState.present()) {
 			wait(trState.get()->startTransaction());
@@ -8191,7 +8419,12 @@ ACTOR Future<std::pair<Optional<StorageMetrics>, int>> waitStorageMetrics(
 				return std::make_pair(res, -1);
 			}
 		} catch (Error& e) {
-			TraceEvent(SevDebug, "WaitStorageMetricsHandleError").error(e);
+			retryCount++;
+			TraceEvent(SevDebug, "WaitStorageMetricsHandleError")
+			    .error(e)
+			    .detail("Keys", keys)
+			    .detail("Elapsed", now() - startTime)
+			    .detail("Retries", retryCount);
 			if (e.code() == error_code_wrong_shard_server || e.code() == error_code_all_alternatives_failed) {
 				cx->invalidateCache(tenantInfo.prefix, keys);
 				wait(delay(CLIENT_KNOBS->WRONG_SHARD_SERVER_DELAY, TaskPriority::DataDistribution));

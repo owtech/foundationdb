@@ -24,6 +24,7 @@
 #include "flow/Arena.h"
 #include "flow/Knobs.h"
 #include "flow/Platform.h"
+#include "flow/SimpleCounter.h"
 #include "flow/Trace.h"
 #include "flow/swift.h"
 #include "flow/swift_concurrency_hooks.h"
@@ -236,6 +237,7 @@ public:
 	TLSConfig tlsConfig;
 	Reference<TLSPolicy> activeTlsPolicy;
 	Future<Void> backgroundCertRefresh;
+	Future<Void> dnsCacheRefreshActor;
 	ETLSInitState tlsInitializedState;
 
 	INetworkConnections* network; // initially this, but can be changed
@@ -1106,9 +1108,12 @@ public:
 			                   self->peer_address,
 			                   [conn = self.getPtr()](bool verifyOk) { conn->has_trusted_peer = verifyOk; });
 
-			// Set SNI hostname if we have one (for connections made with hostname)
+			// Set SNI hostname if we have one (for connections made with hostname) and SSL flags to check
+			// certificate against.
 			if (!self->sni_hostname.empty()) {
 				int result = SSL_set_tlsext_host_name(self->ssl_sock.native_handle(), self->sni_hostname.c_str());
+				SSL_set1_host(self->ssl_sock.native_handle(), self->sni_hostname.c_str());
+				SSL_set_hostflags(self->ssl_sock.native_handle(), X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
 				TraceEvent("SSLSetSNIResult")
 				    .detail("Hostname", self->sni_hostname)
 				    .detail("Result", result)
@@ -1578,10 +1583,98 @@ ActorLineageSet& Net2::getActorLineageSet() {
 }
 #endif
 
+ACTOR static Future<std::vector<NetworkAddress>> resolveTCPEndpoint_impl(Net2* self,
+                                                                         std::string host,
+                                                                         std::string service) {
+	state tcp::resolver tcpResolver(self->reactor.ios);
+	Promise<std::vector<NetworkAddress>> promise;
+	state Future<std::vector<NetworkAddress>> result = promise.getFuture();
+
+	tcpResolver.async_resolve(
+	    host, service, [promise](const boost::system::error_code& ec, tcp::resolver::iterator iter) {
+		    if (ec) {
+			    promise.sendError(lookup_failed());
+			    return;
+		    }
+
+		    std::vector<NetworkAddress> addrs;
+
+		    tcp::resolver::iterator end;
+		    while (iter != end) {
+			    auto endpoint = iter->endpoint();
+			    auto addr = endpoint.address();
+			    if (addr.is_v6()) {
+				    // IPV6 loopback might not be supported, only return IPV6 address
+				    if (!addr.is_loopback()) {
+					    addrs.emplace_back(IPAddress(addr.to_v6().to_bytes()), endpoint.port());
+				    }
+			    } else {
+				    addrs.emplace_back(addr.to_v4().to_ulong(), endpoint.port());
+			    }
+			    ++iter;
+		    }
+
+		    if (addrs.empty()) {
+			    promise.sendError(lookup_failed());
+		    } else {
+			    promise.send(addrs);
+		    }
+	    });
+
+	wait(ready(result));
+	tcpResolver.cancel();
+	return result.get();
+}
+
+Future<std::vector<NetworkAddress>> Net2::resolveTCPEndpoint(const std::string& host, const std::string& service) {
+	return resolveTCPEndpoint_impl(this, host, service);
+}
+
+ACTOR static Future<Void> coordinatorDNSCacheRefresh(Net2* self) {
+	if (!FLOW_KNOBS->ENABLE_COORDINATOR_DNS_CACHE) {
+		return Void();
+	}
+	loop {
+		wait(delay(FLOW_KNOBS->COORDINATOR_DNS_CACHE_REFRESH_INTERVAL));
+		state std::vector<std::string> keys = self->dnsCache.getKeys();
+		state int i = 0;
+		for (; i < keys.size(); i++) {
+			auto colonPos = keys[i].find(':');
+			if (colonPos == std::string::npos) {
+				continue;
+			}
+			state std::string host = keys[i].substr(0, colonPos);
+			state std::string service = keys[i].substr(colonPos + 1);
+
+			// Evict if stale
+			double secondsSinceLastAccess = now() - self->dnsCache.getLastAccess(host, service).orDefault(0.0);
+			if (secondsSinceLastAccess > FLOW_KNOBS->COORDINATOR_DNS_CACHE_TTL) {
+				self->dnsCache.remove(host, service);
+				TraceEvent("DNSCacheEntryEvicted")
+				    .detail("Host", host)
+				    .detail("Service", service)
+				    .detail("SecondsSinceLastAccess", secondsSinceLastAccess);
+				continue;
+			}
+
+			try {
+				std::vector<NetworkAddress> newAddrs = wait(resolveTCPEndpoint_impl(self, host, service));
+				self->dnsCache.update(host, service, newAddrs);
+			} catch (Error& e) {
+				if (e.code() == error_code_actor_cancelled) {
+					throw;
+				}
+				TraceEvent(SevWarn, "DNSCacheRefreshFailed").error(e).detail("Host", host).detail("Service", service);
+			}
+		}
+	}
+}
+
 void Net2::run() {
 	TraceEvent::setNetworkThread();
 	TraceEvent("Net2Running").log();
 	thread_network = this;
+	dnsCacheRefreshActor = coordinatorDNSCacheRefresh(this);
 
 	unsigned int tasksSinceReact = 0;
 
@@ -1669,6 +1762,7 @@ void Net2::run() {
 		[[maybe_unused]] int queueSize = taskQueue.getNumReadyTasks();
 
 		FDB_TRACE_PROBE(run_loop_tasks_start, queueSize);
+		int tasksExecuted = 0;
 		while (taskQueue.hasReadyTask()) {
 			++countTasks;
 			currentTaskID = taskQueue.getReadyTaskID();
@@ -1677,6 +1771,7 @@ void Net2::run() {
 			taskQueue.popReadyTask();
 
 			try {
+				++tasksExecuted;
 				++tasksSinceReact;
 				(*task)();
 			} catch (Error& e) {
@@ -1712,6 +1807,9 @@ void Net2::run() {
 			taskBegin = newTaskBegin;
 			tscBegin = tscNow;
 		}
+		static SimpleCounter<int64_t>* callbacksExecuted =
+		    SimpleCounter<int64_t>::makeCounter("/Net2/callbacksExecuted");
+		callbacksExecuted->increment(tasksExecuted);
 
 		trackAtPriority(TaskPriority::RunLoop, taskBegin);
 
@@ -1763,16 +1861,23 @@ void Net2::run() {
 		}
 #endif
 		nnow = timer_monotonic();
+		auto time_delta = nnow - now;
 
-		if ((nnow - now) > FLOW_KNOBS->SLOW_LOOP_CUTOFF &&
-		    nondeterministicRandom()->random01() < (nnow - now) * FLOW_KNOBS->SLOW_LOOP_SAMPLING_RATE)
-			TraceEvent("SomewhatSlowRunLoopBottom")
-			    .detail("Elapsed", nnow - now); // This includes the time spent running tasks
+		static SimpleCounter<double>* exec_time = SimpleCounter<double>::makeCounter("/Net2/mainThreadExecutionTime");
+		exec_time->increment(time_delta);
+
+		if (time_delta > FLOW_KNOBS->SLOW_LOOP_CUTOFF &&
+		    nondeterministicRandom()->random01() < time_delta * FLOW_KNOBS->SLOW_LOOP_SAMPLING_RATE) {
+			TraceEvent("SomewhatSlowRunLoopBottom").detail("Elapsed", time_delta);
+		}
 	}
 
 	for (auto& fn : stopCallbacks) {
 		fn();
 	}
+
+	// Emit at least one batch of counters, for manual inspection.
+	simpleCounterReport();
 
 #ifdef WIN32
 	timeEndPeriod(1);
@@ -1987,72 +2092,25 @@ Future<Reference<IUDPSocket>> Net2::createUDPSocket(bool isV6) {
 	return UDPSocket::connect(&reactor.ios, Optional<NetworkAddress>(), isV6);
 }
 
-ACTOR static Future<std::vector<NetworkAddress>> resolveTCPEndpoint_impl(Net2* self,
-                                                                         std::string host,
-                                                                         std::string service) {
-	state tcp::resolver tcpResolver(self->reactor.ios);
-	Promise<std::vector<NetworkAddress>> promise;
-	state Future<std::vector<NetworkAddress>> result = promise.getFuture();
-
-	tcpResolver.async_resolve(
-	    host, service, [promise](const boost::system::error_code& ec, tcp::resolver::iterator iter) {
-		    if (ec) {
-			    promise.sendError(lookup_failed());
-			    return;
-		    }
-
-		    std::vector<NetworkAddress> addrs;
-
-		    tcp::resolver::iterator end;
-		    while (iter != end) {
-			    auto endpoint = iter->endpoint();
-			    auto addr = endpoint.address();
-			    if (addr.is_v6()) {
-				    // IPV6 loopback might not be supported, only return IPV6 address
-				    if (!addr.is_loopback()) {
-					    addrs.emplace_back(IPAddress(addr.to_v6().to_bytes()), endpoint.port());
-				    }
-			    } else {
-				    addrs.emplace_back(addr.to_v4().to_ulong(), endpoint.port());
-			    }
-			    ++iter;
-		    }
-
-		    if (addrs.empty()) {
-			    promise.sendError(lookup_failed());
-		    } else {
-			    promise.send(addrs);
-		    }
-	    });
-
-	try {
-		wait(ready(result));
-	} catch (Error& e) {
-		if (e.code() == error_code_lookup_failed) {
-			self->dnsCache.remove(host, service);
+ACTOR static Future<std::vector<NetworkAddress>> resolveTCPEndpointWithDNSCache_impl(Net2* self,
+                                                                                     std::string host,
+                                                                                     std::string service) {
+	if (FLOW_KNOBS->ENABLE_COORDINATOR_DNS_CACHE) {
+		Optional<std::vector<NetworkAddress>> cache = self->dnsCache.find(host, service);
+		if (cache.present()) {
+			return cache.get();
 		}
-		throw e;
+		std::vector<NetworkAddress> addresses = wait(resolveTCPEndpoint_impl(self, host, service));
+		self->dnsCache.add(host, service, addresses);
+		return addresses;
 	}
-	tcpResolver.cancel();
-	std::vector<NetworkAddress> ret = result.get();
-	self->dnsCache.add(host, service, ret);
-
-	return ret;
-}
-
-Future<std::vector<NetworkAddress>> Net2::resolveTCPEndpoint(const std::string& host, const std::string& service) {
-	return resolveTCPEndpoint_impl(this, host, service);
+	std::vector<NetworkAddress> addresses = wait(resolveTCPEndpoint_impl(self, host, service));
+	return addresses;
 }
 
 Future<std::vector<NetworkAddress>> Net2::resolveTCPEndpointWithDNSCache(const std::string& host,
                                                                          const std::string& service) {
-	if (FLOW_KNOBS->ENABLE_COORDINATOR_DNS_CACHE) {
-		Optional<std::vector<NetworkAddress>> cache = dnsCache.find(host, service);
-		if (cache.present()) {
-			return cache.get();
-		}
-	}
-	return resolveTCPEndpoint_impl(this, host, service);
+	return resolveTCPEndpointWithDNSCache_impl(this, host, service);
 }
 
 std::vector<NetworkAddress> Net2::resolveTCPEndpointBlocking(const std::string& host, const std::string& service) {
@@ -2076,7 +2134,6 @@ std::vector<NetworkAddress> Net2::resolveTCPEndpointBlocking(const std::string& 
 		}
 		return addrs;
 	} catch (...) {
-		dnsCache.remove(host, service);
 		throw lookup_failed();
 	}
 }
@@ -2089,7 +2146,11 @@ std::vector<NetworkAddress> Net2::resolveTCPEndpointBlockingWithDNSCache(const s
 			return cache.get();
 		}
 	}
-	return resolveTCPEndpointBlocking(host, service);
+	auto result = resolveTCPEndpointBlocking(host, service);
+	if (FLOW_KNOBS->ENABLE_COORDINATOR_DNS_CACHE) {
+		dnsCache.add(host, service, result);
+	}
+	return result;
 }
 
 bool Net2::isAddressOnThisHost(NetworkAddress const& addr) const {

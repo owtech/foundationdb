@@ -1,7 +1,6 @@
 [configuration]
-storageEngineExcludeTypes=[3,5]
+storageEngineExcludeTypes=[3]
 tenantModes=['disabled']
-encryptModes=['disabled']
 
 [[test]]
 testTitle = 'SubmitBackup'
@@ -33,7 +32,6 @@ disabledFailureInjectionWorkloads = 'Attrition'
     nodeCount = 30000
     transactionsPerSecond = 2500.0
     testDuration = 30.0
-    expectedRate = 0
     keyPrefix = 'BeforeRestart'
 
     [[test.workload]]

@@ -348,9 +348,11 @@ struct BackupAndRestoreCorrectnessWorkload : TestWorkload {
 			                               backupRanges,
 			                               true,
 			                               StopWhenDone{ !stopDifferentialDelay },
-			                               UsePartitionedLog::False,
+			                               MutationLogType::DEFAULT,
 			                               IncrementalBackupOnly::False,
-			                               self->encryptionKeyFileName));
+			                               self->encryptionKeyFileName,
+			                               self->encryptionKeyFileName.present() ? DEFAULT_ENCRYPTION_BLOCK_SIZE : 0,
+			                               /*blobManifestUrl=*/{}));
 		} catch (Error& e) {
 			TraceEvent("BARW_DoBackupSubmitBackupException", randomID).error(e).detail("Tag", printable(tag));
 			if (e.code() != error_code_backup_unneeded && e.code() != error_code_backup_duplicate)
@@ -665,7 +667,8 @@ struct BackupAndRestoreCorrectnessWorkload : TestWorkload {
 			if (lastBackupContainer && self->performRestore) {
 				auto container = IBackupContainer::openContainer(lastBackupContainer->getURL(),
 				                                                 lastBackupContainer->getProxy(),
-				                                                 lastBackupContainer->getEncryptionKeyFileName());
+				                                                 lastBackupContainer->getEncryptionKeyFileName(),
+				                                                 lastBackupContainer->getEncryptionBlockSize());
 				state BackupDescription desc = wait(container->describeBackup());
 
 				if (deterministicRandom()->random01() < 0.5) {
