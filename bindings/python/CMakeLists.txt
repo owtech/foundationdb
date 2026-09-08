@@ -41,6 +41,14 @@ foreach(src ${SRCS})
 endforeach()
 add_custom_target(python_binding ALL DEPENDS ${out_files})
 
+if(FDB_RELEASE)
+  set(FDB_PY_VERSION ${PROJECT_VERSION})
+elseif(FDB_RELEASE_CANDIDATE)
+  set(FDB_PY_VERSION "${PROJECT_VERSION}rc${FDB_RELEASE_CANDIDATE_VERSION}")
+else()
+  set(FDB_PY_VERSION "${PROJECT_VERSION}a1")
+endif()
+
 file(MAKE_DIRECTORY ${PROJECT_BINARY_DIR}/bindings/python/fdb)
 set(options_file ${PROJECT_BINARY_DIR}/bindings/python/fdb/fdboptions.py)
 vexillographer_compile(TARGET fdb_python_options LANG python OUT ${options_file}
@@ -71,23 +79,44 @@ if (pycodestyle)
 else()
   add_custom_target(fdb_python_check COMMAND ${CMAKE_COMMAND} -E echo "Skipped Python style check! Missing: pycodestyle")
 endif()
-if(NOT FDB_RELEASE)
-  set(not_fdb_release_string "a1")
+
+
+set(setup_file_name foundationdb-${FDB_PY_VERSION}.tar.gz)
+set(wheel_file_name foundationdb-${FDB_PY_VERSION}-py3-none-any.whl)
+set(package_file       ${CMAKE_BINARY_DIR}/packages/${setup_file_name})
+set(wheel_package_file ${CMAKE_BINARY_DIR}/packages/${wheel_file_name})
+
+# Build both source distribution and wheel
+# Note: foundationdb is a pure Python package (uses ctypes), so wheel is py3-none-any
+set(PYPKG_VENV_DIR "${CMAKE_BINARY_DIR}/pypkg-venv")
+set(PYPKG_PY3       ${Python3_EXECUTABLE})
+execute_process(
+  COMMAND         ${PYPKG_PY3} -m build --version
+  RESULT_VARIABLE PY_BUILD_STATUS
+  OUTPUT_VARIABLE PY_BUILD_OUTPUT
+  ERROR_VARIABLE  PY_BUILD_OUTPUT
+)
+if(PY_BUILD_STATUS EQUAL 0)
+  message(STATUS "Found python ${PY_BUILD_OUTPUT}")
 else()
-  set(not_fdb_release_string "")
+  message(STATUS "Setting up python pkg build virtual environment")
+  execute_process(COMMAND ${Python3_EXECUTABLE} -m venv ${PYPKG_VENV_DIR} COMMAND_ERROR_IS_FATAL ANY)
+  find_program(
+    VENV_Python3_EXECUTABLE
+    NAMES python3 python3.exe python.exe
+    PATHS ${PYPKG_VENV_DIR}/Scripts ${PYPKG_VENV_DIR}/bin
+    REQUIRED NO_DEFAULT_PATH NO_CACHE
+    DOC "Checking Python3 executable in virtual environment")
+  set(PYPKG_PY3 ${VENV_Python3_EXECUTABLE})
+  execute_process(COMMAND "${PYPKG_PY3}" -m pip install build COMMAND_ERROR_IS_FATAL ANY)
 endif()
-
-
-set(setup_file_name foundationdb-${FDB_VERSION}.tar.gz)
-set(package_file ${CMAKE_BINARY_DIR}/packages/foundationdb-${FDB_VERSION}${not_fdb_release_string}.tar.gz)
-add_custom_command(OUTPUT ${package_file}
-  COMMAND $<TARGET_FILE:Python3::Interpreter> -m ensurepip
-  COMMAND $<TARGET_FILE:Python3::Interpreter> -m pip install --upgrade build
-  COMMAND $<TARGET_FILE:Python3::Interpreter> -m build --sdist &&
-          ${CMAKE_COMMAND} -E copy dist/${setup_file_name} ${package_file}
+add_custom_command(OUTPUT ${package_file} ${wheel_package_file}
+  COMMAND ${PYPKG_PY3} -m build --sdist --wheel
+  COMMAND ${CMAKE_COMMAND} -E copy dist/${setup_file_name} ${package_file}
+  COMMAND ${CMAKE_COMMAND} -E copy dist/${wheel_file_name} ${wheel_package_file}
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-  COMMENT "Create Python package")
-add_custom_target(python_package DEPENDS ${package_file})
+  COMMENT "Create Python source distribution and wheel")
+add_custom_target(python_package DEPENDS ${package_file} ${wheel_package_file})
 add_dependencies(python_package python_binding)
 add_dependencies(packages python_package)
 
@@ -98,4 +127,23 @@ if(NOT OPEN_FOR_IDE AND NOT USE_SANITIZER)
             --cluster-file @CLUSTER_FILE@ --verbose
     DISABLE_LOG_DUMP
   )
+
+  # FIXME Windows support
+  set(PYPKG_TEST_DIR "${CMAKE_BINARY_DIR}/pypkg-test-venv")
+  set(PYPKG_TEST_PY3 "${PYPKG_TEST_DIR}/bin/python3")
+  add_test(
+    NAME python_package_test
+    COMMAND sh -c "
+      set -e
+      if ! [ -f '${package_file}' ]; then
+        exit 66
+      fi
+      ${Python3_EXECUTABLE} -m venv ${PYPKG_TEST_DIR}
+      ${PYPKG_TEST_PY3} -m pip install '${package_file}'
+      ${PYPKG_TEST_PY3} -c 'import fdb'
+      ${PYPKG_TEST_PY3} -m pip install '${wheel_package_file}'
+      ${PYPKG_TEST_PY3} -c 'import fdb'
+    "
+  )
+  set_tests_properties(python_package_test PROPERTIES SKIP_RETURN_CODE 66)
 endif() # NOT OPEN_FOR_IDE AND NOT USE_SANITIZER

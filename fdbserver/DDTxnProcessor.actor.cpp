@@ -23,6 +23,7 @@
 #include "fdbclient/ManagementAPI.actor.h"
 #include "fdbserver/DataDistribution.actor.h"
 #include "fdbclient/DatabaseContext.h"
+#include "flow/SimpleCounter.h"
 #include "flow/genericactors.actor.h"
 #include "flow/actorcompiler.h" // This must be the last #include.
 
@@ -40,6 +41,43 @@ static void updateServersAndCompleteSources(std::set<UID>& servers,
 			}
 		}
 	}
+}
+
+static SimpleCounter<int64_t>* counterUpdateReplicaKeysStarted() {
+	static auto* c = SimpleCounter<int64_t>::makeCounter("/dd/updateReplicaKeys/started");
+	return c;
+}
+static SimpleCounter<int64_t>* counterUpdateReplicaKeysCommitted() {
+	static auto* c = SimpleCounter<int64_t>::makeCounter("/dd/updateReplicaKeys/committed");
+	return c;
+}
+static SimpleCounter<int64_t>* counterUpdateReplicaKeysAborted() {
+	static auto* c = SimpleCounter<int64_t>::makeCounter("/dd/updateReplicaKeys/aborted");
+	return c;
+}
+static SimpleCounter<int64_t>* counterTryUpdateReplicasKeyForDcStarted() {
+	static auto* c = SimpleCounter<int64_t>::makeCounter("/dd/tryUpdateReplicasKeyForDc/started");
+	return c;
+}
+static SimpleCounter<int64_t>* counterTryUpdateReplicasKeyForDcCommitted() {
+	static auto* c = SimpleCounter<int64_t>::makeCounter("/dd/tryUpdateReplicasKeyForDc/committed");
+	return c;
+}
+static SimpleCounter<int64_t>* counterTryUpdateReplicasKeyForDcAborted() {
+	static auto* c = SimpleCounter<int64_t>::makeCounter("/dd/tryUpdateReplicasKeyForDc/aborted");
+	return c;
+}
+static SimpleCounter<int64_t>* counterWaitDDTeamInfoPrintSignalStarted() {
+	static auto* c = SimpleCounter<int64_t>::makeCounter("/dd/waitDDTeamInfoPrintSignal/started");
+	return c;
+}
+static SimpleCounter<int64_t>* counterWaitDDTeamInfoPrintSignalCommitted() {
+	static auto* c = SimpleCounter<int64_t>::makeCounter("/dd/waitDDTeamInfoPrintSignal/committed");
+	return c;
+}
+static SimpleCounter<int64_t>* counterWaitDDTeamInfoPrintSignalAborted() {
+	static auto* c = SimpleCounter<int64_t>::makeCounter("/dd/waitDDTeamInfoPrintSignal/aborted");
+	return c;
 }
 
 class DDTxnProcessorImpl {
@@ -178,8 +216,12 @@ class DDTxnProcessorImpl {
 	                                            std::vector<Optional<Key>> primaryDcId,
 	                                            std::vector<Optional<Key>> remoteDcIds,
 	                                            DatabaseConfiguration configuration) {
+		state SimpleCounter<int64_t>* txnStarted = counterUpdateReplicaKeysStarted();
+		state SimpleCounter<int64_t>* txnCommitted = counterUpdateReplicaKeysCommitted();
+		state SimpleCounter<int64_t>* txnAborted = counterUpdateReplicaKeysAborted();
 		state Transaction tr(cx);
 		loop {
+			txnStarted->increment(1);
 			try {
 				tr.setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
 				tr.setOption(FDBTransactionOptions::PRIORITY_SYSTEM_IMMEDIATE);
@@ -200,8 +242,10 @@ class DDTxnProcessorImpl {
 				}
 
 				wait(tr.commit());
+				txnCommitted->increment(1);
 				break;
 			} catch (Error& e) {
+				txnAborted->increment(1);
 				wait(tr.onError(e));
 			}
 		}
@@ -209,8 +253,12 @@ class DDTxnProcessorImpl {
 	}
 
 	ACTOR static Future<int> tryUpdateReplicasKeyForDc(Database cx, Optional<Key> dcId, int storageTeamSize) {
+		state SimpleCounter<int64_t>* txnStarted = counterTryUpdateReplicasKeyForDcStarted();
+		state SimpleCounter<int64_t>* txnCommitted = counterTryUpdateReplicasKeyForDcCommitted();
+		state SimpleCounter<int64_t>* txnAborted = counterTryUpdateReplicasKeyForDcAborted();
 		state Transaction tr(cx);
 		loop {
+			txnStarted->increment(1);
 			tr.setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
 			tr.setOption(FDBTransactionOptions::PRIORITY_SYSTEM_IMMEDIATE);
 
@@ -225,9 +273,11 @@ class DDTxnProcessorImpl {
 				}
 				tr.set(datacenterReplicasKeyFor(dcId), datacenterReplicasValue(storageTeamSize));
 				wait(tr.commit());
+				txnCommitted->increment(1);
 
 				return oldReplicas;
 			} catch (Error& e) {
+				txnAborted->increment(1);
 				wait(tr.onError(e));
 			}
 		}
@@ -261,6 +311,8 @@ class DDTxnProcessorImpl {
 		CODE_PROBE((bool)skipDDModeCheck, "DD Mode won't prevent read initial data distribution.");
 		// Get the server list in its own try/catch block since it modifies result.  We don't want a subsequent failure
 		// causing entries to be duplicated
+		// Phase 1: Single transaction to read server list and all persisted data moves
+		state double serverListAndDataMoveReadStart = now();
 		loop {
 			numDataMoves = 0;
 			server_dc.clear();
@@ -334,7 +386,12 @@ class DDTxnProcessorImpl {
 					}
 				}
 
+				state double dataMoveReadStart = now();
 				RangeResult dms = wait(tr.getRange(dataMoveKeys, CLIENT_KNOBS->TOO_MANY));
+				if (now() - dataMoveReadStart > 5.0) {
+					TraceEvent(SevWarn, "DDInitSlowDataMoveRead", distributorId)
+					    .detail("ElapsedSeconds", now() - dataMoveReadStart);
+				}
 				ASSERT(!dms.more && dms.size() < CLIENT_KNOBS->TOO_MANY);
 				// For each data move, find out the src or dst servers are in primary or remote DC.
 				for (int i = 0; i < dms.size(); ++i) {
@@ -382,6 +439,11 @@ class DDTxnProcessorImpl {
 
 				succeeded = true;
 
+				TraceEvent("DDInitServerListAndDataMoveReadComplete", distributorId)
+				    .detail("NumDataMoves", numDataMoves)
+				    .detail("NumServers", result->allServers.size())
+				    .detail("ElapsedSeconds", now() - serverListAndDataMoveReadStart);
+
 				break;
 			} catch (Error& e) {
 				TraceEvent("GetInitialTeamsRetry", distributorId).error(e);
@@ -393,6 +455,10 @@ class DDTxnProcessorImpl {
 
 		// If keyServers is too large to read in a single transaction, then we will have to break this process up into
 		// multiple transactions. In that case, each iteration should begin where the previous left off
+		// Scan keyServers in batches to build the shard map
+		state double keyServerScanStart = now();
+		state double lastScanLogTime = now();
+		state int scanBatchCount = 0;
 		while (beginKey < allKeys.end) {
 			CODE_PROBE(beginKey > allKeys.begin, "Multi-transactional getInitialDataDistribution");
 			loop {
@@ -479,6 +545,15 @@ class DDTxnProcessorImpl {
 
 					ASSERT_GT(keyServers.size(), 0);
 					beginKey = keyServers.end()[-1].key;
+					scanBatchCount++;
+					if (now() - lastScanLogTime >= 30.0) {
+						lastScanLogTime = now();
+						TraceEvent("DDInitKeyServerScanProgress", distributorId)
+						    .detail("BeginKey", beginKey)
+						    .detail("Batches", scanBatchCount)
+						    .detail("ShardsScanned", result->shards.size())
+						    .detail("ElapsedSeconds", now() - keyServerScanStart);
+					}
 					break;
 				} catch (Error& e) {
 					TraceEvent("GetInitialTeamsKeyServersRetry", distributorId).error(e);
@@ -494,6 +569,10 @@ class DDTxnProcessorImpl {
 
 		// a dummy shard at the end with no keys or servers makes life easier for trackInitialShards()
 		result->shards.push_back(DDShardInfo(allKeys.end));
+
+		TraceEvent("DDInitKeyServerScanComplete", distributorId)
+		    .detail("NumShards", result->shards.size())
+		    .detail("ElapsedSeconds", now() - keyServerScanStart);
 
 		if (SERVER_KNOBS->SHARD_ENCODE_LOCATION_METADATA && numDataMoves > 0) {
 			for (int shard = 0; shard < result->shards.size() - 1; ++shard) {
@@ -625,15 +704,21 @@ class DDTxnProcessorImpl {
 	}
 
 	ACTOR static Future<Void> waitDDTeamInfoPrintSignal(Database cx) {
+		state SimpleCounter<int64_t>* txnStarted = counterWaitDDTeamInfoPrintSignalStarted();
+		state SimpleCounter<int64_t>* txnCommitted = counterWaitDDTeamInfoPrintSignalCommitted();
+		state SimpleCounter<int64_t>* txnAborted = counterWaitDDTeamInfoPrintSignalAborted();
 		state ReadYourWritesTransaction tr(cx);
 		loop {
+			txnStarted->increment(1);
 			try {
 				tr.setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
 				state Future<Void> watchFuture = tr.watch(triggerDDTeamInfoPrintKey);
 				wait(tr.commit());
+				txnCommitted->increment(1);
 				wait(watchFuture);
 				return Void();
 			} catch (Error& e) {
+				txnAborted->increment(1);
 				wait(tr.onError(e));
 			}
 		}

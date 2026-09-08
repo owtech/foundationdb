@@ -30,6 +30,7 @@
 #include "flow/IRandom.h"
 #include "flow/Trace.h"
 #include "flow/network.h"
+#include "flow/SimpleCounter.h"
 
 #include "flow/actorcompiler.h" // This must be the last #include.
 
@@ -73,6 +74,55 @@ int EligibilityCounter::getCount(int combinedType) const {
 }
 
 } // namespace data_distribution
+
+static SimpleCounter<int64_t>* counterUpdateNextWigglingStorageIDStarted() {
+	static auto* c = SimpleCounter<int64_t>::makeCounter("/dd/updateNextWigglingStorageID/started");
+	return c;
+}
+static SimpleCounter<int64_t>* counterUpdateNextWigglingStorageIDCommitted() {
+	static auto* c = SimpleCounter<int64_t>::makeCounter("/dd/updateNextWigglingStorageID/committed");
+	return c;
+}
+static SimpleCounter<int64_t>* counterUpdateNextWigglingStorageIDAborted() {
+	static auto* c = SimpleCounter<int64_t>::makeCounter("/dd/updateNextWigglingStorageID/aborted");
+	return c;
+}
+static SimpleCounter<int64_t>* counterPerpetualStorageWigglerStarted() {
+	static auto* c = SimpleCounter<int64_t>::makeCounter("/dd/perpetualStorageWiggler/started");
+	return c;
+}
+static SimpleCounter<int64_t>* counterPerpetualStorageWigglerCommitted() {
+	static auto* c = SimpleCounter<int64_t>::makeCounter("/dd/perpetualStorageWiggler/committed");
+	return c;
+}
+static SimpleCounter<int64_t>* counterPerpetualStorageWigglerAborted() {
+	static auto* c = SimpleCounter<int64_t>::makeCounter("/dd/perpetualStorageWiggler/aborted");
+	return c;
+}
+static SimpleCounter<int64_t>* counterWaitHealthyZoneChangeStarted() {
+	static auto* c = SimpleCounter<int64_t>::makeCounter("/dd/waitHealthyZoneChange/started");
+	return c;
+}
+static SimpleCounter<int64_t>* counterWaitHealthyZoneChangeCommitted() {
+	static auto* c = SimpleCounter<int64_t>::makeCounter("/dd/waitHealthyZoneChange/committed");
+	return c;
+}
+static SimpleCounter<int64_t>* counterWaitHealthyZoneChangeAborted() {
+	static auto* c = SimpleCounter<int64_t>::makeCounter("/dd/waitHealthyZoneChange/aborted");
+	return c;
+}
+static SimpleCounter<int64_t>* counterUpdateStorageMetadataStarted() {
+	static auto* c = SimpleCounter<int64_t>::makeCounter("/dd/updateStorageMetadata/started");
+	return c;
+}
+static SimpleCounter<int64_t>* counterUpdateStorageMetadataCommitted() {
+	static auto* c = SimpleCounter<int64_t>::makeCounter("/dd/updateStorageMetadata/committed");
+	return c;
+}
+static SimpleCounter<int64_t>* counterUpdateStorageMetadataAborted() {
+	static auto* c = SimpleCounter<int64_t>::makeCounter("/dd/updateStorageMetadata/aborted");
+	return c;
+}
 
 class DDTeamCollectionImpl {
 	ACTOR static Future<Void> checkAndRemoveInvalidLocalityAddr(DDTeamCollection* self) {
@@ -185,13 +235,11 @@ public:
 
 	// Find the team with the exact storage servers as req.src.
 	static void getTeamByServers(DDTeamCollection* self, GetTeamRequest req) {
-		const std::string servers = TCTeamInfo::serversToString(req.src);
+		getTeamByServersConsistencyCheckInSim(self);
 		Optional<Reference<IDataDistributionTeam>> res;
-		for (const auto& team : self->teams) {
-			if (team->getServerIDsStr() == servers) {
-				res = team;
-				break;
-			}
+		auto it = self->teamsByServerIDs.find(TCTeamInfo::serversToString(req.src));
+		if (it != self->teamsByServerIDs.end()) {
+			res = it->second;
 		}
 		req.reply.send(std::make_pair(res, false));
 	}
@@ -328,6 +376,34 @@ public:
 			if (e.code() != error_code_actor_cancelled && req.reply.canBeSet())
 				req.reply.sendError(e);
 			throw;
+		}
+	}
+
+	// Probabilistic consistency check between teams and teamsByServerIDs
+	// Run only in simulation with a probability of DD_TEAMS_BY_SERVER_IDS_CONSISTENCY_CHECK_PROB_SIM
+	// We may need to tune this knob if simulation runs too slowly (in real-time) and results in
+	// ExternalTimeout in Joshua
+	static void getTeamByServersConsistencyCheckInSim(DDTeamCollection* self) {
+		// This check can be expensive in prod so only run it in simulation
+		if (!g_network->isSimulated()) {
+			return;
+		}
+
+		if (deterministicRandom()->random01() < SERVER_KNOBS->DD_TEAMS_BY_SERVER_IDS_CONSISTENCY_CHECK_PROB_SIM) {
+			std::unordered_map<std::string, Reference<TCTeamInfo>> expected;
+			for (const auto& team : self->teams) {
+				expected[team->getServerIDsStr()] = team;
+			}
+			ASSERT(expected.size() == self->teamsByServerIDs.size());
+			for (const auto& [key, value] : expected) {
+				auto it = self->teamsByServerIDs.find(key);
+				ASSERT(it != self->teamsByServerIDs.end());
+				ASSERT(it->second == value);
+			}
+			TraceEvent("TeamByServerIDsConsistencyCheckPassed")
+			    .suppressFor(5.0)
+			    .detail("TeamsSize", self->teams.size())
+			    .detail("MapSize", self->teamsByServerIDs.size());
 		}
 	}
 
@@ -1376,9 +1452,17 @@ public:
 		try {
 			loop {
 				state bool isBm = BlobMigratorInterface::isBlobMigrator(server->getLastKnownInterface().id());
-				status.isUndesired =
-				    (!self->disableFailingLaggingServers.get() && server->ssVersionTooFarBehind.get()) || isBm;
-
+				{
+					bool versionLagUndesired =
+					    !self->disableFailingLaggingServers.get() && server->ssVersionTooFarBehind.get();
+					if ((versionLagUndesired || isBm) && !status.isUndesired) {
+						TraceEvent(SevWarn, "UndesiredStorageServer", self->distributorId)
+						    .detail("Server", server->getId())
+						    .detail("Address", server->getLastKnownInterface().address())
+						    .detail("Reason", isBm ? "BlobMigrator" : "VersionLag");
+					}
+					status.isUndesired = versionLagUndesired || isBm;
+				}
 				status.isWrongConfiguration = isBm;
 				status.isWiggling = false;
 				hasWrongDC = !self->isCorrectDC(*server);
@@ -1414,6 +1498,7 @@ public:
 								TraceEvent(SevWarn, "UndesiredStorageServer", self->distributorId)
 								    .detail("Server", server->getId())
 								    .detail("Address", server->getLastKnownInterface().address())
+								    .detail("Reason", "SameAddress")
 								    .detail("OtherServer", i.second->getId())
 								    .detail("NumShards",
 								            self->shardsAffectedByTeamFailure->getNumberOfShards(server->getId()))
@@ -1439,6 +1524,8 @@ public:
 					if (self->optimalTeamCount > 0) {
 						TraceEvent(SevWarn, "UndesiredStorageServer", self->distributorId)
 						    .detail("Server", server->getId())
+						    .detail("Address", server->getLastKnownInterface().address())
+						    .detail("Reason", "WrongMachineClass")
 						    .detail("OptimalTeamCount", self->optimalTeamCount)
 						    .detail("Fitness", server->getLastKnownClass().machineClassFitness(ProcessClass::Storage));
 						status.isUndesired = true;
@@ -1515,9 +1602,16 @@ public:
 				}
 
 				if (worstStatus != DDTeamCollection::Status::NONE) {
+					const char* exclusionType = worstStatus == DDTeamCollection::Status::WIGGLING   ? "Wiggling"
+					                            : worstStatus == DDTeamCollection::Status::FAILED   ? "Failed"
+					                            : worstStatus == DDTeamCollection::Status::EXCLUDED ? "Excluded"
+					                                                                                : "Unknown";
 					TraceEvent(SevWarn, "UndesiredStorageServer", self->distributorId)
 					    .detail("Server", server->getId())
-					    .detail("Excluded", worstAddr.toString());
+					    .detail("Address", server->getLastKnownInterface().address())
+					    .detail("Reason", "Excluded")
+					    .detail("ExclusionType", exclusionType)
+					    .detail("ExcludedAddress", worstAddr.toString());
 					status.isUndesired = true;
 					status.isWrongConfiguration = true;
 
@@ -2258,6 +2352,9 @@ public:
 	}
 
 	ACTOR static Future<Void> updateNextWigglingStorageID(DDTeamCollection* self) {
+		state SimpleCounter<int64_t>* txnStarted = counterUpdateNextWigglingStorageIDStarted();
+		state SimpleCounter<int64_t>* txnCommitted = counterUpdateNextWigglingStorageIDCommitted();
+		state SimpleCounter<int64_t>* txnAborted = counterUpdateNextWigglingStorageIDAborted();
 		state StorageWiggleData wiggleState;
 		state KeyBackedObjectMap<UID, StorageWiggleValue, decltype(IncludeVersion())> metadataMap =
 		    wiggleState.wigglingStorageServer(PrimaryRegion(self->primary));
@@ -2266,13 +2363,16 @@ public:
 		state StorageWiggleValue value(nextId);
 		state Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(self->dbContext()));
 		loop {
+			txnStarted->increment(1);
 			// write the next server id
 			try {
 				tr->setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
 				metadataMap.set(tr, nextId, value);
 				wait(tr->commit());
+				txnCommitted->increment(1);
 				break;
 			} catch (Error& e) {
+				txnAborted->increment(1);
 				wait(tr->onError(e));
 			}
 		}
@@ -2542,6 +2642,9 @@ public:
 	// command `configure perpetual_storage_wiggle=$value` if the value is 1, this actor start 2 actors,
 	// `perpetualStorageWiggleIterator` and `perpetualStorageWiggler`. Otherwise, it sends stop signal to them.
 	ACTOR static Future<Void> monitorPerpetualStorageWiggle(DDTeamCollection* self) {
+		state SimpleCounter<int64_t>* txnPSWStarted = counterPerpetualStorageWigglerStarted();
+		state SimpleCounter<int64_t>* txnPSWCommitted = counterPerpetualStorageWigglerCommitted();
+		state SimpleCounter<int64_t>* txnPSWAborted = counterPerpetualStorageWigglerAborted();
 		state int speed = 0;
 		state PromiseStream<Void> finishStorageWiggleSignal;
 		state SignalableActorCollection collection;
@@ -2551,6 +2654,7 @@ public:
 		loop {
 			state ReadYourWritesTransaction tr(self->dbContext());
 			loop {
+				txnPSWStarted->increment(1);
 				try {
 					tr.setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
 					Optional<Standalone<StringRef>> value = wait(tr.get(perpetualStorageWiggleKey));
@@ -2560,6 +2664,7 @@ public:
 					}
 					state Future<Void> watchFuture = tr.watch(perpetualStorageWiggleKey);
 					wait(tr.commit());
+					txnPSWCommitted->increment(1);
 
 					ASSERT(speed == 1 || speed == 0);
 					if (speed == 1 && self->storageWiggler->isStopped()) { // avoid duplicated start
@@ -2582,6 +2687,7 @@ public:
 					wait(watchFuture);
 					break;
 				} catch (Error& e) {
+					txnPSWAborted->increment(1);
 					wait(tr.onError(e));
 				}
 			}
@@ -2589,8 +2695,12 @@ public:
 	}
 
 	ACTOR static Future<Void> waitHealthyZoneChange(DDTeamCollection* self) {
+		state SimpleCounter<int64_t>* txnStarted = counterWaitHealthyZoneChangeStarted();
+		state SimpleCounter<int64_t>* txnCommitted = counterWaitHealthyZoneChangeCommitted();
+		state SimpleCounter<int64_t>* txnAborted = counterWaitHealthyZoneChangeAborted();
 		state ReadYourWritesTransaction tr(self->dbContext());
 		loop {
+			txnStarted->increment(1);
 			try {
 				tr.setOption(FDBTransactionOptions::READ_SYSTEM_KEYS);
 				tr.setOption(FDBTransactionOptions::LOCK_AWARE);
@@ -2631,9 +2741,11 @@ public:
 
 				state Future<Void> watchFuture = tr.watch(healthyZoneKey);
 				wait(tr.commit());
+				txnCommitted->increment(1);
 				wait(watchFuture || healthyZoneTimeout);
 				tr.reset();
 			} catch (Error& e) {
+				txnAborted->increment(1);
 				wait(tr.onError(e));
 			}
 		}
@@ -3356,6 +3468,9 @@ public:
 	}
 
 	ACTOR static Future<Void> updateStorageMetadata(DDTeamCollection* self, TCServerInfo* server) {
+		state SimpleCounter<int64_t>* txnStarted = counterUpdateStorageMetadataStarted();
+		state SimpleCounter<int64_t>* txnCommitted = counterUpdateStorageMetadataCommitted();
+		state SimpleCounter<int64_t>* txnAborted = counterUpdateStorageMetadataAborted();
 		state KeyBackedObjectMap<UID, StorageMetadataType, decltype(IncludeVersion())> metadataMap(
 		    serverMetadataKeys.begin, IncludeVersion());
 		state Reference<ReadYourWritesTransaction> tr = makeReference<ReadYourWritesTransaction>(self->dbContext());
@@ -3379,6 +3494,7 @@ public:
 
 		// read storage metadata
 		loop {
+			txnStarted->increment(1);
 			try {
 				tr->setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
 				Optional<Value> serverInterfaceValue = wait(tr->get(serverListKeyFor(server->getId())));
@@ -3399,8 +3515,10 @@ public:
 				metadataMap.set(tr, server->getId(), data);
 				tr->set(serverMetadataChangeKey, deterministicRandom()->randomUniqueID().toString());
 				wait(tr->commit());
+				txnCommitted->increment(1);
 				break;
 			} catch (Error& e) {
+				txnAborted->increment(1);
 				wait(tr->onError(e));
 			}
 		}
@@ -4901,6 +5019,7 @@ void DDTeamCollection::addTeam(const std::vector<Reference<TCServerInfo>>& newTe
 
 	// For a good team, we add it to teams and create machine team for it when necessary
 	teams.push_back(teamInfo);
+	teamsByServerIDs[teamInfo->getServerIDsStr()] = teamInfo;
 	for (auto& server : newTeamServers) {
 		server->addTeam(teamInfo);
 	}
@@ -5826,6 +5945,10 @@ void DDTeamCollection::addServer(StorageServerInterface newServer,
 
 bool DDTeamCollection::removeTeam(Reference<TCTeamInfo> team) {
 	TraceEvent("RemovedServerTeam", distributorId).detail("Team", team->getDesc());
+	auto it = teamsByServerIDs.find(team->getServerIDsStr());
+	if (it != teamsByServerIDs.end()) {
+		teamsByServerIDs.erase(it);
+	}
 	bool found = false;
 	for (int t = 0; t < teams.size(); t++) {
 		if (teams[t] == team) {

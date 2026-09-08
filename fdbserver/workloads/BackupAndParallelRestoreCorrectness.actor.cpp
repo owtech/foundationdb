@@ -45,7 +45,7 @@ struct BackupAndParallelRestoreCorrectnessWorkload : TestWorkload {
 	LockDB locked{ false };
 	bool allowPauses;
 	bool shareLogRange;
-	UsePartitionedLog usePartitionedLogs{ false };
+	MutationLogType mutationLogType{ MutationLogType::DEFAULT };
 	Key addPrefix, removePrefix; // Original key will be first applied removePrefix and then applied addPrefix
 	// CAVEAT: When removePrefix is used, we must ensure every key in backup have the removePrefix
 	Optional<std::string> encryptionKeyFileName;
@@ -83,7 +83,8 @@ struct BackupAndParallelRestoreCorrectnessWorkload : TestWorkload {
 		agentRequest = getOption(options, "simBackupAgents"_sr, true);
 		allowPauses = getOption(options, "allowPauses"_sr, true);
 		shareLogRange = getOption(options, "shareLogRange"_sr, false);
-		usePartitionedLogs.set(getOption(options, "usePartitionedLogs"_sr, deterministicRandom()->coinflip()));
+		mutationLogType = static_cast<MutationLogType>(
+		    getOption(options, "mutationLogType"_sr, deterministicRandom()->randomInt(0, 2)));
 		addPrefix = getOption(options, "addPrefix"_sr, ""_sr);
 		removePrefix = getOption(options, "removePrefix"_sr, ""_sr);
 
@@ -237,9 +238,11 @@ struct BackupAndParallelRestoreCorrectnessWorkload : TestWorkload {
 			                               backupRanges,
 			                               true,
 			                               StopWhenDone{ !stopDifferentialDelay },
-			                               self->usePartitionedLogs,
+			                               self->mutationLogType,
 			                               IncrementalBackupOnly::False,
-			                               self->encryptionKeyFileName));
+			                               self->encryptionKeyFileName,
+			                               self->encryptionKeyFileName.present() ? DEFAULT_ENCRYPTION_BLOCK_SIZE : 0,
+			                               /*blobManifestUrl=*/{}));
 		} catch (Error& e) {
 			TraceEvent("BARW_DoBackupSubmitBackupException", randomID).error(e).detail("Tag", printable(tag));
 			if (e.code() != error_code_backup_unneeded && e.code() != error_code_backup_duplicate)
@@ -495,20 +498,23 @@ struct BackupAndParallelRestoreCorrectnessWorkload : TestWorkload {
 			if (!self->locked && BUGGIFY) {
 				TraceEvent("BARW_SubmitBackup2", randomID).detail("Tag", printable(self->backupTag));
 				try {
-					// Note the "partitionedLog" must be false, because we change
+					// Note the mutationLogType is default, because we change
 					// the configuration to disable backup workers before restore.
-					extraBackup = backupAgent.submitBackup(cx,
-					                                       "file://simfdb/backups/"_sr,
-					                                       {},
-					                                       deterministicRandom()->randomInt(0, 60),
-					                                       deterministicRandom()->randomInt(0, 100),
-					                                       self->backupTag.toString(),
-					                                       self->backupRanges,
-					                                       true,
-					                                       StopWhenDone::True,
-					                                       UsePartitionedLog::False,
-					                                       IncrementalBackupOnly::False,
-					                                       self->encryptionKeyFileName);
+					extraBackup = backupAgent.submitBackup(
+					    cx,
+					    "file://simfdb/backups/"_sr,
+					    {},
+					    deterministicRandom()->randomInt(0, 60),
+					    deterministicRandom()->randomInt(0, 100),
+					    self->backupTag.toString(),
+					    self->backupRanges,
+					    true,
+					    StopWhenDone::True,
+					    MutationLogType::DEFAULT,
+					    IncrementalBackupOnly::False,
+					    self->encryptionKeyFileName,
+					    self->encryptionKeyFileName.present() ? DEFAULT_ENCRYPTION_BLOCK_SIZE : 0,
+					    /*blobManifestUrl=*/{});
 				} catch (Error& e) {
 					TraceEvent("BARW_SubmitBackup2Exception", randomID)
 					    .error(e)
@@ -550,9 +556,10 @@ struct BackupAndParallelRestoreCorrectnessWorkload : TestWorkload {
 
 				auto container = IBackupContainer::openContainer(lastBackupContainer->getURL(),
 				                                                 lastBackupContainer->getProxy(),
-				                                                 lastBackupContainer->getEncryptionKeyFileName());
+				                                                 lastBackupContainer->getEncryptionKeyFileName(),
+				                                                 lastBackupContainer->getEncryptionBlockSize());
 				BackupDescription desc = wait(container->describeBackup());
-				ASSERT(self->usePartitionedLogs == desc.partitioned);
+				ASSERT(self->mutationLogType == desc.mutationLogType);
 				ASSERT(desc.minRestorableVersion.present()); // We must have a valid backup now.
 
 				state Version targetVersion = -1;
@@ -561,16 +568,11 @@ struct BackupAndParallelRestoreCorrectnessWorkload : TestWorkload {
 						targetVersion = desc.minRestorableVersion.get();
 					} else if (deterministicRandom()->random01() < 0.1) {
 						targetVersion = desc.maxRestorableVersion.get();
-					} else if (deterministicRandom()->random01() < 0.5 &&
-					           desc.minRestorableVersion.get() < desc.contiguousLogEnd.get()) {
-						// The assertion may fail because minRestorableVersion may be decided by snapshot version.
-						// ASSERT_WE_THINK(desc.minRestorableVersion.get() <= desc.contiguousLogEnd.get());
-						// This assertion can fail when contiguousLogEnd < maxRestorableVersion and
-						// the snapshot version > contiguousLogEnd. I.e., there is a gap between
-						// contiguousLogEnd and snapshot version.
-						// ASSERT_WE_THINK(desc.contiguousLogEnd.get() > desc.maxRestorableVersion.get());
-						targetVersion = deterministicRandom()->randomInt64(desc.minRestorableVersion.get(),
-						                                                   desc.contiguousLogEnd.get());
+					} else if (deterministicRandom()->random01() < 0.5) {
+						targetVersion = (desc.minRestorableVersion.get() != desc.maxRestorableVersion.get())
+						                    ? deterministicRandom()->randomInt64(desc.minRestorableVersion.get(),
+						                                                         desc.maxRestorableVersion.get())
+						                    : desc.maxRestorableVersion.get();
 					}
 				}
 

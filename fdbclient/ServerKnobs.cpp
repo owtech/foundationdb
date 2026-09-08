@@ -138,6 +138,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( BG_REBALANCE_MAX_POLLING_INTERVAL,                    10.0 );
 	init( BG_REBALANCE_SWITCH_CHECK_INTERVAL,                    5.0 ); if (randomize && BUGGIFY) BG_REBALANCE_SWITCH_CHECK_INTERVAL = 1.0;
 	init( DD_QUEUE_LOGGING_INTERVAL,                             5.0 );
+	init( DD_RELOCATOR_LATENCY_LOGGING_INTERVAL,               300.0 );
 	init( DD_QUEUE_COUNTER_REFRESH_INTERVAL,                    60.0 );
 	// 100 / 60 < 2 trace/sec ~ 2 * 200 = 400b/sec
 	init( DD_QUEUE_COUNTER_MAX_LOG,                              100 ); if( randomize && BUGGIFY ) DD_QUEUE_COUNTER_MAX_LOG = 1;
@@ -148,6 +149,16 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( MERGE_RELOCATION_PARALLELISM_PER_TEAM,                   6 ); if (randomize && BUGGIFY ) MERGE_RELOCATION_PARALLELISM_PER_TEAM = 1;
 	init( DD_QUEUE_MAX_KEY_SERVERS,                              100 ); // Do not buggify
 	init( DD_REBALANCE_PARALLELISM,                               50 );
+	// Global admission control for DD relocations is OFF by default. The default limit is set high
+	// enough that pipelineSize() can never reach it, so pipelineFull never becomes true and the
+	// relocation gate in pipelineGateActor() never holds anything back. To turn the feature on, set
+	// this to a real cap: 1000 corresponds to a 500-server cluster with two concurrent shard moves
+	// per storage server. We have observed large clusters doing 25-30GB in flight, or closer to 100
+	// shards at a time, so 1000 would have plenty of margin of safety built in. Simulation still
+	// exercises the gate via the BUGGIFY value below. For simulation, we don't really know how many
+	// servers there are, but 10 seems like a good guess (thus 20 moves). Do not buggify this too
+	// small: testing under artificial scarcity results in uninteresting degenerate cases.
+	init( DD_MAX_PIPELINE_MOVES, std::numeric_limits<int>::max() ); if( randomize && BUGGIFY ) DD_MAX_PIPELINE_MOVES = 20;
 	init( DD_REBALANCE_RESET_AMOUNT,                              30 );
 	init( INFLIGHT_PENALTY_HEALTHY,                              1.0 );
 	init( INFLIGHT_PENALTY_UNHEALTHY,                          500.0 );
@@ -527,9 +538,12 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( ROCKSDB_READ_RANGE_ITERATOR_REFRESH_TIME,             30.0 ); if( randomize && BUGGIFY ) ROCKSDB_READ_RANGE_ITERATOR_REFRESH_TIME = 0.1;
 	init( ROCKSDB_PROBABILITY_REUSE_ITERATOR_SIM,               0.01 );
 	init( ROCKSDB_READ_RANGE_REUSE_ITERATORS,                  false ); if( randomize && BUGGIFY ) ROCKSDB_READ_RANGE_REUSE_ITERATORS = deterministicRandom()->coinflip();
-	init( SHARDED_ROCKSDB_REUSE_ITERATORS,                     false ); if (isSimulated) SHARDED_ROCKSDB_REUSE_ITERATORS = deterministicRandom()->coinflip(); 
+	init( SHARDED_ROCKSDB_REUSE_ITERATORS,                     false ); if( isSimulated ) SHARDED_ROCKSDB_REUSE_ITERATORS = deterministicRandom()->coinflip();
 	init( ROCKSDB_READ_RANGE_REUSE_BOUNDED_ITERATORS,          false ); if( randomize && BUGGIFY ) ROCKSDB_READ_RANGE_REUSE_BOUNDED_ITERATORS = deterministicRandom()->coinflip();
 	init( ROCKSDB_READ_RANGE_BOUNDED_ITERATORS_MAX_LIMIT,        200 );
+	init( ROCKSDB_USE_CACHE_RESULT_OPTION,                     false ); if( isSimulated ) ROCKSDB_USE_CACHE_RESULT_OPTION = deterministicRandom()->coinflip();
+	// Probability that RocksDB can disable block cache in simulation
+	init( ROCKSDB_PROBABILITY_DISABLE_CACHE_SIM,                 0.1 );
 	// Set to 0 to disable rocksdb write rate limiting. Rate limiter unit: bytes per second.
 	init( ROCKSDB_WRITE_RATE_LIMITER_BYTES_PER_SEC,        200000000 );
 	init( ROCKSDB_WRITE_RATE_LIMITER_FAIRNESS,                    10 ); // RocksDB default 10
@@ -622,7 +636,8 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( ROCKSDB_MEMTABLE_PROTECTION_BYTES_PER_KEY,               0 ); if ( randomize && BUGGIFY ) ROCKSDB_MEMTABLE_PROTECTION_BYTES_PER_KEY = 8; // Default: 0 (disabled). Supported values: 0, 1, 2, 4, 8.
 	// Block cache key-value checksum. Checksum is validated during read, so has non-trivial impact on read performance.
 	init( ROCKSDB_BLOCK_PROTECTION_BYTES_PER_KEY,                  0 ); if ( randomize && BUGGIFY ) ROCKSDB_BLOCK_PROTECTION_BYTES_PER_KEY = 8; // Default: 0 (disabled). Supported values: 0, 1, 2, 4, 8.
-	init( ROCKSDB_ENABLE_NONDETERMINISM,                      false );
+	init( ROCKSDB_ENABLE_CACHE_USAGE_OVERRIDES,                false ); if( isSimulated ) ROCKSDB_ENABLE_CACHE_USAGE_OVERRIDES = deterministicRandom()->coinflip();
+	init( ROCKSDB_ENABLE_NONDETERMINISM,                       false );
 	init( SHARDED_ROCKSDB_ALLOW_WRITE_STALL_ON_FLUSH,          false );	
 	init( SHARDED_ROCKSDB_VALIDATE_MAPPING_RATIO,               0.01 ); if (isSimulated) SHARDED_ROCKSDB_VALIDATE_MAPPING_RATIO = deterministicRandom()->random01();
 	init( SHARD_METADATA_SCAN_BYTES_LIMIT,                  10485760 ); // 10MB
@@ -778,7 +793,6 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 
 	// Backup Worker
 	init( BACKUP_TIMEOUT,                                        0.4 );
-	init( BACKUP_NOOP_POP_DELAY,                                 5.0 );
 	init( BACKUP_FILE_BLOCK_BYTES,                       1024 * 1024 );
 	init( BACKUP_WORKER_LOCK_BYTES,                              3e9 ); if(randomize && BUGGIFY) BACKUP_WORKER_LOCK_BYTES = deterministicRandom()->randomInt(2048, 4096) * 4096;
 	init( BACKUP_UPLOAD_DELAY,                                  10.0 ); if(randomize && BUGGIFY) BACKUP_UPLOAD_DELAY = deterministicRandom()->random01() * 60;
@@ -861,11 +875,13 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( TRACK_TLOG_RECOVERY,                                  true ); if ( randomize && BUGGIFY ) TRACK_TLOG_RECOVERY = deterministicRandom()->coinflip();
 
 	//Move Keys
-	init( SHARD_READY_DELAY,                                    0.25 );
+	init( SHARD_READY_DELAY,                                    0.25 ); if( randomize && BUGGIFY ) SHARD_READY_DELAY = 5.0;
 	init( SERVER_READY_QUORUM_INTERVAL,                         std::min(1.0, std::min(MAX_READ_TRANSACTION_LIFE_VERSIONS, MAX_WRITE_TRANSACTION_LIFE_VERSIONS)/(5.0*VERSIONS_PER_SECOND)) );
 	init( SERVER_READY_QUORUM_TIMEOUT,                          15.0 ); if( randomize && BUGGIFY ) SERVER_READY_QUORUM_TIMEOUT = 1.0;
 	init( REMOVE_RETRY_DELAY,                                    1.0 );
 	init( MOVE_KEYS_KRM_LIMIT,                                  2000 ); if( randomize && BUGGIFY ) MOVE_KEYS_KRM_LIMIT = 2;
+	init( FINISH_MOVE_KEYS_MAX_RETRIES,                           50 ); if( randomize && BUGGIFY ) FINISH_MOVE_KEYS_MAX_RETRIES = 10; // ~4 min total with exponential backoff (0.2s to 5s cap); ~31s buggified
+	init( START_MOVE_KEYS_MAX_RETRIES,                            50 ); if( randomize && BUGGIFY ) START_MOVE_KEYS_MAX_RETRIES = 10;
 	init( MOVE_KEYS_KRM_LIMIT_BYTES,                             1e5 ); if( randomize && BUGGIFY ) MOVE_KEYS_KRM_LIMIT_BYTES = 5e4; //This must be sufficiently larger than CLIENT_KNOBS->KEY_SIZE_LIMIT (fdbclient/Knobs.h) to ensure that at least two entries will be returned from an attempt to read a key range map
 	init( MOVE_SHARD_KRM_ROW_LIMIT,                            20000 );
  	init( MOVE_SHARD_KRM_BYTE_LIMIT,                             1e6 );
@@ -1019,6 +1035,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( DD_PREFER_LOW_READ_UTIL_TEAM,                          true );
 	init( DD_TRACE_MOVE_BYTES_AVERAGE_INTERVAL,                   120);
 	init( MOVING_WINDOW_SAMPLE_SIZE,                         10000000); // 10MB
+	init( DD_TEAMS_BY_SERVER_IDS_CONSISTENCY_CHECK_PROB_SIM,       0.0 ); if( isSimulated ) DD_TEAMS_BY_SERVER_IDS_CONSISTENCY_CHECK_PROB_SIM = (deterministicRandom()->random01() * 0.4) + 0.1;
 
 	//Storage Server
 	init( STORAGE_LOGGING_DELAY,                                 5.0 );
@@ -1181,6 +1198,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	// Status
 	init( STATUS_MIN_TIME_BETWEEN_REQUESTS,                      0.0 );
 	init( MAX_STATUS_REQUESTS_PER_SECOND,                      256.0 );
+	init( STATUS_TIMEOUT_BUFFER,                                 5.0 );
 	init( CONFIGURATION_ROWS_TO_FETCH,                         20000 );
 	init( DISABLE_DUPLICATE_LOG_WARNING,                       false );
 	init( HISTOGRAM_REPORT_INTERVAL,                           300.0 );

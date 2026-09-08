@@ -519,18 +519,9 @@ ACTOR Future<Void> TagPartitionedLogSystem::onError_internal(TagPartitionedLogSy
 						}
 					}
 				}
-				// Monitor changes of backup workers for old epochs.
-				for (const auto& worker : old.tLogs[0]->backupWorkers) {
-					if (worker->get().present()) {
-						backupFailed.push_back(waitFailureClient(worker->get().interf().waitFailure,
-						                                         SERVER_KNOBS->BACKUP_TIMEOUT,
-						                                         -SERVER_KNOBS->BACKUP_TIMEOUT /
-						                                             SERVER_KNOBS->SECONDS_BEFORE_NO_FAILURE_DELAY,
-						                                         /*trace=*/true));
-					} else {
-						changes.push_back(worker->onChange());
-					}
-				}
+				// Old-epoch backup workers are stateless and persist their progress. We intentionally do not
+				// start a transaction-system recovery on their failure, since repeated recoveries could stall
+				// recovery and hurt availability.
 			}
 		}
 
@@ -3092,6 +3083,27 @@ ACTOR Future<Reference<ILogSystem>> TagPartitionedLogSystem::newEpoch(
 		logSystem->tLogs[1]->populateSatelliteTagLocations(
 		    logSystem->logRouterTags, oldLogSystem->logRouterTags, logSystem->txsTags, maxTxsTags);
 		logSystem->expectedLogSets++;
+	}
+
+	// Backup workers are bound to the recovery that recruited them and self-displace when the recovery count
+	// advances. Do not carry their interfaces into this recovery: the master re-recruits any unfinished work from
+	// durable progress, and monitoring an inherited interface would turn expected displacement into
+	// backup_worker_failed.
+	size_t droppedBackupWorkers = 0;
+	auto dropBackupWorkers = [&droppedBackupWorkers](const std::vector<Reference<LogSet>>& logSets) {
+		for (const auto& logSet : logSets) {
+			droppedBackupWorkers += logSet->backupWorkers.size();
+			logSet->backupWorkers.clear();
+		}
+	};
+	dropBackupWorkers(oldLogSystem->tLogs);
+	for (const auto& old : oldLogSystem->oldLogData) {
+		dropBackupWorkers(old.tLogs);
+	}
+	if (droppedBackupWorkers > 0) {
+		TraceEvent("DropPreviousRecoveryBackupWorkers", logSystem->dbgid)
+		    .detail("RecoveryCount", recoveryCount)
+		    .detail("Count", droppedBackupWorkers);
 	}
 
 	if (oldLogSystem->tLogs.size()) {

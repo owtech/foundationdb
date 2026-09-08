@@ -16,7 +16,6 @@ timeout = 360000
     #    transactionsPerSecond=500.0
     transactionsPerSecond = 2500.0
     testDuration = 30.0
-    expectedRate = 0
     #	keyPrefix=!
     # Each testName=RunRestoreWorkerWorkload creates a restore worker
     # We need at least 3 restore workers: master, loader, and applier
@@ -31,7 +30,8 @@ timeout = 360000
     restoreAfter = 60.0
     # backupRangesCount<0 means backup the entire normal keyspace
     backupRangesCount = -1
-    usePartitionedLogs = false
+    mutationLogType = 0 # default logs
+    encrypted = false
 
     [[test.workload]]
     testName = 'RandomClogging'

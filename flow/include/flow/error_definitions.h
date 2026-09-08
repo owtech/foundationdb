@@ -165,6 +165,8 @@ ERROR( bulkload_fileset_invalid_filepath, 1245, "Bulkload fileset provides inval
 ERROR( bulkload_manifest_decode_error, 1246, "Bulkload manifest string is failed to decode" )
 ERROR( range_lock_reject, 1247, "Range lock is rejected" )
 ERROR( range_unlock_reject, 1248, "Range unlock is rejected" )
+ERROR( finish_move_keys_too_many_retries, 1249, "finishMoveKeys exceeded retry limit" )
+ERROR( start_move_keys_too_many_retries, 1250, "startMoveKeys exceeded retry limit" )
 
 // 15xx Platform errors
 ERROR( platform_error, 1500, "Platform error" )
@@ -352,7 +354,6 @@ ERROR( backup_does_not_exist, 2319, "Backup does not exist")
 ERROR( backup_not_filterable_with_key_ranges, 2320, "Backup before 6.3 cannot be filtered with key ranges")
 ERROR( backup_not_overlapped_with_keys_filter, 2321, "Backup key ranges doesn't overlap with key ranges filter")
 ERROR( bucket_not_in_url, 2322, "bucket is not in the URL for backup" )
-ERROR( backup_parse_s3_response_failure, 2323, "cannot parse s3 response properly" )
 ERROR( restore_invalid_version, 2361, "Invalid restore version")
 ERROR( restore_corrupted_data, 2362, "Corrupted backup data")
 ERROR( restore_missing_data, 2363, "Missing backup data")
