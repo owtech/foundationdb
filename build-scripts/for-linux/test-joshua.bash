@@ -18,6 +18,9 @@ for line in sys.stdin:
         print(f'[#{count} {timestamp}] TestFile=\"{m.group(1)}\" Ok=\"{m.group(2)}\"')
         if m.group(2) == '0':
             failed = True
+            print(f'----- TEST LOG (failure): {m.group(1)} -----')
+            print(line, end='')
+            print('----- END TEST LOG -----')
     else:
         sys.stdout.write(line)
     count += 1
