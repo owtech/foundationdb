@@ -24,11 +24,12 @@
 #include "fdbclient/IClientApi.h"
 #include "flow/Arena.h"
 #include "flow/FastRef.h"
-#include "flow/ThreadHelper.actor.h"
+#include "flow/ThreadHelper.h"
 
 namespace {
 Future<std::string> describeServers(Reference<ReadYourWritesTransaction> tr, std::vector<UID> ids) {
 	std::vector<Future<Optional<Value>>> serverListEntries;
+	serverListEntries.reserve(ids.size());
 	for (const UID& id : ids) {
 		serverListEntries.push_back(tr->get(serverListKeyFor(id)));
 	}

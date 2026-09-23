@@ -18,13 +18,13 @@
  * limitations under the License.
  */
 
-#include "fdbclient/NativeAPI.actor.h"
+#include "fdbclient/NativeAPI.h"
 #include "fdbserver/core/TesterInterface.h"
 #include "fdbserver/tester/workloads.h"
 #include "fdbclient/StatusClient.h"
 #include "flow/UnitTest.h"
 #include "fdbclient/Schemas.h"
-#include "fdbclient/ManagementAPI.h"
+#include "fdbclient/StatusSchema.h"
 
 struct StatusWorkload : TestWorkload {
 	static constexpr auto NAME = "Status";

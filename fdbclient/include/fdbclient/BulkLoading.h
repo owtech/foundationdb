@@ -75,9 +75,10 @@ const int bulkLoadManifestFormatVersion = 1;
 // TODO(BulkDump): use this everywhere
 std::string appendToPath(const std::string& path, const std::string& append);
 
-// Constructs a URL with the path modified to include "data/" prefix.
+// Constructs a direct object URL with the path modified to include the backup container's data tree.
 // This is used for BulkDump/BulkLoad to write under the backup container's data directory,
-// consistent with where BackupContainerS3BlobStore stores other backup files.
+// consistent with where BackupContainerBlobStore stores other backup files.  Any object key prefix
+// is materialized in the path and removed from the returned URL's query.
 // Input:  blobstore://creds@host/backup_container?bucket=... , "bulkdump_data"
 // Output: blobstore://creds@host/data/backup_container/bulkdump_data?bucket=...
 std::string getBackupDataPath(const std::string& url, const std::string& suffix);
@@ -104,7 +105,7 @@ struct BulkLoadByteSampleSetting {
 	}
 
 	bool isValid() const {
-		if (method.size() == 0) {
+		if (method.empty()) {
 			return false;
 		}
 		return true;
@@ -160,6 +161,30 @@ private:
 	std::string checksumValue = "";
 };
 
+// Returns false if `path` could escape a trusted root when appended to it:
+// i.e. it is absolute (leading '/') or contains a ".." component. Bulk-load
+// manifest fields (relativePath, dataFileName, byteSampleFileName,
+// manifestFileName) are read verbatim from an operator-supplied object store
+// and then joined onto the local staging root (see BulkLoadFileSet::getFolder).
+// Without this check a crafted manifest such as
+// "[RelativePath]: ../../../../var/lib/foundationdb" would make getFolder()
+// resolve outside the staging root and drive eraseDirectoryRecursive()/file
+// writes there. An empty path is allowed (callers treat empty fields as absent).
+inline bool bulkLoadPathIsContained(const std::string& path) {
+	if (path.empty()) {
+		return true;
+	}
+	if (path[0] == '/') {
+		return false; // absolute path escapes the root
+	}
+	for (const auto& component : splitString(path, "/")) {
+		if (component == "..") {
+			return false; // traversal component escapes the root
+		}
+	}
+	return true;
+}
+
 // Definition of bulkload/dump files metadata
 // Each bulkload/dump task has exactly one range.
 // The range of the data is included in the Folder = RootPath + RelativePath.
@@ -214,6 +239,14 @@ public:
 		}
 		if (!hasDataFile() && hasByteSampleFile()) {
 			// If bytes sample file exists, the data file must exist.
+			return false;
+		}
+		// Reject manifest-supplied path fields that could escape the local
+		// staging root via absolute paths or ".." traversal. getFolder() joins
+		// relativePath onto rootPath, and the file-name fields are appended to
+		// that folder, so any of them can drive a path traversal at the sink.
+		if (!bulkLoadPathIsContained(relativePath) || !bulkLoadPathIsContained(manifestFileName) ||
+		    !bulkLoadPathIsContained(dataFileName) || !bulkLoadPathIsContained(byteSampleFileName)) {
 			return false;
 		}
 		return true;

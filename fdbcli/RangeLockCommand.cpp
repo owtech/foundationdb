@@ -19,7 +19,6 @@
  */
 
 #include "fdbcli/fdbcli.h"
-#include "fdbclient/ManagementAPI.h"
 #include "fdbclient/RangeLock.h"
 #include "flow/Arena.h"
 
@@ -137,6 +136,11 @@ Future<bool> rangeLockCommandActor(Database cx, std::vector<StringRef> tokens) {
 		} catch (Error& e) {
 			if (e.code() == error_code_actor_cancelled) {
 				throw;
+			}
+			if (e.code() == error_code_range_lock_reject) {
+				fmt::println("ERROR: cannot unregister owner: owner still holds range locks; "
+				             "stop acquisitions, release the locks, and retry");
+				co_return false;
 			}
 			co_return reportRangeLockError(e, "unregister owner");
 		}

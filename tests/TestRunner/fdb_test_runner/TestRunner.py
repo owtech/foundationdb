@@ -329,7 +329,7 @@ class RestartTestPolicy:
             [old_binary, "--version"]
         ).decode("utf-8")
         match = re.match(
-            "FoundationDB.*\(v([0-9]+\.[0-9]+\.[0-9]+)", old_binary_version_raw
+            "FoundationDB.*\(v([0-9]+\.[0-9]+\.[0-9]+)\)", old_binary_version_raw
         )
         assert match, old_binary_version_raw
         old_binary_version = tuple(map(int, match.group(1).split(".")))

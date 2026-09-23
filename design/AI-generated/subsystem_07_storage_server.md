@@ -14,7 +14,7 @@ Storage servers are the read path and the materialized state of the database. Ea
 
 ---
 
-## StorageServer Structure -- [`storageserver.actor.cpp`](https://github.com/apple/foundationdb/blob/main/fdbserver/storageserver/storageserver.actor.cpp)`:850-1528`
+## StorageServer Structure -- [`storageserver.cpp`](https://github.com/apple/foundationdb/blob/main/fdbserver/storageserver/storageserver.cpp)`:850-1528`
 
 ```
 struct StorageServer : IStorageMetricsService {
@@ -46,7 +46,7 @@ struct StorageServer : IStorageMetricsService {
 
 ---
 
-## StorageServerDisk Wrapper -- [`storageserver.actor.cpp`](https://github.com/apple/foundationdb/blob/main/fdbserver/storageserver/storageserver.actor.cpp)`:602-719`
+## StorageServerDisk Wrapper -- [`storageserver.cpp`](https://github.com/apple/foundationdb/blob/main/fdbserver/storageserver/storageserver.cpp)`:602-719`
 
 `StorageServerDisk` is the thin layer between the storage server logic and the `IKeyValueStore` interface. It delegates all I/O to the underlying engine and adds metrics counters (`kvGets`, `kvScans`, `kvCommits`, `kvCommitLogicalBytes`, `kvClearRanges`, `kvClearSingleKey`).
 
@@ -60,7 +60,7 @@ Key methods:
 
 ---
 
-## Update Loop -- [`storageserver.actor.cpp`](https://github.com/apple/foundationdb/blob/main/fdbserver/storageserver/storageserver.actor.cpp)`:9562+`
+## Update Loop -- [`storageserver.cpp`](https://github.com/apple/foundationdb/blob/main/fdbserver/storageserver/storageserver.cpp)`:9562+`
 
 The `update()` function (a coroutine) pulls mutations from the log system and applies them locally.
 
@@ -277,7 +277,7 @@ IKeyValueStore* openKVStore(KeyValueStoreType storeType, std::string filename, U
 
 ---
 
-### RocksDB Engine -- [`KeyValueStoreRocksDB.actor.cpp`](https://github.com/apple/foundationdb/blob/main/fdbserver/kvstore/KeyValueStoreRocksDB.actor.cpp) (~3K lines)
+### RocksDB Engine -- [`KeyValueStoreRocksDB.cpp`](https://github.com/apple/foundationdb/blob/main/fdbserver/kvstore/KeyValueStoreRocksDB.cpp) (~3K lines)
 
 The primary production storage engine. Wraps Facebook's RocksDB LSM-tree engine, adapting it to the `IKeyValueStore` interface via thread pools for non-blocking I/O.
 
@@ -395,7 +395,7 @@ Comprehensive metrics are emitted via `rocksDBMetricLogger` (line 1008):
 
 ---
 
-### Redwood (VersionedBTree) Engine -- [`VersionedBTree.actor.cpp`](https://github.com/apple/foundationdb/blob/main/fdbserver/kvstore/VersionedBTree.actor.cpp) (~11K lines)
+### Redwood (VersionedBTree) Engine -- [`VersionedBTree.cpp`](https://github.com/apple/foundationdb/blob/main/fdbserver/kvstore/VersionedBTree.cpp) (~11K lines)
 
 A custom versioned copy-on-write B-tree storage engine built from scratch for FoundationDB. Named "Redwood," it is designed for high space efficiency through delta compression and for tight integration with FDB's versioned storage model.
 
@@ -754,11 +754,11 @@ Client ──GetValueRequest──▶ StorageServer getValueQ()
 
 | File | Purpose |
 |------|---------|
-| [`fdbserver/storageserver/storageserver.actor.cpp`](https://github.com/apple/foundationdb/blob/main/fdbserver/storageserver/storageserver.actor.cpp) | SS main loop, update, read serving, shard management |
+| [`fdbserver/storageserver/storageserver.cpp`](https://github.com/apple/foundationdb/blob/main/fdbserver/storageserver/storageserver.cpp) | SS main loop, update, read serving, shard management |
 | [`fdbserver/kvstore/include/fdbserver/kvstore/IKeyValueStore.h`](https://github.com/apple/foundationdb/blob/main/fdbserver/kvstore/include/fdbserver/kvstore/IKeyValueStore.h) | IKeyValueStore interface definition |
 | [`fdbserver/kvstore/IKeyValueStore.cpp`](https://github.com/apple/foundationdb/blob/main/fdbserver/kvstore/IKeyValueStore.cpp) | Factory function `openKVStore()` |
-| [`fdbserver/kvstore/KeyValueStoreRocksDB.actor.cpp`](https://github.com/apple/foundationdb/blob/main/fdbserver/kvstore/KeyValueStoreRocksDB.actor.cpp) | RocksDB engine implementation |
-| [`fdbserver/kvstore/VersionedBTree.actor.cpp`](https://github.com/apple/foundationdb/blob/main/fdbserver/kvstore/VersionedBTree.actor.cpp) | Redwood engine (VersionedBTree + DWALPager) |
+| [`fdbserver/kvstore/KeyValueStoreRocksDB.cpp`](https://github.com/apple/foundationdb/blob/main/fdbserver/kvstore/KeyValueStoreRocksDB.cpp) | RocksDB engine implementation |
+| [`fdbserver/kvstore/VersionedBTree.cpp`](https://github.com/apple/foundationdb/blob/main/fdbserver/kvstore/VersionedBTree.cpp) | Redwood engine (VersionedBTree + DWALPager) |
 | [`fdbserver/kvstore/IPager.h`](https://github.com/apple/foundationdb/blob/main/fdbserver/kvstore/IPager.h) | Pager interface (IPager2) for Redwood |
 | [`fdbserver/kvstore/DeltaTree.h`](https://github.com/apple/foundationdb/blob/main/fdbserver/kvstore/DeltaTree.h) | DeltaTree2 delta-compressed sorted structure |
 | [`fdbserver/kvstore/KeyValueStoreSQLite.cpp`](https://github.com/apple/foundationdb/blob/main/fdbserver/kvstore/KeyValueStoreSQLite.cpp) | SQLite engine (V1/V2) |

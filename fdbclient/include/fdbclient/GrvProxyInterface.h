@@ -25,7 +25,7 @@
 #include "fdbclient/VersionVector.h"
 #include "flow/FileIdentifier.h"
 #include "fdbrpc/fdbrpc.h"
-#include "fdbrpc/LoadBalance.actor.h"
+#include "fdbrpc/LoadBalance.h"
 #include "fdbrpc/Stats.h"
 #include "fdbrpc/TimedRequest.h"
 #include "fdbclient/FDBTypes.h"
@@ -187,7 +187,7 @@ struct GlobalConfigRefreshReply {
 	Version version;
 	RangeResultRef result;
 
-	GlobalConfigRefreshReply() {}
+	GlobalConfigRefreshReply() = default;
 	GlobalConfigRefreshReply(Arena const& arena, Version version, RangeResultRef result)
 	  : arena(arena), version(version), result(result) {}
 
@@ -202,7 +202,7 @@ struct GlobalConfigRefreshRequest {
 	Version lastKnown;
 	ReplyPromise<GlobalConfigRefreshReply> reply;
 
-	GlobalConfigRefreshRequest() {}
+	GlobalConfigRefreshRequest() = default;
 	explicit GlobalConfigRefreshRequest(Version lastKnown) : lastKnown(lastKnown) {}
 
 	bool verify() const noexcept { return true; }

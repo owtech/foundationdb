@@ -1,6 +1,6 @@
-setuptools
-sphinx
+Sphinx
 sphinx-bootstrap-theme
+sphinxcontrib-jquery
 docutils
 Jinja2
 urllib3

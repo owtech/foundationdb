@@ -22,9 +22,9 @@
 
 #include "fdbclient/DatabaseContext.h"
 #include "fdbclient/FDBTypes.h"
-#include "fdbclient/NativeAPI.actor.h"
+#include "fdbclient/NativeAPI.h"
 #include "fdbserver/core/TesterInterface.h"
-#include "fdbserver/core/WorkerInterface.actor.h"
+#include "fdbserver/core/WorkerInterface.h"
 
 Future<int64_t> getDataInFlight(Database cx, Reference<AsyncVar<struct ServerDBInfo> const> dbInfo);
 Future<std::pair<int64_t, int64_t>> getTLogQueueInfo(Database cx,

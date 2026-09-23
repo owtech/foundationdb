@@ -21,7 +21,7 @@
 #include "boost/lexical_cast.hpp"
 #include "fmt/format.h"
 #include "fdbclient/ClusterConnectionFile.h"
-#include "fdbclient/NativeAPI.actor.h"
+#include "fdbclient/NativeAPI.h"
 #include "fdbclient/FDBTypes.h"
 #include "fdbclient/IClientApi.h"
 #include "fdbclient/MultiVersionTransaction.h"
@@ -53,7 +53,7 @@
 #include "flow/CoroUtils.h"
 
 #include "flow/TLSConfig.h"
-#include "flow/ThreadHelper.actor.h"
+#include "flow/ThreadHelper.h"
 #include "SimpleOpt/SimpleOpt.h"
 
 #include "fdbcli/FlowLineNoise.h"
@@ -103,7 +103,7 @@ enum {
 	OPT_API_VERSION,
 	OPT_MEMORY,
 	OPT_USE_FUTURE_PROTOCOL_VERSION,
-    OPT_ENCRYPT
+	OPT_ENCRYPT
 };
 
 CSimpleOpt::SOption g_rgOptions[] = { { OPT_CONNFILE, "-C", SO_REQ_SEP },
@@ -131,7 +131,7 @@ CSimpleOpt::SOption g_rgOptions[] = { { OPT_CONNFILE, "-C", SO_REQ_SEP },
 	                                  { OPT_API_VERSION, "--api-version", SO_REQ_SEP },
 	                                  { OPT_MEMORY, "--memory", SO_REQ_SEP },
 	                                  { OPT_USE_FUTURE_PROTOCOL_VERSION, "--use-future-protocol-version", SO_NONE },
-                                      { OPT_ENCRYPT, "--encrypt", SO_REQ_SEP },
+									  { OPT_ENCRYPT, "--encrypt", SO_REQ_SEP },
 	                                  TLS_OPTION_FLAGS,
 	                                  SO_END_OF_OPTIONS };
 
@@ -248,7 +248,7 @@ private:
 		std::map<std::string, typename T::Option> legalOptions;
 
 		OptionGroup() = default;
-		explicit(false) OptionGroup(OptionGroup<T>& base)
+		OptionGroup(OptionGroup<T>& base)
 		  : options(base.options.begin(), base.options.end()), legalOptions(base.legalOptions) {}
 
 		// Enable or disable an option. Returns true if option value changed
@@ -330,7 +330,7 @@ public:
 			transactionOptions.legalOptions[itr->second.name] = itr->first;
 	}
 
-	explicit(false) FdbOptions(FdbOptions& base) = default;
+	FdbOptions(FdbOptions& base) = default;
 };
 
 static std::string formatStringRef(StringRef item, bool fullEscaping = false) {
@@ -905,7 +905,7 @@ struct CLIOptions {
 	std::string tlsPassword;
 	bool tlsDisablePlainTextConnection = false;
 	uint64_t memLimit = 8uLL << 30;
-    Optional<std::string> encrypt;
+	Optional<std::string> encrypt;
 
 	std::vector<std::pair<std::string, std::string>> knobs;
 
@@ -1650,6 +1650,14 @@ Future<int> cli(CLIOptions opt, LineNoise* plinenoise, Reference<ClusterConnecti
 					continue;
 				}
 
+				if (tokencmp(tokens[0], "cdc")) {
+					bool _result = co_await makeInterruptable(cdcCommandActor(localDb, tokens));
+					if (!_result) {
+						is_error = true;
+					}
+					continue;
+				}
+
 				if (tokencmp(tokens[0], "force_recovery_with_data_loss")) {
 					bool _result = co_await makeInterruptable(forceRecoveryWithDataLossCommandActor(db, tokens));
 					if (!_result)
@@ -2107,6 +2115,9 @@ int main(int argc, char** argv) {
 	CLIOptions opt(argc, argv);
 	if (opt.exit_code != -1)
 		return opt.exit_code;
+
+	// fdbcli connects to one cluster, so multiple client threads per version have no effect.
+	MultiVersionApi::api->ignoreEnvironmentVariableNetworkOption(FDBNetworkOptions::CLIENT_THREADS_PER_VERSION);
 
 	if (opt.encrypt.present()) {
 		std::string encrypted;

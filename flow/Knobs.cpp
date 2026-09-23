@@ -86,6 +86,15 @@ void FlowKnobs::initialize(Randomize randomize, IsSimulated isSimulated) {
 
 	init( MEMORY_USAGE_CHECK_INTERVAL,                         1.0 );
 
+	// Per-call-site sampled memory tracker. See design/memory-tracker.md.
+	// Initial rollout: prod default off (=0). Simulation defaults to 1-in-10 sampling so the path is exercised.
+	init( MEMORY_TRACKING_SAMPLE_INVERSE,       isSimulated ? 10 : 0 );
+	init( MEMORY_TRACKING_FORCE_SAMPLE_BYTES,               100000 );
+	init( MEMORY_TRACKING_LIVE_TRACKING,                      true );
+	init( MEMORY_TRACKING_REPORT_INTERVAL, isSimulated ? 30.0 : 600.0 );
+	init( MEMORY_TRACKING_REPORT_BYTES_THRESHOLD, isSimulated ? 1000000 : 80000000 );
+	init( MEMORY_TRACKING_FRAMES,                                6 );
+
 	// Chaos testing - enabled for simulation by default
 	init( ENABLE_CHAOS_FEATURES,                       isSimulated );
 	init( CHAOS_LOGGING_INTERVAL,                              5.0 );
@@ -247,6 +256,7 @@ void FlowKnobs::initialize(Randomize randomize, IsSimulated isSimulated) {
 	init( MAX_BUGGIFIED_DELAY,                                   0 ); if( randomize && buggify() ) MAX_BUGGIFIED_DELAY =  0.2 * deterministicRandom()->random01();
 	init( MAX_RUNLOOP_SLEEP_DELAY,                               0 );
 	init( SIM_CONNECT_ERROR_MODE,                                0 ); if( randomize && buggify() ) SIM_CONNECT_ERROR_MODE = deterministicRandom()->randomInt(0,3);
+	init( SIM_DNS_REMOVAL_MAX_DELAY,                             0 ); if( randomize && buggify() ) SIM_DNS_REMOVAL_MAX_DELAY = 2.0 * deterministicRandom()->random01();
 
 	//Tracefiles
 	init( ZERO_LENGTH_FILE_PAD,                                  1 );
@@ -323,7 +333,7 @@ void FlowKnobs::initialize(Randomize randomize, IsSimulated isSimulated) {
 
 	// Encryption
 	init( ENCRYPT_CIPHER_KEY_CACHE_TTL, isSimulated ? 5 * 60 : 10 * 60 );
-	if ( randomize && buggify()) { ENCRYPT_CIPHER_KEY_CACHE_TTL = deterministicRandom()->randomInt(2, 10) * 60; }
+	if ( randomize && buggify()) { ENCRYPT_CIPHER_KEY_CACHE_TTL = deterministicRandom()->randomInt(2, 10) * 60LL; }
 	init( ENCRYPT_KEY_REFRESH_INTERVAL,   isSimulated ? 60 : 8 * 60 );
 	if ( randomize && buggify()) { ENCRYPT_KEY_REFRESH_INTERVAL = deterministicRandom()->randomInt(2, 10); }
 	init( ENCRYPT_KEY_HEALTH_CHECK_INTERVAL,                    10 );

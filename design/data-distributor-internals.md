@@ -568,6 +568,107 @@ Source: [`BgDDLoadRebalance`](https://github.com/apple/foundationdb/blob/release
 [`isDataMovementForMountainChopper`](https://github.com/apple/foundationdb/blob/release-7.3/fdbserver/DDRelocationQueue.actor.cpp#L58),
 [`isDataMovementForValleyFiller`](https://github.com/apple/foundationdb/blob/release-7.3/fdbserver/DDRelocationQueue.actor.cpp#L69).
 
+### What disk-capacity balancing actually targets
+
+A common question is whether DD aims to give every storage server an equal amount
+of free space, an equal *percentage* of free space, or something else. The answer is
+**neither directly**: DD's steady-state objective is to equalize the *absolute amount
+of stored data (used logical bytes) per team*, with a separate free-space-*ratio*
+control layered on top that only diverts data away from servers that are relatively
+full. There is no capacity-proportional placement — DD reads each server's real disk
+capacity but does not weight placement by it (the code carries an explicit
+`SOMEDAY: Account for capacity` note in `DDTeamCollection`).
+
+This matters most on **heterogeneous hardware** (storage servers with different
+underlying disk sizes), where "equal used bytes," "equal free bytes," and "equal free
+percentage" are three different outcomes. On a homogeneous fleet they coincide, which
+is why the distinction is usually invisible.
+
+#### The ranking metric: equal stored bytes
+
+Both team selection (`getBestTeam` in `DDTeamCollection`) and the rebalancer rank
+teams by `TCTeamInfo::getLoadBytes()`:
+
+```
+getLoadBytes() ≈ getLoadAverage() * availableSpaceMultiplier
+```
+
+- `getLoadAverage()` is the mean over the team's servers of `TCServerInfo::loadBytes()`,
+  which is the storage server's `StorageMetrics.load.bytes` -- a *sampled estimate of
+  the logical key-value bytes stored on that server*. It is the amount of data held,
+  **not** free space, write bandwidth, or a percentage. There is no normalization by
+  disk capacity. (If a team member's metrics are missing, the sum is conservatively
+  doubled.)
+- A disk-rebalance move (MountainChopper / ValleyFiller) only fires when the source is
+  meaningfully more loaded than the destination, in absolute bytes:
+  `sourceTeam.getLoadBytes() - destTeam.getLoadBytes() > 3 * max(MIN_SHARD_BYTES, shardBytes)`.
+- `PreferLowerDiskUtil` simply means "prefer the team with the lower `getLoadBytes()`."
+
+So, all else equal, DD drives every team toward the **same absolute number of stored
+bytes**. On heterogeneous disks this means a small-capacity and a large-capacity server
+tend toward holding the *same amount of data*, leaving the larger disk's extra capacity
+unused -- until the free-space controls below intervene.
+
+#### Free-space control #1 (dominant): the eligibility pivot
+
+Free space enters first as a hard *eligibility gate*, computed from the real
+filesystem free fraction (`available.bytes / capacity.bytes`, taken as the minimum
+across a team's servers):
+
+- `updateAvailableSpacePivots()` sets `pivotAvailableSpaceRatio` to the free-space ratio
+  at the `AVAILABLE_SPACE_PIVOT_RATIO` (= 0.5, i.e. the median) position among healthy
+  teams, then clamps it to `[MIN_AVAILABLE_SPACE_RATIO (0.05), TARGET_AVAILABLE_SPACE_RATIO (0.30)]`.
+- `updateTeamEligibility()` marks a team as a valid low-disk-util destination only if
+  `hasHealthyAvailableSpace(pivotAvailableSpaceRatio)` holds -- i.e. its free ratio is at
+  or above the cluster pivot, its absolute free space exceeds `MIN_AVAILABLE_SPACE`
+  (100 MB), and every member passes the per-server check (with a `+0.01` safety buffer).
+- For any request with `PreferLowerDiskUtil` set (all disk-rebalance destination picks and
+  new-shard placement), `getBestTeam` skips teams that are not eligible.
+
+The effect: a relatively *fuller* server is removed from the destination pool once its
+free **ratio** drops below the cluster median -- and, because the pivot is clamped to at
+most `TARGET_AVAILABLE_SPACE_RATIO`, this happens no later than the 30%-free mark in a
+healthy cluster (and no earlier than 5%). At that margin the behavior flips from
+"equalize absolute bytes" toward "equalize free *ratio* (up to the pivot)," steering new
+data to emptier -- often larger-capacity -- disks.
+
+#### Free-space control #2 (near-full safety): the penalty multiplier
+
+`getLoadBytes()` also multiplies the stored-bytes figure by:
+
+```
+availableSpaceMultiplier = AVAILABLE_SPACE_RATIO_CUTOFF
+                           / max(min(AVAILABLE_SPACE_RATIO_CUTOFF, freeRatio), epsilon)
+```
+
+With `AVAILABLE_SPACE_RATIO_CUTOFF = 0.05`, this multiplier is exactly `1.0` (no effect)
+for any server with at least 5% free, and rises steeply only below 5% (and is *squared*
+for teams with more than two members, i.e. triple replication). It is a last-resort
+penalty that makes an almost-full team look heavily loaded so DD stops targeting it; it
+is not the primary balancing lever.
+
+#### Summary for heterogeneous hardware
+
+- DD targets **equal absolute stored bytes per team**, not equal free bytes and not equal
+  free percentage; it does **not** fill disks in proportion to their capacity.
+- A free-space-*ratio* eligibility gate (cluster-median free fraction, clamped to
+  `[5%, 30%]` free) prevents relatively-full servers from receiving more data, which on
+  mixed-capacity fleets pushes smaller disks toward the pivot free-ratio and then diverts
+  further writes to emptier/larger disks.
+- A near-full penalty multiplier (below 5% free) provides a final safety margin.
+- Net practical outcome on mixed-capacity hardware: larger disks end up holding more
+  absolute data, but only because the smaller disks become *ineligible* at the pivot --
+  not because DD proportionally targets capacity. The smallest disks effectively bound how
+  much of the larger disks' capacity gets used before the ratio controls engage.
+
+Knobs: `AVAILABLE_SPACE_PIVOT_RATIO` (0.5), `MIN_AVAILABLE_SPACE_RATIO` (0.05),
+`MIN_AVAILABLE_SPACE_RATIO_SAFETY_BUFFER` (0.01), `TARGET_AVAILABLE_SPACE_RATIO` (0.30),
+`AVAILABLE_SPACE_RATIO_CUTOFF` (0.05), `MIN_AVAILABLE_SPACE` (100 MB). Sources:
+`TCTeamInfo::getLoadBytes` / `getLoadAverage` / `getMinAvailableSpaceRatio` /
+`hasHealthyAvailableSpace` in `datadistributor/TCInfo.cpp`; `updateAvailableSpacePivots` /
+`updateTeamEligibility` / `getBestTeam` in `datadistributor/DDTeamCollection.cpp`;
+the rebalance threshold in `datadistributor/DDRelocationQueue.cpp`.
+
 
 ## 9. Team Building
 
@@ -765,12 +866,14 @@ invariant that every key in the database is assigned to a team.
 ### 14.3 The moveKeys Protocol in Detail
 
 The data transfer protocol is implemented in [`MoveKeys.actor.cpp`](https://github.com/apple/foundationdb/blob/release-7.3/fdbserver/MoveKeys.actor.cpp) and consists of three
-coordinated phases. The [`moveKeys()`](https://github.com/apple/foundationdb/blob/release-7.3/fdbserver/MoveKeys.actor.cpp#L3180) function orchestrates them:
+coordinated phases. The [`moveKeys()`](https://github.com/apple/foundationdb/blob/release-7.3/fdbserver/MoveKeys.actor.cpp#L3180) function orchestrates them. The sketch below uses the current coroutine syntax from [`MoveKeys.cpp`](https://github.com/apple/foundationdb/blob/main/fdbserver/core/MoveKeys.cpp):
 
 ```cpp
-wait(rawStartMovement(occ, params, tssMapping));   // Phase 1: startMoveKeys
-wait(rawCheckFetchingState(occ, params, ...));      // Phase 2: monitor data copy
-wait(rawFinishMovement(occ, params, tssMapping));   // Phase 3: finishMoveKeys
+co_await rawStartMovement(occ, params, tssMapping); // Phase 1: startMoveKeys
+Future<Void> completionSignaller =
+    rawCheckFetchingState(occ, params, tssMapping); // Phase 2: monitor data copy concurrently
+co_await rawFinishMovement(occ, params, tssMapping); // Phase 3: finishMoveKeys
+completionSignaller.cancel();
 ```
 
 #### Phase 1: `startMoveKeys` ([`MoveKeys.actor.cpp:924`](https://github.com/apple/foundationdb/blob/release-7.3/fdbserver/MoveKeys.actor.cpp#L924))
@@ -940,18 +1043,22 @@ gap that we address in the recommendations document.
 ## 15. The High-Level moveKeys Orchestration
 
 Wrapping the protocol above, [`moveKeys()`](https://github.com/apple/foundationdb/blob/release-7.3/fdbserver/MoveKeys.actor.cpp#L3180) orchestrates
-the three phases:
+the three phases. Its [current implementation](https://github.com/apple/foundationdb/blob/main/fdbserver/core/MoveKeys.cpp) uses C++ coroutines:
 
 ```cpp
-ACTOR Future<Void> moveKeys(Database occ, MoveKeysParams params) {
-    wait(rawStartMovement(occ, params, tssMapping));       // startMoveKeys
-    state Future<Void> completionSignaller =
+Future<Void> moveKeys(Database occ, MoveKeysParams params) {
+    ASSERT(!params.destinationTeam.empty());
+    std::sort(params.destinationTeam.begin(), params.destinationTeam.end());
+    std::map<UID, StorageServerInterface> tssMapping;
+
+    co_await rawStartMovement(occ, params, tssMapping);     // startMoveKeys
+    Future<Void> completionSignaller =
         rawCheckFetchingState(occ, params, tssMapping);    // monitor fetch progress
-    wait(rawFinishMovement(occ, params, tssMapping));      // finishMoveKeys
+    co_await rawFinishMovement(occ, params, tssMapping);    // finishMoveKeys
     completionSignaller.cancel();
     if (!params.dataMovementComplete.isSet())
         params.dataMovementComplete.send(Void());
-    return Void();
+    co_return;
 }
 ```
 

@@ -19,8 +19,9 @@
  */
 
 #include "fdbclient/ManagementAPI.h"
-#include "fdbclient/NativeAPI.actor.h"
+#include "fdbclient/NativeAPI.h"
 #include "fdbclient/Schemas.h"
+#include "fdbclient/StatusSchema.h"
 #include "fdbserver/tester/workloads.h"
 #include "fdbrpc/simulator.h"
 

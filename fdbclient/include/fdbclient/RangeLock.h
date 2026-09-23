@@ -32,6 +32,8 @@ using RangeLockOwnerName = std::string;
 using RangeLockUniqueString = std::string;
 using RangeLockID = std::string;
 
+class Transaction;
+
 enum class RangeLockType : uint8_t {
 	Invalid = 0,
 	ExclusiveReadLock = 1, // reject all commits to the locked range
@@ -119,7 +121,8 @@ public:
 		return lockType == r.lockType && ownerUniqueId == r.ownerUniqueId && range == r.range;
 	}
 
-	// TODO: use lockId
+	// This legacy map key is persisted and can collide. Compare the lock fields for identity;
+	// changing this encoding requires migrating existing range-lock metadata.
 	RangeLockUniqueString getLockUniqueString() const {
 		return ownerUniqueId + rangeLockTypeString(lockType) + range.toString();
 	}
@@ -151,6 +154,7 @@ public:
 
 	std::vector<RangeLockState> getAllLockStats() const {
 		std::vector<RangeLockState> res;
+		res.reserve(locks.size());
 		for (const auto& [name, lock] : locks) {
 			res.push_back(lock);
 		}
@@ -170,13 +174,22 @@ public:
 
 	const std::map<RangeLockUniqueString, RangeLockState>& getLocks() const { return locks; }
 
+	bool containsLogicalLock(const RangeLockState& inputLock) const {
+		for (const auto& [name, lock] : locks) {
+			if (lock == inputLock) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	bool operator==(RangeLockStateSet const& r) const {
 		auto rLocks = r.getLocks();
 		if (locks.size() != rLocks.size()) {
 			return false;
 		}
-		std::map<RangeLockUniqueString, RangeLockState>::const_iterator iterator = locks.begin();
-		std::map<RangeLockUniqueString, RangeLockState>::const_iterator rIterator = rLocks.begin();
+		auto iterator = locks.begin();
+		auto rIterator = rLocks.begin();
 		while (iterator != locks.end() && rIterator != rLocks.end()) {
 			if (iterator->first != rIterator->first || iterator->second != rIterator->second) {
 				return false;
@@ -189,18 +202,25 @@ public:
 
 	void insertIfNotExist(const RangeLockState& inputLock) {
 		ASSERT(inputLock.isValid());
-		if (inputLock.isLockedFor(RangeLockType::ExclusiveReadLock) && !locks.empty() &&
-		    locks.find(inputLock.getLockUniqueString()) == locks.end()) {
+		if (containsLogicalLock(inputLock)) {
+			return;
+		}
+		if (inputLock.isLockedFor(RangeLockType::ExclusiveReadLock) && !locks.empty()) {
 			throw range_lock_failed();
 		}
-		locks.insert({ inputLock.getLockUniqueString(), inputLock });
-		return;
+		if (!locks.insert({ inputLock.getLockUniqueString(), inputLock }).second) {
+			throw range_lock_failed();
+		}
 	}
 
 	void remove(const RangeLockState& inputLock) {
 		ASSERT(inputLock.isValid());
-		locks.erase(inputLock.getLockUniqueString());
-		return;
+		for (auto it = locks.begin(); it != locks.end(); ++it) {
+			if (it->second == inputLock) {
+				locks.erase(it);
+				return;
+			}
+		}
 	}
 
 	bool isLockedFor(RangeLockType lockType) const {
@@ -221,5 +241,38 @@ public:
 private:
 	std::map<RangeLockUniqueString, RangeLockState> locks;
 };
+
+// Persist a rangeLock owner to database metadata.
+// A range can only be locked by a registered owner.
+Future<Void> registerRangeLockOwner(Database cx, RangeLockOwnerName ownerUniqueID, std::string description);
+
+// Remove an owner only if it holds no locks; otherwise throw range_lock_reject.
+// An already absent owner is a no-op.
+Future<Void> removeRangeLockOwner(Database cx, RangeLockOwnerName ownerUniqueID);
+
+// Get all registered rangeLock owners.
+AsyncResult<std::vector<RangeLockOwner>> getAllRangeLockOwners(Database cx);
+
+// Get a rangeLock owner by ownerUniqueID.
+Future<Optional<RangeLockOwner>> getRangeLockOwner(Database cx, RangeLockOwnerName ownerUniqueID);
+
+// Block write traffic to a non-empty user range within normalKeys; otherwise throw range_lock_failed.
+// One transaction can call takeExclusiveReadLockOnRange at most one time.
+Future<Void> takeExclusiveReadLockOnRange(Transaction* tr, KeyRange range, RangeLockOwnerName ownerUniqueID);
+Future<Void> takeExclusiveReadLockOnRange(Database cx, KeyRange range, RangeLockOwnerName ownerUniqueID);
+
+// Unblock a non-empty user range within normalKeys; otherwise throw range_lock_failed.
+// One transaction can call releaseExclusiveReadLockOnRange at most one time.
+Future<Void> releaseExclusiveReadLockOnRange(Transaction* tr, KeyRange range, RangeLockOwnerName ownerUniqueID);
+Future<Void> releaseExclusiveReadLockOnRange(Database cx, KeyRange range, RangeLockOwnerName ownerUniqueID);
+
+// Get locked ranges within a non-empty range in normalKeys; otherwise throw range_lock_failed.
+Future<std::vector<std::pair<KeyRange, RangeLockState>>> findExclusiveReadLockOnRange(
+    Database cx,
+    KeyRange range,
+    Optional<RangeLockOwnerName> ownerName = Optional<RangeLockOwnerName>());
+
+// Clear all exclusive read locks owned by the input user. Not transactional.
+Future<Void> releaseExclusiveReadLockByUser(Database cx, RangeLockOwnerName ownerUniqueID);
 
 #endif

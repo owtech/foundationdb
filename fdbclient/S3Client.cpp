@@ -492,7 +492,7 @@ static Future<Void> copyUpFile(Reference<S3BlobStoreEndpoint> endpoint,
 			}
 
 			Optional<std::string> s3Checksum =
-			    co_await endpoint->finishMultiPartUpload(bucket, objectName, uploadID, etagMap);
+			    co_await endpoint->finishMultiPartUpload(bucket, objectName, uploadID, etagMap, size);
 
 			// Log the S3 checksum if present
 			if (s3Checksum.present()) {
@@ -657,6 +657,7 @@ Future<Void> copyUpBulkDumpFileSet(std::string s3url,
 
 	TraceEvent(s3VerboseEventSev(), "S3ClientCopyUpBulkDumpFileSetStart")
 	    .detail("Bucket", bucket)
+	    .setMaxFieldLength(495)
 	    .detail("SourceFileSet", sourceFileSet.toString())
 	    .detail("DestinationFileSet", destinationFileSet.toString());
 	int pNumDeleted = 0;

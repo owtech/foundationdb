@@ -19,6 +19,7 @@
  */
 
 #include "fdbclient/BackupAgent.h"
+#include "fdbclient/BackupFileFormat.h"
 #include "fdbclient/BackupContainer.h"
 #include "fdbclient/DatabaseContext.h"
 #include "fdbclient/CommitProxyInterface.h"
@@ -33,7 +34,7 @@
 #include "fdbserver/core/ServerDBInfo.h"
 #include "fdbserver/core/WaitFailure.h"
 #include "fdbserver/backupworker/BackupWorker.h"
-#include "fdbserver/core/WorkerInterface.actor.h"
+#include "fdbserver/core/WorkerInterface.h"
 #include "flow/Error.h"
 
 #include "flow/IRandom.h"
@@ -166,7 +167,7 @@ struct BackupData {
 			const bool firstWorker = info->self->tag.id == 0;
 			bool allUpdated = false;
 			Optional<std::vector<std::pair<int64_t, int64_t>>> workers;
-			Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(self->cx));
+			auto tr = makeReference<ReadYourWritesTransaction>(self->cx);
 
 			while (true) {
 				Error err;
@@ -442,8 +443,8 @@ struct BackupData {
 	}
 };
 
-// If the worker is on an old epoch and all backups starts a version >= the endVersion
-// it will exit early.
+// An old-epoch worker can exit when no backups are running or every backup
+// starts at or after the worker's end version.
 static Future<bool> shouldBackupWorkerExitEarly(BackupData* self) {
 	while (true) {
 		ReadYourWritesTransaction tr(self->cx);
@@ -471,6 +472,9 @@ static Future<bool> shouldBackupWorkerExitEarly(BackupData* self) {
 				}
 
 				TraceEvent("BackupWorkerEmptyStartKey", self->myId);
+				if (self->endVersion.present()) {
+					co_return true;
+				}
 				Future<Void> watchFuture = tr.watch(backupStartedKey);
 				co_await tr.commit();
 				co_await watchFuture;
@@ -519,7 +523,7 @@ static Future<Void> monitorBackupStartedKeyChanges(BackupData* self) {
 
 // Set "latestBackupWorkerSavedVersion" key for backups
 Future<Void> setBackupKeys(BackupData* self, std::map<UID, Version> savedLogVersions) {
-	Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(self->cx));
+	auto tr = makeReference<ReadYourWritesTransaction>(self->cx);
 
 	while (true) {
 		Error err;
@@ -683,7 +687,7 @@ Future<Void> addMutation(Reference<IBackupFile> logFile,
 static Future<Void> updateLogBytesWritten(BackupData* self,
                                           std::vector<UID> backupUids,
                                           std::vector<Reference<IBackupFile>> logFiles) {
-	Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(self->cx));
+	auto tr = makeReference<ReadYourWritesTransaction>(self->cx);
 
 	ASSERT(backupUids.size() == logFiles.size());
 	while (true) {
@@ -1010,7 +1014,7 @@ Future<Void> checkRemoved(Reference<AsyncVar<ServerDBInfo> const> db, LogEpoch r
 }
 
 static Future<Void> monitorWorkerPause(BackupData* self) {
-	Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(self->cx));
+	auto tr = makeReference<ReadYourWritesTransaction>(self->cx);
 	Future<Void> watch;
 
 	while (true) {

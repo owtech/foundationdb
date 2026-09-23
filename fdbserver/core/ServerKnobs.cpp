@@ -19,6 +19,7 @@
  */
 
 #include "fdbserver/core/Knobs.h"
+#include "fdbserver/core/ProcessClassRecruitment.h"
 #include "fdbclient/Knobs.h"
 #include "flow/IRandom.h"
 
@@ -175,6 +176,19 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( DESIRED_UPDATE_BYTES,                2*DESIRED_TOTAL_BYTES );
 	init( UPDATE_DELAY,                                        0.001 );
 	init( MAXIMUM_PEEK_BYTES,                                   10e6 );
+	init( NATIVE_CDC_BATCH_TARGET_BYTES,                   512 << 10 );
+	init( CDC_PROXY_CONSUME_REPLY_BYTES,                         10e6 );
+	init( CDC_PROXY_BUFFER_BYTES,                                1e9 );
+	if (randomize && buggify()) {
+		MAXIMUM_PEEK_BYTES = 5000;
+		CDC_PROXY_CONSUME_REPLY_BYTES = 5000;
+		CDC_PROXY_BUFFER_BYTES = 10000;
+	}
+	init( CDC_PROXY_CONSUME_POLL_TIMEOUT,                         5.0 ); if( randomize && buggify() ) CDC_PROXY_CONSUME_POLL_TIMEOUT = 0.1;
+	init( CDC_PROXY_FAILURE_TIMEOUT,                              0.4 );
+	init( CDC_PROXY_FAILURE_COALESCE_DELAY,                       0.0 );
+	init( CDC_PROXY_POP_MIN_INTERVAL,                             0.1 ); if( randomize && buggify() ) CDC_PROXY_POP_MIN_INTERVAL = 0.01;
+	init( CDC_PROXY_POP_SCAN_INTERVAL,                            5.0 ); if( randomize && buggify() ) CDC_PROXY_POP_SCAN_INTERVAL = 0.1;
 	init( APPLY_MUTATION_BYTES,                                  1e6 );
 	init( BUGGIFY_RECOVER_MEMORY_LIMIT,                          1e6 );
 	init( BUGGIFY_WORKER_REMOVED_MAX_LAG,                         30 );
@@ -265,13 +279,16 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( MERGE_RELOCATION_PARALLELISM_PER_TEAM,                   6 ); if (randomize && buggify() ) MERGE_RELOCATION_PARALLELISM_PER_TEAM = 1;
 	init( DD_QUEUE_MAX_KEY_SERVERS,                              100 ); // Do not buggify
 	init( DD_REBALANCE_PARALLELISM,                               50 );
-	// Hard cap on total relocations DD tracks (queued + in-flight). 1000 corresponds to a 500-server
-	// cluster with two concurrent shard moves per storage server.  We have observed large clusters doing
-	// 25-30GB in flight, or closer to 100 shards at a time, so this has plenty of margin of safety
-	// built in.  For simulation, we don't really know how many servers there are, but 10 seems like a good
-	// guess (thus 20 moves).  Do not buggify this too small: testing under artificial scarcity results in
-	// uninteresting degenerate cases.
-	init( DD_MAX_PIPELINE_MOVES,                                1000 ); if( randomize && buggify() ) DD_MAX_PIPELINE_MOVES = 20;
+	// Global admission control for DD relocations is OFF by default. The default limit is set high
+	// enough that pipelineSize() can never reach it, so pipelineFull never becomes true and the
+	// relocation gate in pipelineGateActor() never holds anything back. To turn the feature on, set
+	// this to a real cap: 1000 corresponds to a 500-server cluster with two concurrent shard moves
+	// per storage server. We have observed large clusters doing 25-30GB in flight, or closer to 100
+	// shards at a time, so 1000 would have plenty of margin of safety built in. Simulation still
+	// exercises the gate via the buggify value below. For simulation, we don't really know how many
+	// servers there are, but 10 seems like a good guess (thus 20 moves). Do not buggify this too
+	// small: testing under artificial scarcity results in uninteresting degenerate cases.
+	init( DD_MAX_PIPELINE_MOVES, std::numeric_limits<int>::max() ); if( randomize && buggify() ) DD_MAX_PIPELINE_MOVES = 20;
 	init( DD_REBALANCE_RESET_AMOUNT,                              30 );
 	init( INFLIGHT_PENALTY_HEALTHY,                              1.0 );
 	init( INFLIGHT_PENALTY_UNHEALTHY,                          500.0 );
@@ -311,7 +328,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( CPU_PIVOT_RATIO,                                     0.9 );
 	// In order to make sure GetTeam has enough eligible destination team:
 	ASSERT_GT(AVAILABLE_SPACE_PIVOT_RATIO + CPU_PIVOT_RATIO, 1.0 );
-	// In simulation, the CPU percent of every storage server is hard-coded as 100.0%. It is difficult to test pivot CPU in normal simulation. TODO: add mock DD Test case for it.
+	// In simulation, storage-server CPU is hard-coded as 100.0%. GetTeam/CutOffByCpu provides focused pivot coverage.
 	// TODO: choose a meaning value for real cluster
 	init( MAX_DEST_CPU_PERCENT, 		  					   100.0 );
 	init( DD_TEAM_PIVOT_UPDATE_DELAY,                            5.0 );
@@ -345,7 +362,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( MAX_SHARD_BYTES,                                 500000000 );
 	init( KEY_SERVER_SHARD_BYTES,                          500000000 );
 
-	init( SHARD_MAX_READ_OPS_PER_KSEC,                  45000 * 1000 );
+	init( SHARD_MAX_READ_OPS_PER_KSEC,                45000LL * 1000 );
     init( SHARD_READ_OPS_CHANGE_THRESHOLD, SHARD_MAX_READ_OPS_PER_KSEC / 4); if(randomize && buggify()) SHARD_READ_OPS_CHANGE_THRESHOLD = 2000;
  	/*
  	 * The assumption is when the read ops reach to 45k/s the Storage Server instance will be CPU-saturated.
@@ -354,7 +371,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	/*
 		The bytesRead/byteSize radio. Will be declared as read hot when larger than this. 8.0 was chosen to avoid reporting table scan as read hot.
 	*/
-	init ( SHARD_READ_HOT_BANDWIDTH_MIN_PER_KSECONDS,      1666667 * 1000);
+	init ( SHARD_READ_HOT_BANDWIDTH_MIN_PER_KSECONDS,    1666667LL * 1000);
 	/*
 		The read bandwidth of a given shard needs to be larger than this value in order to be evaluated if it's read hot. The roughly 1.67MB per second is calculated as following:
 			- Heuristic data suggests that each storage process can do max 500K read operations per second
@@ -376,7 +393,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 		team indefinitely, limiting performance.
 		*/
 
-	init( SHARD_MIN_BYTES_PER_KSEC,                100 * 1000 * 1000 ); if( buggifySmallBandwidthSplit ) SHARD_MIN_BYTES_PER_KSEC = 20*1000*1000;
+	init( SHARD_MIN_BYTES_PER_KSEC,              100LL * 1000 * 1000 ); if( buggifySmallBandwidthSplit ) SHARD_MIN_BYTES_PER_KSEC = 20LL*1000*1000;
 	/* 100*1KB/sec * 1000sec/ksec
 		Shards with more than this bandwidth will not be merged.
 		Obviously this needs to be significantly less than SHARD_MAX_BYTES_PER_KSEC, else we will repeatedly merge and split.
@@ -390,7 +407,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 		BYTES_WRITTEN_UNITS_PER_SAMPLE.  If this number is too low, the storage server needs to spend more memory and time on sampling.
 		*/
 
-	init( SHARD_SPLIT_BYTES_PER_KSEC,              250 * 1000 * 1000 ); if( buggifySmallBandwidthSplit ) SHARD_SPLIT_BYTES_PER_KSEC = 50 * 1000 * 1000;
+	init( SHARD_SPLIT_BYTES_PER_KSEC,            250LL * 1000 * 1000 ); if( buggifySmallBandwidthSplit ) SHARD_SPLIT_BYTES_PER_KSEC = 50LL * 1000 * 1000;
 	/* 250*1KB/sec * 1000sec/ksec
 		When splitting a shard, it is split into pieces with less than this bandwidth.
 		Obviously this should be less than half of SHARD_MAX_BYTES_PER_KSEC.
@@ -432,6 +449,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( TSS_RECRUITMENT_TIMEOUT,       3*STORAGE_RECRUITMENT_DELAY ); if (randomize && buggify() ) TSS_RECRUITMENT_TIMEOUT = 1.0; // Super low timeout should cause tss recruitments to fail
 	init( TSS_DD_CHECK_INTERVAL,                                60.0 ); if (randomize && buggify() ) TSS_DD_CHECK_INTERVAL = 1.0;    // May kill all TSS quickly
 	init( DATA_DISTRIBUTION_LOGGING_INTERVAL,                    5.0 );
+	init( DD_SERVER_ELIGIBILITY_LOGGING_INTERVAL,              300.0 );
 	init( DD_ENABLED_CHECK_DELAY,                                1.0 );
 	init( DD_STALL_CHECK_DELAY,                                  0.4 ); //Must be larger than 2*MAX_BUGGIFIED_DELAY
 	init( DD_LOW_BANDWIDTH_DELAY,         isSimulated ? 15.0 : 240.0 ); if( randomize && buggify() ) DD_LOW_BANDWIDTH_DELAY = 0; //Because of delayJitter, this should be less than 0.9 * DD_MERGE_COALESCE_DELAY
@@ -508,6 +526,8 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( BULKLOAD_ASYNC_READ_WRITE_BLOCK_SIZE,            1024*1024 ); if (isSimulated) BULKLOAD_ASYNC_READ_WRITE_BLOCK_SIZE = deterministicRandom()->randomInt(1024, 10240);
 	init( MANIFEST_COUNT_MAX_PER_BULKLOAD_TASK,                   10 ); if (isSimulated) MANIFEST_COUNT_MAX_PER_BULKLOAD_TASK = deterministicRandom()->randomInt(1, 11);
 	init( BULKLOAD_SIM_FAILURE_INJECTION,                      false ); if (isSimulated) BULKLOAD_SIM_FAILURE_INJECTION = true;
+	init( BULKLOAD_SIM_INJECT_DEST_TEAM_FAILURES,                   0 );
+	init( DD_BULKLOAD_MAX_RETRYABLE_REDISPATCH,                    20 ); if( randomize && buggify() ) DD_BULKLOAD_MAX_RETRYABLE_REDISPATCH = deterministicRandom()->randomInt(1, 4);
 	init( DD_BULKLOAD_POWER_OF_D_RATIO,                          2.0 ); if (isSimulated) DD_BULKLOAD_POWER_OF_D_RATIO = deterministicRandom()->randomInt(1, 11);
 	init( DD_BULKLOAD_TASK_SUBMISSION_INTERVAL_SEC,             0.01 );
 
@@ -516,7 +536,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( DD_BULKDUMP_PARALLELISM,                                50 ); if( randomize && buggify() ) DD_BULKDUMP_PARALLELISM = deterministicRandom()->randomInt(1, 5);
 	init( DD_BULKDUMP_BUILD_JOB_MANIFEST_BATCH_SIZE,           10000 ); if( isSimulated ) DD_BULKDUMP_BUILD_JOB_MANIFEST_BATCH_SIZE = deterministicRandom()->randomInt(1, 100);
 	init( SS_SERVE_BULKDUMP_PARALLELISM,                           1 ); // TODO(BulkDump): Do not set to 1 after SS can resolve the file folder conflict
-	init( SS_BULKDUMP_BATCH_BYTES,                     100*1024*1024 ); if( isSimulated ) SS_BULKDUMP_BATCH_BYTES = deterministicRandom()->randomInt(1000, 10000);
+	init( SS_BULKDUMP_BATCH_BYTES,                   100LL*1024*1024 ); if( isSimulated ) SS_BULKDUMP_BATCH_BYTES = deterministicRandom()->randomInt(1000, 10000);
 	init( SS_BULKDUMP_BATCH_COUNT_MAX_PER_REQUEST,                10 ); if( isSimulated ) SS_BULKDUMP_BATCH_COUNT_MAX_PER_REQUEST = deterministicRandom()->randomInt(1, 10);
 
 	// TeamRemover
@@ -616,7 +636,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( ROCKSDB_PERIODIC_COMPACTION_SECONDS,                     0 ); if( isSimulated ) ROCKSDB_PERIODIC_COMPACTION_SECONDS = deterministicRandom()->randomInt(5*60, 24*60*60);
 	init( ROCKSDB_TTL_COMPACTION_SECONDS,                    2160000 ); if( isSimulated ) ROCKSDB_TTL_COMPACTION_SECONDS = deterministicRandom()->randomInt(5*60, 24*60*60);
 	int64_t maxCompactionBytes = 160LL * 64 * 1024 * 1024;
-	init( ROCKSDB_MAX_COMPACTION_BYTES,                            0 ); /* default = 25*64MB */ if( randomize && buggify() ) ROCKSDB_MAX_COMPACTION_BYTES = deterministicRandom()->randomInt64(5*64*1024*1024, maxCompactionBytes);
+	init( ROCKSDB_MAX_COMPACTION_BYTES,                            0 ); /* default = 25*64MB */ if( randomize && buggify() ) ROCKSDB_MAX_COMPACTION_BYTES = deterministicRandom()->randomInt64(5LL*64*1024*1024, maxCompactionBytes);
 	init( ROCKSDB_PREFIX_LEN,                                     11 ); if( randomize && buggify() )  ROCKSDB_PREFIX_LEN = deterministicRandom()->randomInt(1, 20);
 	init( ROCKSDB_MEMTABLE_PREFIX_BLOOM_SIZE_RATIO,              0.1 );
 	init( ROCKSDB_BLOOM_BITS_PER_KEY,                             10 );
@@ -758,7 +778,10 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( SHARDED_ROCKSDB_COMPACTION_PERIOD, isSimulated? 3600 : 2592000 ); // 30d
 	init( SHARDED_ROCKSDB_COMPACTION_ACTOR_DELAY,               3600 ); // 1h
 	init( SHARDED_ROCKSDB_COMPACTION_SHARD_LIMIT,                 -1 );
-	init( SHARDED_ROCKSDB_WRITE_BUFFER_SIZE, (isSimulated && !buggifySmallShards && !buggifySmallBandwidthSplit && !simulationMediumShards) ? 128 << 20 : 16 << 20 );  // 16MB
+	// Limit per-shard write buffers so large-shard simulations do not exhaust memory.
+	int64_t shardedRocksDBWriteBufferSize =
+	    (isSimulated && !buggifySmallShards && !buggifySmallBandwidthSplit && !simulationMediumShards) ? 32 << 20 : 16 << 20;
+	init( SHARDED_ROCKSDB_WRITE_BUFFER_SIZE, shardedRocksDBWriteBufferSize ); // 32MB for large-shard simulations, 16MB otherwise
 	init( SHARDED_ROCKSDB_TOTAL_WRITE_BUFFER_SIZE,         2LL << 30 ); // 2GB
 	init( SHARDED_ROCKSDB_MEMTABLE_BUDGET,                  64 << 20 ); // 64MB
 	init( SHARDED_ROCKSDB_MAX_WRITE_BUFFER_NUMBER,                 6 ); // RocksDB default.
@@ -840,9 +863,9 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( ENABLE_READ_LOCK_ON_RANGE,                            false ); if (isSimulated) ENABLE_READ_LOCK_ON_RANGE = deterministicRandom()->coinflip();
 
 	// these settings disable batch bytes scaling.  Try COMMIT_TRANSACTION_BATCH_BYTES_MAX=1e6, COMMIT_TRANSACTION_BATCH_BYTES_SCALE_BASE=50000, COMMIT_TRANSACTION_BATCH_BYTES_SCALE_POWER=0.5?
-	init( COMMIT_TRANSACTION_BATCH_BYTES_MIN,                 3000000 );
-	init( COMMIT_TRANSACTION_BATCH_BYTES_MAX,                 3000000 ); if( randomize && buggify() ) { COMMIT_TRANSACTION_BATCH_BYTES_MIN = COMMIT_TRANSACTION_BATCH_BYTES_MAX = 1000000; }
-	init( COMMIT_TRANSACTION_BATCH_BYTES_SCALE_BASE,          3000000 );
+	init( COMMIT_TRANSACTION_BATCH_BYTES_MIN,                  3000000 );
+	init( COMMIT_TRANSACTION_BATCH_BYTES_MAX,                  3000000 ); if( randomize && buggify() ) { COMMIT_TRANSACTION_BATCH_BYTES_MIN = COMMIT_TRANSACTION_BATCH_BYTES_MAX = 1000000; }
+	init( COMMIT_TRANSACTION_BATCH_BYTES_SCALE_BASE,           3000000 );
 	init( COMMIT_TRANSACTION_BATCH_BYTES_SCALE_POWER,             0.0 );
 
 	init( RESOLVER_COALESCE_TIME,                                1.0 );
@@ -909,7 +932,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	// Backup Worker
 	init( BACKUP_TIMEOUT,                                        0.4 );
 	init( BACKUP_FILE_BLOCK_BYTES,                       1024 * 1024 );
-	init( BACKUP_WORKER_LOCK_BYTES,                              3e9 ); if(randomize && buggify()) BACKUP_WORKER_LOCK_BYTES = deterministicRandom()->randomInt(2048, 4096) * 4096;
+	init( BACKUP_WORKER_LOCK_BYTES,                              3e9 ); if(randomize && buggify()) BACKUP_WORKER_LOCK_BYTES = deterministicRandom()->randomInt(2048, 4096) * 4096LL;
 	init( BACKUP_UPLOAD_DELAY,                                  10.0 ); if(randomize && buggify()) BACKUP_UPLOAD_DELAY = deterministicRandom()->random01() * 60;
 
 	//Cluster Controller
@@ -984,12 +1007,12 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( CLUSTER_HEALTH_METRIC_RK_CRITICAL_RELEASED_TPS_RATIO_THRESHOLD, 1.2 );
 
 	init( INCOMPATIBLE_PEERS_LOGGING_INTERVAL,                   600 ); if( randomize && buggify() ) INCOMPATIBLE_PEERS_LOGGING_INTERVAL = 60.0;
-	init( EXPECTED_MASTER_FITNESS,            ProcessClass::UnsetFit );
-	init( EXPECTED_TLOG_FITNESS,              ProcessClass::UnsetFit );
-	init( EXPECTED_LOG_ROUTER_FITNESS,        ProcessClass::UnsetFit );
-	init( EXPECTED_COMMIT_PROXY_FITNESS,      ProcessClass::UnsetFit );
-	init( EXPECTED_GRV_PROXY_FITNESS,         ProcessClass::UnsetFit );
-	init( EXPECTED_RESOLVER_FITNESS,          ProcessClass::UnsetFit );
+	init( EXPECTED_MASTER_FITNESS,            recruitment::UnsetFit );
+	init( EXPECTED_TLOG_FITNESS,              recruitment::UnsetFit );
+	init( EXPECTED_LOG_ROUTER_FITNESS,        recruitment::UnsetFit );
+	init( EXPECTED_COMMIT_PROXY_FITNESS,      recruitment::UnsetFit );
+	init( EXPECTED_GRV_PROXY_FITNESS,         recruitment::UnsetFit );
+	init( EXPECTED_RESOLVER_FITNESS,          recruitment::UnsetFit );
 	init( RECRUITMENT_TIMEOUT,                                   600 ); if( randomize && buggify() ) RECRUITMENT_TIMEOUT = deterministicRandom()->coinflip() ? 60.0 : 1.0;
 
 	init( POLICY_RATING_TESTS,                                   200 ); if( randomize && buggify() ) POLICY_RATING_TESTS = 20;
@@ -1057,7 +1080,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( CONSISTENCY_CHECK_BACKWARD_READ,                    false ); if (isSimulated) CONSISTENCY_CHECK_BACKWARD_READ = deterministicRandom()->coinflip();
 	init (STORAGE_FETCH_KEYS_DELAY,	                             0.0 ); if ( randomize && buggify() ) { STORAGE_FETCH_KEYS_DELAY = deterministicRandom()->random01() * 5.0; }
 	init (STORAGE_FETCH_KEYS_USE_COMMIT_BUDGET,                false ); if (isSimulated) STORAGE_FETCH_KEYS_USE_COMMIT_BUDGET = deterministicRandom()->coinflip();
-	init (STORAGE_FETCH_KEYS_RATE_LIMIT,             			   0 ); if (isSimulated && buggify()) STORAGE_FETCH_KEYS_RATE_LIMIT = 100 * 1024 * deterministicRandom()->randomInt(1, 10);  // In MB/s
+	init (STORAGE_FETCH_KEYS_RATE_LIMIT,             			   0 ); if (isSimulated && buggify()) STORAGE_FETCH_KEYS_RATE_LIMIT = 100LL * 1024 * deterministicRandom()->randomInt(1, 10);  // In MB/s
 	init (STORAGE_ROCKSDB_LOG_CLEAN_UP_DELAY,               3600 * 2 ); if (isSimulated) STORAGE_ROCKSDB_LOG_CLEAN_UP_DELAY = 20.0;
 	init (STORAGE_ROCKSDB_LOG_TTL,                    3600 * 24 * 15 ); if (isSimulated) STORAGE_ROCKSDB_LOG_TTL = 3600.0;
 
@@ -1148,7 +1171,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( FETCH_KEYS_PARALLELISM,                                  2 );
 	init( FETCH_KEYS_LOWER_PRIORITY,                               0 );
 	init( SERVE_FETCH_CHECKPOINT_PARALLELISM,                      4 );
-	init( SERVE_AUDIT_STORAGE_PARALLELISM,                         1 );
+	init( SERVE_AUDIT_STORAGE_PARALLELISM,                         4 ); if ( isSimulated ) SERVE_AUDIT_STORAGE_PARALLELISM = deterministicRandom()->randomInt(1, SERVE_AUDIT_STORAGE_PARALLELISM+1);
 	init( PERSIST_FINISH_AUDIT_COUNT,                             10 ); if ( isSimulated ) PERSIST_FINISH_AUDIT_COUNT = deterministicRandom()->randomInt(1, PERSIST_FINISH_AUDIT_COUNT+1);
 	init( AUDIT_RETRY_COUNT_MAX,                               10000 ); if ( isSimulated ) AUDIT_RETRY_COUNT_MAX = 10;
 	init( CONCURRENT_AUDIT_TASK_COUNT_MAX,                        20 ); if ( isSimulated ) CONCURRENT_AUDIT_TASK_COUNT_MAX = deterministicRandom()->randomInt(1, CONCURRENT_AUDIT_TASK_COUNT_MAX+1);
@@ -1158,6 +1181,36 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( AUDIT_DATAMOVE_POST_CHECK_RETRY_COUNT_MAX,              50 );
 	init( AUDIT_STORAGE_RATE_PER_SERVER_MAX,                    50e6 ); // per second
 	init( AUDIT_RESTORE_BATCH_KEY_LIMIT,                      100000 ); // 100K keys per batch (was hardcoded 10K)
+	// An audit divides its range into TASKS; each task is handled by one storage server, which walks it in
+	// BATCHES of reads. The knobs below bound those two units independently:
+	//   AUDIT_TASK_MAX_BYTES     -- how much keyspace one task covers
+	//   AUDIT_RESTORE_BATCH_*    -- how much one read inside a task fetches (validate_restore, RangeDigest)
+
+	// Max bytes one comparison batch fetches from each side. This is an upper bound, not the size used:
+	// the actual budget moves between AUDIT_RESTORE_BATCH_BYTE_LIMIT_MIN and this value, halving whenever a
+	// read fails and growing back on success (see nextAuditBatchBytes).
+	//
+	// It adapts because the real constraint is a deadline, not a size: a batch reads at a pinned version
+	// that expires after MAX_READ_TRANSACTION_LIFE_VERSIONS, so what a server can fetch in one go depends
+	// on current load, and overshooting fails with transaction_too_old and is re-read from the start.
+	//
+	// Raise for fewer, larger round trips. Lower if audits provoke transaction_too_old, or to cut memory:
+	// a server holds ~4 x this x SERVE_AUDIT_STORAGE_PARALLELISM in flight.
+	init( AUDIT_RESTORE_BATCH_BYTE_LIMIT,                        4e6 ); if( randomize && buggify() ) AUDIT_RESTORE_BATCH_BYTE_LIMIT = 80000;
+	// Smallest the adaptive batch above may shrink to, so a run of failed reads cannot leave the audit
+	// crawling through tiny batches.
+	init( AUDIT_RESTORE_BATCH_BYTE_LIMIT_MIN,                  256e3 ); if( randomize && buggify() ) AUDIT_RESTORE_BATCH_BYTE_LIMIT_MIN = 1000;
+	// Max bytes of keyspace one audit task covers, for every audit type (ValidateHA, ValidateReplica,
+	// ValidateRestore, RangeDigest). Tasks default to one keyServers shard, and a shard bigger than this
+	// is subdivided so that no single task dominates.
+	//
+	// This bounds the audit phase's wall-clock: a task is scanned start to finish by one storage server,
+	// so the phase cannot end before its largest task does, and making individual tasks faster cannot help.
+	//
+	// Lower for a shorter tail at the cost of more tasks. 0 disables subdivision. A target, not a hard
+	// bound -- splitStorageMetrics jitters piece sizes and the client merges a trailing piece under
+	// STORAGE_METRICS_UNFAIR_SPLIT_LIMIT back into its predecessor, so a task can reach ~1.4x this.
+	init( AUDIT_TASK_MAX_BYTES,                                128e6 ); if( randomize && buggify() ) AUDIT_TASK_MAX_BYTES = deterministicRandom()->coinflip() ? 0 : 1e6;
 	init( AUDIT_PROGRESS_PERSIST_BYTES_INTERVAL,           100000000 ); // 100MB - only persist progress after this many bytes
 	init( ENABLE_AUDIT_VERBOSE_TRACE,                          false );
 	// Disabled in simulation: audit_storage locationmetadata already runs at controlled times in sim,
@@ -1310,7 +1363,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 
 	// Timekeeper
 	init( TIME_KEEPER_DELAY,                                      10 );
-	init( TIME_KEEPER_MAX_ENTRIES,                3600 * 24 * 30 * 6 ); if( randomize && buggify() ) { TIME_KEEPER_MAX_ENTRIES = 2; }
+	init( TIME_KEEPER_MAX_ENTRIES,              3600LL * 24 * 30 * 6 ); if( randomize && buggify() ) { TIME_KEEPER_MAX_ENTRIES = 2; }
 
 	init( REDWOOD_DEFAULT_PAGE_SIZE,                            8192 );
 	init( REDWOOD_DEFAULT_EXTENT_SIZE,              32 * 1024 * 1024 );

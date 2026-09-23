@@ -54,7 +54,7 @@
  * against the source. Both restore and audit use LOCK_AWARE transactions, so they
  * work on a locked database.
  *
- * See fdbserver/storageserver.actor.cpp for detailed implementation docs.
+ * See fdbserver/storageserver/storageserver.cpp for detailed implementation docs.
  * ============================================================================
  */
 
@@ -63,12 +63,12 @@
 #include "fdbclient/IClientApi.h"
 
 #include "fdbclient/ManagementAPI.h"
-#include "fdbclient/NativeAPI.actor.h"
+#include "fdbclient/NativeAPI.h"
 #include "fdbclient/Audit.h"
 
 #include "flow/Arena.h"
 #include "flow/FastRef.h"
-#include "flow/ThreadHelper.actor.h"
+#include "flow/ThreadHelper.h"
 
 namespace fdb_cli {
 
@@ -95,6 +95,8 @@ Future<UID> auditStorageCommandActor(Reference<IClusterConnectionRecord> cluster
 			type = AuditType::ValidateStorageServerShard;
 		} else if (tokencmp(tokens[2], "validate_restore")) {
 			type = AuditType::ValidateRestore;
+		} else if (tokencmp(tokens[2], "range_digest")) {
+			type = AuditType::RangeDigest;
 		} else {
 			printUsage(tokens[0]);
 			co_return UID();
@@ -117,6 +119,8 @@ Future<UID> auditStorageCommandActor(Reference<IClusterConnectionRecord> cluster
 			type = AuditType::ValidateRestore;
 		} else if (tokencmp(tokens[1], "metadata_encoding")) {
 			type = AuditType::ValidateMetadataEncoding;
+		} else if (tokencmp(tokens[1], "range_digest")) {
+			type = AuditType::RangeDigest;
 		} else {
 			printUsage(tokens[0]);
 			co_return UID();
@@ -171,7 +175,8 @@ CommandFactory auditStorageFactory(
     CommandHelp("audit_storage <Type> [BeginKey EndKey] <EngineType>",
                 "Start an audit storage",
                 "Specify audit `Type' (only `ha' and `replica' and `locationmetadata' and "
-                "`ssshard' and `validate_restore' and `metadata_encoding' `Type' are supported currently), and\n"
+                "`ssshard' and `validate_restore' and `metadata_encoding' and `range_digest' `Type' are supported "
+                "currently), and\n"
                 "optionally a sub-range with `BeginKey' and `EndKey'.\n"
                 "Specify audit `EngineType' when auditType is `ha' or `replica'\n"
                 "(only `ssd-rocksdb-v1' and `ssd-sharded-rocksdb' and `ssd-2' are supported).\n"

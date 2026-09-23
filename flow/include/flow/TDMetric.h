@@ -30,7 +30,7 @@
 #include "flow/CoroUtils.h"
 #include "flow/network.h"
 #include "flow/Knobs.h"
-#include "flow/genericactors.actor.h"
+#include "flow/genericactors.h"
 #include "flow/CompressedInt.h"
 #include "flow/OTELMetrics.h"
 #include <algorithm>
@@ -42,7 +42,7 @@ enum MetricsDataModel { STATSD = 0, OTLP, NONE };
 MetricsDataModel knobToMetricModel(const std::string& knob);
 
 struct MetricNameRef {
-	MetricNameRef() {}
+	MetricNameRef() = default;
 	MetricNameRef(const StringRef& type, const StringRef& name, const StringRef& id) : type(type), name(name), id(id) {}
 	MetricNameRef(Arena& a, const MetricNameRef& copyFrom)
 	  : type(a, copyFrom.type), name(a, copyFrom.name), id(a, copyFrom.id) {}
@@ -56,11 +56,12 @@ struct MetricNameRef {
 	int expectedSize() const { return type.expectedSize() + name.expectedSize(); }
 
 	inline int compare(MetricNameRef const& r) const {
-		int cmp;
-		if ((cmp = type.compare(r.type))) {
+		int cmp = type.compare(r.type);
+		if (cmp) {
 			return cmp;
 		}
-		if ((cmp = name.compare(r.name))) {
+		cmp = name.compare(r.name);
+		if (cmp) {
 			return cmp;
 		}
 		return id.compare(r.id);
@@ -94,7 +95,7 @@ struct KeyWithWriter {
 
 	KeyWithWriter(Standalone<StringRef> const& key, BinaryWriter& writer, int writerOffset = 0)
 	  : key(key), writer(std::move(writer)), writerOffset(writerOffset) {}
-	explicit(false) KeyWithWriter(KeyWithWriter&& r)
+	KeyWithWriter(KeyWithWriter&& r)
 	  : key(std::move(r.key)), writer(std::move(r.writer)), writerOffset(r.writerOffset) {}
 	void operator=(KeyWithWriter&& r) {
 		key = std::move(r.key);
@@ -110,7 +111,7 @@ struct KeyWithWriter {
 // It's lack of generality is intentional.
 class IMetricDB {
 public:
-	virtual ~IMetricDB() {}
+	virtual ~IMetricDB() = default;
 
 	// key should be the result of calling metricKey or metricFieldKey with time = 0
 	virtual Future<Optional<Standalone<StringRef>>> getLastBlock(Standalone<StringRef> key) = 0;
@@ -147,7 +148,7 @@ struct MetricKeyRef {
 	Standalone<StringRef> packDataKey(int64_t time = -1) const;
 	Standalone<StringRef> packFieldRegKey() const;
 
-	bool isField() const { return fieldName.size() > 0 && fieldType.size() > 0; }
+	bool isField() const { return !fieldName.empty() && !fieldType.empty(); }
 	void writeField(BinaryWriter& wr) const;
 	void writeMetricName(BinaryWriter& wr) const;
 };
@@ -169,7 +170,7 @@ struct FDBScope {
 struct MetricBatch {
 	FDBScope scope;
 
-	MetricBatch() {}
+	MetricBatch() = default;
 
 	explicit MetricBatch(FDBScope* in) {
 		assert(in != nullptr);
@@ -221,12 +222,12 @@ public:
 	// data can be logged before that time, just not written to a database.
 	bool init() {
 		// Get and store the local address in the metric collection, but only if it is not 0.0.0.0:0
-		if (address.size() == 0) {
+		if (address.empty()) {
 			NetworkAddress addr = g_network->getLocalAddress();
 			if (addr.ip.isValid() && addr.port != 0)
 				address = StringRef(addr.toString());
 		}
-		return address.size() != 0;
+		return !address.empty();
 	}
 
 	// Returns the TDMetrics that the calling process should use
@@ -252,7 +253,7 @@ public:
 	std::unordered_map<UID, OTEL::OTELGauge> gaugeMap;
 	std::vector<std::string> statsd_message;
 
-	MetricCollection() {}
+	MetricCollection() = default;
 
 	static MetricCollection* getMetricCollection() {
 		if (g_network == nullptr || knobToMetricModel(FLOW_KNOBS->METRICS_DATA_MODEL) == MetricsDataModel::NONE)
@@ -271,7 +272,7 @@ struct MetricData {
 	  : start(0), rollTime(std::numeric_limits<uint64_t>::max()), appendStart(appendStart),
 	    writer(AssumeVersion(g_network->protocolVersion())) {}
 
-	explicit(false) MetricData(MetricData&& r) noexcept
+	MetricData(MetricData&& r) noexcept
 	  : start(r.start), rollTime(r.rollTime), appendStart(r.appendStart), writer(std::move(r.writer)) {}
 
 	void operator=(MetricData&& r) noexcept {
@@ -287,8 +288,8 @@ struct MetricData {
 // Some common methods to reduce code redundancy across different metric definitions
 template <typename T, typename _ValueType = Void>
 struct MetricUtil {
-	typedef _ValueType ValueType;
-	typedef T MetricType;
+	using ValueType = _ValueType;
+	using MetricType = T;
 
 	// Looks up a metric by name and id and returns a reference to it if it exists.
 	// Empty names will not be looked up.
@@ -302,7 +303,7 @@ struct MetricUtil {
 		TDMetricCollection* collection = TDMetricCollection::getTDMetrics();
 
 		// If there is a metric collect and this metric has a name then look it up in the collection
-		bool useMap = collection != nullptr && name.size() > 0;
+		bool useMap = collection != nullptr && !name.empty();
 		MetricNameRef mname;
 
 		if (useMap) {
@@ -396,12 +397,6 @@ template <class T>
 struct Descriptor {
 	// Specialize Descriptor<T> next to each metric payload struct, typically by inheriting from
 	// DescribeType<T, "...", DescribeField<&T::member, "...">, ...>.
-#ifndef NO_INTELLISENSE
-	using fields = std::tuple<>;
-	using field_indexes = tuple_indexes_t<fields>;
-
-	static StringRef typeName() { return ""_sr; }
-#endif
 };
 
 // String literals need a wrapper type before they can be used as non-type template parameters.
@@ -649,7 +644,7 @@ public:
 	}
 
 	void rollMetric(uint64_t t) {
-		ASSERT(metrics.size());
+		ASSERT(!metrics.empty());
 
 		if (metrics.back().start) {
 			metrics.back().rollTime = t;
@@ -686,7 +681,7 @@ public:
 
 	// Flushes data blocks in metrics to batch, optionally patching headers if a header is given
 	void flushUpdates(MetricKeyRef const& mk, uint64_t rollTime, MetricBatch& batch) {
-		while (metrics.size()) {
+		while (!metrics.empty()) {
 			auto& data = metrics.front();
 
 			if (data.start != 0 && data.rollTime <= rollTime) {
@@ -710,8 +705,9 @@ public:
 				}
 
 				metrics.pop_front();
-			} else
+			} else {
 				break;
+			}
 		}
 	}
 
@@ -784,7 +780,7 @@ template <class T, class Descriptor = NullDescriptor, class FieldLevelType = Fie
 struct EventField : public Descriptor {
 	std::vector<FieldLevelType> levels;
 
-	explicit(false) EventField(EventField&& r) noexcept : Descriptor(r), levels(std::move(r.levels)) {}
+	EventField(EventField&& r) noexcept : Descriptor(r), levels(std::move(r.levels)) {}
 
 	void operator=(EventField&& r) noexcept { levels = std::move(r.levels); }
 
@@ -846,7 +842,7 @@ struct BaseMetric {
 	  : metricName(name), enabled(false), pCollection(nullptr), registered(false) {
 		setConfig(false);
 	}
-	virtual ~BaseMetric() {}
+	virtual ~BaseMetric() = default;
 
 	virtual void addref() = 0;
 	virtual void delref() = 0;
@@ -872,8 +868,9 @@ struct BaseMetric {
 			if (enabled) {
 				onEnable();
 				pCollection->metricEnabled.trigger();
-			} else
+			} else {
 				onDisable();
+			}
 		}
 	}
 
@@ -907,7 +904,7 @@ struct BaseEventMetric : BaseMetric {
 	// Needed for MetricUtil
 	alignas(8) static const StringRef metricType;
 	Void getValue() const { return Void(); }
-	~BaseEventMetric() override {}
+	~BaseEventMetric() override = default;
 
 	// Every metric should have a set method for its underlying type in order for MetricUtil::getOrCreateInstance
 	// to initialize it.  In the case of event metrics there is no underlying type so the underlying type
@@ -972,7 +969,6 @@ struct EventMetric final : E, ReferenceCounted<EventMetric<E>>, MetricUtil<Event
 
 	template <size_t... Is>
 	void logFields(index_sequence<Is...>, uint64_t t, int64_t l, bool& overflow, int64_t& bytes) {
-#ifdef NO_INTELLISENSE
 		auto _ = { (std::get<Is>(values).log(
 			            std::tuple_element<Is, typename Descriptor<E>::fields>::type::get(static_cast<E&>(*this)),
 			            t,
@@ -981,23 +977,18 @@ struct EventMetric final : E, ReferenceCounted<EventMetric<E>>, MetricUtil<Event
 			            bytes),
 			        Void())... };
 		(void)_;
-#endif
 	}
 
 	template <size_t... Is>
 	void initFields(index_sequence<Is...>) {
-#ifdef NO_INTELLISENSE
 		auto _ = { (std::get<Is>(values).init(), Void())... };
 		(void)_;
-#endif
 	}
 
 	template <size_t... Is>
 	void nextKeys(index_sequence<Is...>, uint64_t t, int64_t l) {
-#ifdef NO_INTELLISENSE
 		auto _ = { (std::get<Is>(values).nextKey(t, l), Void())... };
 		(void)_;
-#endif
 	}
 
 	void flushData(MetricKeyRef const& mk, uint64_t rollTime, MetricBatch& batch) override {
@@ -1011,10 +1002,8 @@ struct EventMetric final : E, ReferenceCounted<EventMetric<E>>, MetricUtil<Event
 
 	template <size_t... Is>
 	void flushFields(index_sequence<Is...>, MetricKeyRef const& mk, uint64_t rollTime, MetricBatch& batch) {
-#ifdef NO_INTELLISENSE
 		auto _ = { (std::get<Is>(values).flushField(mk, rollTime, batch), Void())... };
 		(void)_;
-#endif
 	}
 
 	void rollMetric(uint64_t t) override {
@@ -1024,10 +1013,8 @@ struct EventMetric final : E, ReferenceCounted<EventMetric<E>>, MetricUtil<Event
 
 	template <size_t... Is>
 	void rollFields(index_sequence<Is...>, uint64_t t) {
-#ifdef NO_INTELLISENSE
 		auto _ = { (std::get<Is>(values).rollMetric(t), Void())... };
 		(void)_;
-#endif
 	}
 
 	void registerFields(MetricKeyRef const& mk, std::vector<Standalone<StringRef>>& fieldKeys) override {
@@ -1037,10 +1024,8 @@ struct EventMetric final : E, ReferenceCounted<EventMetric<E>>, MetricUtil<Event
 
 	template <size_t... Is>
 	void registerFields(index_sequence<Is...>, const MetricKeyRef& mk, std::vector<Standalone<StringRef>>& fieldKeys) {
-#ifdef NO_INTELLISENSE
 		auto _ = { (std::get<Is>(values).registerField(mk, fieldKeys), Void())... };
 		(void)_;
-#endif
 	}
 
 private:
@@ -1060,7 +1045,7 @@ template <typename T>
 struct DynamicField;
 
 struct DynamicFieldBase {
-	virtual ~DynamicFieldBase() {}
+	virtual ~DynamicFieldBase() = default;
 
 	virtual StringRef fieldName() const = 0;
 	virtual StringRef getDerivedTypeName() const = 0;
@@ -1097,7 +1082,7 @@ struct DynamicFieldBase {
 
 template <typename T>
 struct DynamicField final : public DynamicFieldBase, EventField<T, DynamicDescriptor> {
-	typedef EventField<T, DynamicDescriptor> EventFieldType;
+	using EventFieldType = EventField<T, DynamicDescriptor>;
 	explicit DynamicField(const char* name) : DynamicFieldBase(), EventFieldType(DynamicDescriptor(name)), value(T()) {}
 
 	StringRef fieldName() const override { return EventFieldType::name(); }
@@ -1236,8 +1221,9 @@ public:
 				if (pCollection != nullptr)
 					p->init();
 				newFieldAdded(f.first);
-			} else
+			} else {
 				p->setValueFrom(f.second.get(), getTypeName());
+			}
 		}
 		return log(explicitTime);
 	}
@@ -1450,11 +1436,11 @@ public:
 	}
 };
 
-typedef ContinuousMetric<int64_t> Int64Metric;
-typedef ContinuousMetric<double> DoubleMetric;
-typedef Int64Metric VersionMetric;
-typedef ContinuousMetric<bool> BoolMetric;
-typedef ContinuousMetric<Standalone<StringRef>> StringMetric;
+using Int64Metric = ContinuousMetric<int64_t>;
+using DoubleMetric = ContinuousMetric<double>;
+using VersionMetric = Int64Metric;
+using BoolMetric = ContinuousMetric<bool>;
+using StringMetric = ContinuousMetric<Standalone<StringRef>>;
 
 // MetricHandle / EventMetricHandle are wrappers for a Reference<MetricType> which provides
 // the following interface conveniences
@@ -1523,11 +1509,11 @@ struct SpecialTraceMetricType<MetricHandle<T>> : SpecialTraceMetricType<typename
 	static auto getValue(const MetricHandle<T>& value) { return parent::getValue(value.getValue()); }
 };
 
-typedef MetricHandle<Int64Metric> Int64MetricHandle;
-typedef MetricHandle<VersionMetric> VersionMetricHandle;
-typedef MetricHandle<BoolMetric> BoolMetricHandle;
-typedef MetricHandle<StringMetric> StringMetricHandle;
-typedef MetricHandle<DoubleMetric> DoubleMetricHandle;
+using Int64MetricHandle = MetricHandle<Int64Metric>;
+using VersionMetricHandle = MetricHandle<VersionMetric>;
+using BoolMetricHandle = MetricHandle<BoolMetric>;
+using StringMetricHandle = MetricHandle<StringMetric>;
+using DoubleMetricHandle = MetricHandle<DoubleMetric>;
 
 template <typename E>
 using EventMetricHandle = MetricHandle<EventMetric<E>>;
@@ -1541,9 +1527,9 @@ public:
 	explicit IMetric(MetricsDataModel m) : id{ deterministicRandom()->randomUniqueID() }, model{ m } {
 		MetricCollection* metrics = MetricCollection::getMetricCollection();
 		if (metrics != nullptr) {
-			if (metrics->map.count(id) > 0) {
+			if (metrics->map.contains(id)) {
 				TraceEvent(SevError, "MetricCollection_NameCollision").detail("NameConflict", id.toString().c_str());
-				ASSERT(metrics->map.count(id) > 0);
+				ASSERT(metrics->map.contains(id));
 			}
 			metrics->map[id] = this;
 		}

@@ -37,7 +37,7 @@
 // mean a new test workload is warranted.  If the APIs are similar then why doesn't the old test work too?
 // In the mean time we are dealing with two heavily overlapping source files with tons of cut/paste
 // unmodified code:
-// diff -U 10 BackupCorrectness.actor.cpp BackupCorrectnessPartitioned.actor.cpp
+// diff -U 10 BackupCorrectness.cpp BackupCorrectnessPartitioned.cpp
 struct BackupAndRestorePartitionedCorrectnessWorkload : TestWorkload {
 	static constexpr auto NAME = "BackupAndRestorePartitionedCorrectness";
 	double backupAfter, restoreAfter, abortAndRestartAfter;
@@ -114,7 +114,7 @@ struct BackupAndRestorePartitionedCorrectnessWorkload : TestWorkload {
 		} else {
 			// Add backup ranges
 			std::set<std::string> rangeEndpoints;
-			while (rangeEndpoints.size() < backupRangesCount * 2) {
+			while (rangeEndpoints.size() < static_cast<size_t>(backupRangesCount) * 2) {
 				rangeEndpoints.insert(deterministicRandom()->randomAlphaNumeric(
 				    deterministicRandom()->randomInt(1, backupRangeLengthMax + 1)));
 			}
@@ -634,7 +634,7 @@ struct BackupAndRestorePartitionedCorrectnessWorkload : TestWorkload {
 
 			// Ensure that there is no left over key within the backup subspace
 			while (true) {
-				Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(cx));
+				auto tr = makeReference<ReadYourWritesTransaction>(cx);
 
 				TraceEvent("BARW_CheckLeftoverKeys", randomID).detail("BackupTag", printable(backupTag));
 

@@ -19,7 +19,7 @@
  */
 
 #include "fdbrpc/DDSketch.h"
-#include "fdbclient/NativeAPI.actor.h"
+#include "fdbclient/NativeAPI.h"
 #include "fdbserver/core/TesterInterface.h"
 #include "fdbserver/tester/workloads.h"
 #include "fdbserver/tester/WorkloadUtils.h"
@@ -200,7 +200,7 @@ struct DDBalanceWorkload : TestWorkload {
 
 			tr = Transaction();
 			if (self->shouldRecord(clientBegin)) {
-				self->operations += 3 * moves;
+				self->operations += 3LL * moves;
 				double latency = now() - tstart;
 				self->latencies.addSample(latency);
 			}

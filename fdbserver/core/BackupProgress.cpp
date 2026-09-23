@@ -22,7 +22,7 @@
 
 #include "fdbserver/core/BackupProgress.h"
 
-#include "fdbclient/NativeAPI.actor.h"
+#include "fdbclient/NativeAPI.h"
 #include "fdbclient/SystemData.h"
 #include "flow/UnitTest.h"
 
@@ -75,7 +75,7 @@ std::map<std::tuple<LogEpoch, Version, int>, std::map<Tag, Version>> BackupProgr
 
 std::map<std::tuple<LogEpoch, Version, int>, std::map<Tag, Version>>
 BackupProgress::getUnfinishedRangePartitionedBackup() {
-	return getUnfinishedBackup(tagLocalityRangeBackup);
+	return getUnfinishedBackup(tagLocalityRangePartitionedBackup);
 }
 
 std::map<std::tuple<LogEpoch, Version, int>, std::map<Tag, Version>> BackupProgress::getUnfinishedBackup(

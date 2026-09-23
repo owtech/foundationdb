@@ -22,7 +22,7 @@
 
 #include <numeric>
 
-#include "fdbserver/datadistributor/DataDistribution.h"
+#include "DataDistribution.h"
 #include "MovingWindow.h"
 
 // send request/signal to DDRelocationQueue through interface
@@ -128,8 +128,8 @@ class DDQueue : public IDDRelocationQueue, public ReferenceCounted<DDQueue> {
 public:
 	friend struct DDQueueImpl;
 
-	typedef Reference<IDataDistributionTeam> ITeamRef;
-	typedef std::pair<ITeamRef, ITeamRef> SrcDestTeamPair;
+	using ITeamRef = Reference<IDataDistributionTeam>;
+	using SrcDestTeamPair = std::pair<ITeamRef, ITeamRef>;
 
 	struct DDDataMove {
 		DDDataMove() = default;
@@ -146,8 +146,8 @@ public:
 		enum CountType : uint8_t { ProposedSource = 0, QueuedSource, LaunchedSource, LaunchedDest, __COUNT };
 
 	private:
-		typedef std::array<int, (int)__COUNT> Item; // one for each CountType
-		typedef std::array<Item, RelocateReason::typeCount()> ReasonItem; // one for each RelocateReason
+		using Item = std::array<int, (int)__COUNT>; // one for each CountType
+		using ReasonItem = std::array<Item, RelocateReason::typeCount()>; // one for each RelocateReason
 
 		std::unordered_map<UID, ReasonItem> counter;
 
@@ -263,6 +263,20 @@ public:
 
 	void updatePipelineFull();
 
+	// Intermediate counter changes must not wake producers with a slot that a replacement still needs.
+	class PipelineMutation : NonCopyable {
+	public:
+		explicit PipelineMutation(DDQueue& queue) : queue(&queue) { ++queue.pipelineMutationDepth; }
+		~PipelineMutation() {
+			if (--queue->pipelineMutationDepth == 0) {
+				queue->updatePipelineFull();
+			}
+		}
+
+	private:
+		DDQueue* queue;
+	};
+
 	Reference<AsyncVar<bool>> pipelineFull;
 
 	std::map<UID, Busyness> busymap; // UID is serverID
@@ -274,8 +288,8 @@ public:
 	KeyRangeActorMap getSourceActors;
 	std::map<UID, std::set<RelocateData, std::greater<RelocateData>>>
 	    queue; // Key UID is serverID, value is the serverID's set of RelocateData to relocate
-	// The last time one server was selected as source team for read rebalance reason. We want to throttle read
-	// rebalance on time bases because the read workload sample update has delay after the previous moving
+	// Last read-rebalance proposal for each selected source server. Pace proposals while the selected team's
+	// sampled read load catches up; discovering other replicas of the range must not refresh this cooldown.
 	std::map<UID, double> lastAsSource;
 	ServerCounter serverCounter;
 
@@ -370,6 +384,18 @@ public:
 
 	int getUnhealthyRelocationCount() const override;
 
+	// Simulation-only test hook, off by default (BULKLOAD_SIM_INJECT_DEST_TEAM_FAILURES). A team rarely
+	// goes unhealthy inside the window a bulkload move is in flight, so the retry and give-up paths need
+	// the failure injected. The budget is spent on a single task, because the give-up path bounds one
+	// task's restartCount and a budget spread across tasks never reaches it. Per-DDQueue rather than
+	// process-global: simulated processes share an address space, so file statics would make one budget
+	// serve every simulated data distributor in the run.
+	bool injectBulkLoadDestinationTeamFailure(bool doBulkLoading, const RelocateData& rd);
+	int bulkLoadInjectedDestTeamFailures = 0;
+	UID bulkLoadInjectionTargetTaskId;
+
+	void processRelocationComplete(const RelocateData& done);
+
 	Future<SrcDestTeamPair> getSrcDestTeams(const int& teamCollectionIndex,
 	                                        const GetTeamRequest& srcReq,
 	                                        const GetTeamRequest& destReq,
@@ -395,6 +421,9 @@ public:
 	                        const DDEnabledState* ddEnabledState);
 
 	explicit DDQueue(DDQueueInitParams const& params);
+
+private:
+	int pipelineMutationDepth = 0;
 };
 
 #endif // FOUNDATIONDB_DDRELOCATIONQUEUE_H
