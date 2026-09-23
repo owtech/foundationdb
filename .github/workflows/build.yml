@@ -110,7 +110,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RPM_IMAGE: oraclelinux:9
-      DEB_IMAGE: debian:11
+      DEB_IMAGE: debian:12
 
     steps:
       - name: Checkout

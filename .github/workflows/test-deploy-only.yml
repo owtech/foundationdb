@@ -14,9 +14,9 @@ on:
         required: false
         default: 'oraclelinux:9'
       deb_image:
-        description: 'DEB-based Linux image (default: debian:11)'
+        description: 'DEB-based Linux image (default: debian:12)'
         required: false
-        default: 'debian:11'
+        default: 'debian:12'
 
 jobs:
   test_deploy:
