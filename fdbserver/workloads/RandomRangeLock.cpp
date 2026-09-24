@@ -19,7 +19,6 @@
  */
 
 #include "fdbclient/FDBTypes.h"
-#include "fdbclient/ManagementAPI.h"
 #include "fdbclient/RangeLock.h"
 #include "fdbclient/SystemData.h"
 #include "fdbserver/core/Knobs.h"
@@ -178,6 +177,7 @@ struct RandomRangeLockWorkload : FailureInjectionWorkload {
 			// and this injected workload should not block other workloads.
 			std::string rangeLockOwnerNamePrefix = "Owner" + std::to_string(clientId);
 			std::vector<Future<Void>> actors;
+			actors.reserve(lockActorCount);
 			for (int i = 0; i < lockActorCount; i++) {
 				actors.push_back(lockActor(cx, this, rangeLockOwnerNamePrefix));
 			}

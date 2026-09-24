@@ -24,10 +24,12 @@
 #include <set>
 #include <vector>
 
+#include "fdbclient/SimulationCapabilities.h"
 #include "fdbrpc/Replication.h"
 #include "fdbrpc/ReplicationUtils.h"
 #include "fdbrpc/SimulatorProcessInfo.h"
 #include "fdbrpc/simulator.h"
+#include "fdbserver/core/FDBSimulatorProcessInfo.h"
 
 FDBExtraDatabaseMode stringToFDBExtraDatabaseMode(const std::string& databaseMode) {
 	if (databaseMode == "Disabled") {
@@ -54,8 +56,14 @@ FDBSimulationPolicyState& policyState() {
 	return *state;
 }
 
-class FDBSimulationPolicy final : public ISimulationPolicy {
+// Applies FDB replication and test configuration to availability, process-kill, and
+// storage capability decisions without exposing FDB-specific state to the generic simulator.
+class FDBSimulationPolicy final : public IFDBSimulationPolicy {
 public:
+	bool shouldIncludeInAvailabilityCheck(ProcessInfo const& processInfo) const override {
+		return isAvailableSimulatorProcessClass(processInfo);
+	}
+
 	bool datacenterDead(Optional<Standalone<StringRef>> dcId,
 	                    std::vector<ProcessInfo*> const& allProcesses) const override {
 		if (!dcId.present()) {
@@ -66,7 +74,7 @@ public:
 		std::vector<LocalityData> primaryLocalitiesLeft;
 
 		for (auto processInfo : allProcesses) {
-			if (!processInfo->isSpawnedKVProcess() && processInfo->isAvailableClass() &&
+			if (!processInfo->isSpawnedKVProcess() && isAvailableSimulatorProcessClass(processInfo) &&
 			    processInfo->locality.dcId() == dcId) {
 				if (processInfo->isExcluded() || processInfo->isCleared() || !processInfo->isAvailable()) {
 					primaryProcessesDead.add(processInfo->locality);
@@ -107,17 +115,17 @@ public:
 		return false;
 	}
 
-	bool hasCapability(Capability capability) const override {
+	bool hasCapability(FDBSimulationCapability capability) const override {
 		switch (capability) {
-		case Capability::WarnOnStorageMismatch:
+		case FDBSimulationCapability::WarnOnStorageMismatch:
 			return fdbSimulationPolicyState().tssMode == FDBTSSMode::EnabledDropMutations;
-		case Capability::StorageReplicaFaultInjection:
+		case FDBSimulationCapability::StorageReplicaFaultInjection:
 			return fdbSimulationPolicyState().tssMode >= FDBTSSMode::EnabledAddDelay;
-		case Capability::StorageReplicaDelay:
+		case FDBSimulationCapability::StorageReplicaDelay:
 			return fdbSimulationPolicyState().tssMode == FDBTSSMode::EnabledAddDelay;
-		case Capability::StorageReplicaMutationDrop:
+		case FDBSimulationCapability::StorageReplicaMutationDrop:
 			return fdbSimulationPolicyState().tssMode == FDBTSSMode::EnabledDropMutations;
-		case Capability::LimitStorageServerReadBytes:
+		case FDBSimulationCapability::LimitStorageServerReadBytes:
 			return fdbSimulationPolicyState().tssMode == FDBTSSMode::Disabled;
 		}
 		UNREACHABLE();

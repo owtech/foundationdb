@@ -32,14 +32,14 @@
 #endif // WITH_ROCKSDB
 
 #include "fdbclient/FDBTypes.h"
-#include "fdbclient/NativeAPI.actor.h"
+#include "fdbclient/NativeAPI.h"
 #include "fdbserver/core/MutationTracking.h"
 #include "fdbclient/StorageCheckpoint.h"
 #include "fdbserver/CoroFlow.h"
 #include "fdbserver/core/FDBRocksDBVersion.h"
 #include "fdbserver/core/Knobs.h"
 #include "flow/IThreadPool.h"
-#include "flow/ThreadHelper.actor.h"
+#include "flow/ThreadHelper.h"
 #include "flow/Trace.h"
 #include "flow/flow.h"
 
@@ -571,6 +571,7 @@ rocksdb::Status RocksDBColumnFamilyReader::Reader::tryOpenForRead(const std::str
 
 	const rocksdb::ColumnFamilyOptions cfOptions = getCFOptions();
 	std::vector<rocksdb::ColumnFamilyDescriptor> descriptors;
+	descriptors.reserve(columnFamilies.size());
 	for (const std::string& name : columnFamilies) {
 		descriptors.emplace_back(name, cfOptions);
 	}
@@ -633,6 +634,7 @@ rocksdb::Status RocksDBColumnFamilyReader::Reader::importCheckpoint(const std::s
 
 	const rocksdb::ColumnFamilyOptions cfOptions = getCFOptions();
 	std::vector<rocksdb::ColumnFamilyDescriptor> descriptors;
+	descriptors.reserve(columnFamilies.size());
 	for (const std::string& name : columnFamilies) {
 		descriptors.emplace_back(name, cfOptions);
 	}
@@ -782,6 +784,7 @@ bool RocksDBSstFileWriter::finish() {
 
 class RocksDBSstFileReader : public IRocksDBSstFileReader {
 public:
+	// NOLINTNEXTLINE(modernize-use-equals-default)
 	RocksDBSstFileReader() : sstReader(std::make_unique<rocksdb::SstFileReader>(rocksdb::Options())) {};
 
 	RocksDBSstFileReader(const KeyRange& rangeBoundary, size_t rowLimit, size_t byteLimit)
@@ -1153,6 +1156,9 @@ Future<Void> fetchCheckpointRange(Database cx,
 				}
 			}
 		} catch (Error& e) {
+			if (e.code() == error_code_actor_cancelled) {
+				throw;
+			}
 			Error err = e;
 			if (totalBytes > 0) {
 				status = writer->Finish();

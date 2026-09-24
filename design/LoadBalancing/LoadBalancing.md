@@ -8,7 +8,7 @@ The interpocess communications (IPC) between the processes are supported by the 
 
 In many cases, the same request can be proceed by multiple processes, e.g. all commit proxies can accept commit requests, and multiple storage server processes can provide values for a given key in double/triple redundancy mode. A load balancer (LB) can be used to distribute the requests over the possible interfaces, preventing one or a few processes getting overloaded. The interface candidates are also referred as *alternative*s. The LB is also able to react when one or more interfaces are (temporarily) unavailable by retrying, or re-routing the request to other candidates. The interface candidates are also known as *alternative*s.
 
-Two LBs are provided in FoundationDB: `basicLoadBalance` and `loadBalance`, both defined in [`LoadBalance.actor.h`](https://github.com/apple/foundationdb/blob/main/fdbrpc/include/fdbrpc/LoadBalance.actor.h). The `basicLoadBalance` is a simple load balancer which each interface is equally chosen; while the `loadBalance` accepts a model object, which provides [datacenter](https://apple.github.io/foundationdb/configuration.html#configuring-regions) (DC) awaring balancing algorithms, allowing requests being sent to interfaces in the same DC.
+Two LBs are provided in FoundationDB: `basicLoadBalance` and `loadBalance`, both defined in [`LoadBalance.h`](https://github.com/apple/foundationdb/blob/main/fdbrpc/include/fdbrpc/LoadBalance.h). The `basicLoadBalance` is a simple load balancer which each interface is equally chosen; while the `loadBalance` accepts a model object, which provides [datacenter](https://apple.github.io/foundationdb/configuration.html#configuring-regions)-aware balancing algorithms, allowing requests to be sent to interfaces in the same datacenter (DC).
 
 In the following sections, the two LBs will be discussed in details.
 
@@ -99,7 +99,7 @@ If no `QueueModel` is provided, the initial candidates are picked randomly. The 
 `QueueModel` holds information about each candidate related to future version, latency and penalty.
 
 * If the storage server is returning a future version error, it is marked as not available until some certain time.
-* Penalty is reported by storage server in each response (see `storageserver.actor.cpp:StorageServer::getPenalty`). It is determined by the write queue length and the durability lagging.
+* Penalty is reported by storage server in each response (see `storageserver.cpp:StorageServer::getPenalty`). It is determined by the write queue length and the durability lagging.
 
 If `QueueModel` exists, the candidates will be picked base on the penalty. Workers with high penalties will be avoided when picking the first two candidates.
 
@@ -160,7 +160,7 @@ Note that "Wait for alternatives" will only timeout if the alternatives are alwa
 
 #### Requests
 
-Original requests in `loadBalancer` are wrapped by `LoadBalance.actor.h:RequestData`. It provides the following additional operations besides the original `flow` request:
+Original requests in `loadBalancer` are wrapped by `LoadBalance.h:RequestData`. It provides the following additional operations besides the original `flow` request:
 
 * TSS support if `QueueModel` is available
 * Translate some errors into `maybe_delivered`, `process_behind` or retries

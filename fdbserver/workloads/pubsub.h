@@ -18,7 +18,7 @@
  * limitations under the License.
  */
 
-#include "fdbclient/NativeAPI.actor.h"
+#include "fdbclient/NativeAPI.h"
 
 /*
  * ///////////////
@@ -57,9 +57,9 @@
  *    if paging through the contents of an inbox while a new subscrption was added
  */
 
-typedef uint64_t Feed;
-typedef uint64_t Inbox;
-typedef uint64_t MessageId;
+using Feed = uint64_t;
+using Inbox = uint64_t;
+using MessageId = uint64_t;
 
 class Message {
 public:

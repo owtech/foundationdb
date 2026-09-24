@@ -95,6 +95,20 @@
 #error Missing force inline
 #endif
 
+// Keep a function un-inlined and (on GCC) un-cloned so its address stays stable
+// for return-address matching in tests. GCC -O3 IPA cloning (.constprop/.isra)
+// otherwise runs the code under a synthetic clone symbol at a different address
+// than &fn, so a captured frame won't fall in [&fn, &fn+size); noclone disables
+// it. clang lacks noclone and doesn't clone this way, so it gets noinline only;
+// empty elsewhere (e.g. MSVC, which we cannot compile-test).
+#if defined(__clang__)
+#define force_noinline __attribute__((noinline))
+#elif defined(__GNUC__)
+#define force_noinline __attribute__((noinline, noclone))
+#else
+#define force_noinline
+#endif
+
 /*
  * Visual Studio (.NET 2003 and beyond) has an __assume compiler
  * intrinsic to hint to the compiler that a given condition is true
@@ -495,11 +509,11 @@ private:
 } // namespace platform
 
 #ifdef __linux__
-typedef struct {
+using ProfilingSample = struct {
 	double timestamp;
 	size_t length;
 	void* frames[];
-} ProfilingSample;
+};
 
 dev_t getDeviceId(std::string path);
 #endif
@@ -754,7 +768,6 @@ inline static void aligned_free(void* ptr) {
 }
 #elif defined(__APPLE__)
 #if !defined(HAS_ALIGNED_ALLOC)
-#include <cstdlib>
 inline static void* aligned_alloc(size_t alignment, size_t size) {
 	void* ptr = nullptr;
 	posix_memalign(&ptr, alignment, size);
@@ -884,17 +897,9 @@ EXTERNC void setProfilingEnabled(int enabled);
 	                             DTRACE_PROBE)                                                                         \
 	(foundationdb, __VA_ARGS__)
 
-extern void fdb_probe_actor_create(const char* name, unsigned long id);
-extern void fdb_probe_actor_destroy(const char* name, unsigned long id);
-extern void fdb_probe_actor_enter(const char* name, unsigned long, int index);
-extern void fdb_probe_actor_exit(const char* name, unsigned long, int index);
 #else
 #define FDB_TRACE_PROBE_STRING_CONCAT(h, t) h##t
 #define FDB_TRACE_PROBE(...)
-inline void fdb_probe_actor_create(const char* name, unsigned long id) {}
-inline void fdb_probe_actor_destroy(const char* name, unsigned long id) {}
-inline void fdb_probe_actor_enter(const char* name, unsigned long id, int index) {}
-inline void fdb_probe_actor_exit(const char* name, unsigned long id, int index) {}
 #endif
 
 #if defined(__aarch64__)

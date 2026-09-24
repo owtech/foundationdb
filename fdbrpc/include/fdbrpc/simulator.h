@@ -39,10 +39,9 @@
 #include "flow/IAsyncFile.h"
 #include "flow/TDMetric.h"
 #include "fdbrpc/HTTP.h"
-#include "fdbrpc/FailureMonitor.h"
-#include "fdbrpc/Locality.h"
 #include "fdbrpc/ReplicationPolicy.h"
 #include "fdbrpc/SimulatorKillType.h"
+#include "fdbrpc/SimulatorProcessMetadata.h"
 
 enum ClogMode { ClogDefault, ClogAll, ClogSend, ClogReceive };
 
@@ -61,15 +60,8 @@ public:
 	using KillType = simulator::KillType;
 	using ProcessInfo = simulator::ProcessInfo;
 
-	enum class Capability {
-		WarnOnStorageMismatch,
-		StorageReplicaFaultInjection,
-		StorageReplicaDelay,
-		StorageReplicaMutationDrop,
-		LimitStorageServerReadBytes
-	};
-
 	virtual bool shouldProtectNewProcess(ProcessInfo const&) const { return false; }
+	virtual bool shouldIncludeInAvailabilityCheck(ProcessInfo const&) const { return true; }
 	virtual bool isAvailable(std::vector<ProcessInfo*> const&,
 	                         std::vector<ProcessInfo*> const& availableProcesses,
 	                         std::vector<ProcessInfo*> const& deadProcesses) const {
@@ -81,7 +73,6 @@ public:
 	virtual bool shouldRunVersionValidation() const { return true; }
 	virtual bool canSwapToMachine(Optional<Standalone<StringRef>> const&) const { return true; }
 	virtual bool checkInjectedCorruption(NetworkAddress const&) const { return false; }
-	virtual bool hasCapability(Capability) const { return false; }
 	virtual bool canKillProcesses(std::vector<ProcessInfo*> const& availableProcesses,
 	                              std::vector<ProcessInfo*> const& deadProcesses,
 	                              KillType kt,
@@ -120,7 +111,7 @@ public:
 	                                bool sslEnabled,
 	                                uint16_t listenPerProcess,
 	                                LocalityData locality,
-	                                ProcessClass startingClass,
+	                                Reference<simulator::ProcessInfoMetadata> metadata,
 	                                const char* dataFolder,
 	                                const char* coordinationFolder,
 	                                ProtocolVersion protocol,
@@ -179,7 +170,7 @@ public:
 					    .detail("Result", "Decremented Role");
 				} else {
 					addressIt->second.erase(rolesIt);
-					if (addressIt->second.size()) {
+					if (!addressIt->second.empty()) {
 						TraceEvent("RoleRemove")
 						    .detail("Address", address)
 						    .detail("Role", role)
@@ -286,7 +277,7 @@ public:
 		allSwapsDisabled = false;
 	}
 	bool canSwapToMachine(Optional<Standalone<StringRef>> zoneId) const {
-		return swapsDisabled.count(zoneId) == 0 && !allSwapsDisabled &&
+		return !swapsDisabled.contains(zoneId) && !allSwapsDisabled &&
 		       (!simulationPolicy || simulationPolicy->canSwapToMachine(zoneId));
 	}
 	void enableSwapsToAll() {
@@ -383,15 +374,8 @@ private:
 
 extern ISimulator* g_simulator;
 
-inline bool simulationPolicyHasCapability(ISimulationPolicy::Capability capability) {
-	if (!g_network || !g_network->isSimulated() || !g_simulator || !g_simulator->getSimulationPolicy()) {
-		return false;
-	}
-	return g_simulator->getSimulationPolicy()->hasCapability(capability);
-}
-
 void startNewSimulator(bool printSimTime);
-Future<Void> startUnitTestSimulator();
+Future<Void> startUnitTestSimulator(int wellKnownEndpointCount);
 
 // Parameters used to simulate disk performance
 struct DiskParameters : ReferenceCounted<DiskParameters> {
@@ -441,9 +425,9 @@ public:
 
 	Future<Void> renameFile(std::string const& from, std::string const& to) override;
 
-	Sim2FileSystem() {}
+	Sim2FileSystem() = default;
 
-	~Sim2FileSystem() override {}
+	~Sim2FileSystem() override = default;
 
 	static void newFileSystem();
 

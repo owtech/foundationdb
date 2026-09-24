@@ -2,9 +2,6 @@
 
 # iostreams can include support for different compression libraries,
 # but this boost build disables them all except for basic zlib.
-# If FLOW_USE_ZSTD enabled then "flow" subdir will build and link
-# the boost iostream zstd implementation, it is not built here.
-
 # To use a separate boost build for fdb, do not build with bzip2/lzma/zstd
 # enabled, or add appropriate link flags via cmake options.
 
@@ -36,7 +33,13 @@ function(compile_boost)
   message(STATUS "Use ${BOOST_TOOLSET} to build boost")
 
   # Configure b2 command
+  # b2's clang-darwin toolset passes an explicit --target, which suppresses Apple
+  # clang's SDK inference, and macOS keeps no C++ headers outside the SDK. Hand b2
+  # the same sysroot the main build uses so boost compiles against an identical SDK.
   set(B2_COMMAND "./b2")
+  if(APPLE AND CMAKE_OSX_SYSROOT)
+    set(B2_COMMAND env "SDKROOT=${CMAKE_OSX_SYSROOT}" "./b2")
+  endif()
   set(BOOST_COMPILER_FLAGS -fvisibility=hidden -fPIC -std=c++17 --no-warnings)
   set(BOOST_LINK_FLAGS "")
   if(APPLE OR ICX OR USE_LIBCXX)

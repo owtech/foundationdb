@@ -238,12 +238,16 @@ void LatencySample::addMeasurement(double measurement) {
 	sketch.addSample(measurement);
 }
 
+void LatencySample::addMeasurementPair(double measurement, LatencySample& other) {
+	sketch.addSamplePair(measurement, other.sketch);
+}
+
 void LatencySample::logSample() {
 	if (skipTraceOnSilentInterval && sketch.getPopulationSize() == 0) {
 		return;
 	}
 	double p25 = sketch.percentile(0.25);
-	double p50 = sketch.mean();
+	double p50 = sketch.percentile(0.5);
 	double p90 = sketch.percentile(0.9);
 	double p95 = sketch.percentile(0.95);
 	double p99 = sketch.percentile(0.99);

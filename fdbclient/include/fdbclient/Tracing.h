@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include <utility>
+
 #include "flow/network.h"
 #include "flow/IRandom.h"
 #include "flow/Arena.h"
@@ -50,7 +52,7 @@ struct SpanContext {
 	SpanContext() : traceID(UID()), spanID(0), m_Flags(TraceFlags::unsampled) {}
 	SpanContext(UID traceID, uint64_t spanID, TraceFlags flags) : traceID(traceID), spanID(spanID), m_Flags(flags) {}
 	SpanContext(UID traceID, uint64_t spanID) : traceID(traceID), spanID(spanID), m_Flags(TraceFlags::unsampled) {}
-	explicit(false) SpanContext(const SpanContext& span) = default;
+	SpanContext(const SpanContext& span) = default;
 	bool isSampled() const { return (m_Flags & TraceFlags::sampled) == TraceFlags::sampled; }
 	std::string toString() const { return format("%016llx%016llx%016llx", traceID.first(), traceID.second(), spanID); };
 	bool isValid() const { return traceID.first() != 0 && traceID.second() != 0 && spanID != 0; }
@@ -105,7 +107,7 @@ enum class SpanKind : uint8_t { INTERNAL = 0, CLIENT = 1, SERVER = 2, PRODUCER =
 enum class SpanStatus : uint8_t { UNSET = 0, OK = 1, ERR = 2 };
 
 struct SpanEventRef {
-	SpanEventRef() {}
+	SpanEventRef() = default;
 	SpanEventRef(const StringRef& name,
 	             const double& time,
 	             const SmallVectorRef<KeyValueRef>& attributes = SmallVectorRef<KeyValueRef>())
@@ -124,7 +126,7 @@ public:
 	// N.B. While this constructor receives a parentContext it does not overwrite the traceId of the Span's context.
 	// Therefore it is the responsibility of the caller to ensure the traceID and m_Flags of both the context and
 	// parentContext are identical if the caller wishes to establish a parent/child relationship between these spans. We
-	// do this to avoid needless comparisons or copies as this constructor is only called once in NativeAPI.actor.cpp
+	// do this to avoid needless comparisons or copies as this constructor is only called once in NativeAPI.cpp
 	// and from below in the by the Span(location, parent, links) constructor. The Span(location, parent, links)
 	// constructor is used broadly and performs the copy of the parent's traceID and m_Flags.
 	Span(const SpanContext& context,
@@ -135,10 +137,7 @@ public:
 	    begin(g_network->now()) {
 		this->kind = SpanKind::SERVER;
 		this->status = SpanStatus::OK;
-		this->attributes.push_back(
-		    // this->arena, KeyValueRef("address"_sr, StringRef(this->arena, "localhost:4000")));
-		    this->arena,
-		    KeyValueRef("address"_sr, StringRef(this->arena, FlowTransport::transport().getLocalAddressAsString())));
+		ensureAddressAttribute();
 	}
 
 	// Construct Span with a location, parent, and optional links.
@@ -160,16 +159,17 @@ public:
 	explicit Span(const Location& location) : Span(location, SpanContext()) {}
 
 	Span(const Span&) = delete;
-	explicit(false) Span(Span&& o) {
+	Span(Span&& o) {
 		arena = std::move(o.arena);
 		context = o.context;
 		location = o.location;
-		parentContext = std::move(o.parentContext);
+		parentContext = o.parentContext;
 		kind = o.kind;
 		begin = o.begin;
 		end = o.end;
-		links = std::move(o.links);
-		events = std::move(o.events);
+		links = o.links;
+		events = o.events;
+		attributes = std::exchange(o.attributes, decltype(o.attributes)());
 		status = o.status;
 		o.context = SpanContext();
 		o.parentContext = SpanContext();
@@ -178,7 +178,7 @@ public:
 		o.end = 0.0;
 		o.status = SpanStatus::UNSET;
 	}
-	Span() {}
+	Span() = default;
 	~Span();
 	Span& operator=(Span&& o);
 	Span& operator=(const Span&) = delete;
@@ -207,6 +207,7 @@ public:
 				context.traceID = deterministicRandom()->randomUniqueID();
 				context.spanID = deterministicRandom()->randomUInt64();
 			}
+			ensureAddressAttribute();
 		}
 		return *this;
 	}
@@ -239,7 +240,23 @@ public:
 		context.traceID = parent.traceID;
 		context.spanID = deterministicRandom()->randomUInt64();
 		context.m_Flags = parent.m_Flags;
+		ensureAddressAttribute();
 		return *this;
+	}
+
+	void ensureAddressAttribute() {
+		// Unsampled spans are common on the client and storage read paths. Avoid copying the cached address into a new
+		// arena until the span is actually eligible to be emitted.
+		if (!context.isSampled()) {
+			return;
+		}
+		for (const auto& attribute : attributes) {
+			if (attribute.key == "address"_sr) {
+				return;
+			}
+		}
+		attributes.push_back(
+		    arena, KeyValueRef("address"_sr, StringRef(arena, FlowTransport::transport().getLocalAddressAsString())));
 	}
 
 	Arena arena;

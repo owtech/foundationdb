@@ -142,9 +142,6 @@ static_assert(std::is_same<boost::asio::ip::address_v6::bytes_type, std::array<u
 #include <sys/sysctl.h>
 #include <sys/vmmeter.h>
 #include <sys/cpuset.h>
-#include <sys/resource.h>
-/* Needed for sysctl info */
-#include <sys/sysctl.h>
 #include <sys/fcntl.h>
 /* Needed for network info */
 #include <net/if.h>
@@ -161,7 +158,6 @@ static_assert(std::is_same<boost::asio::ip::address_v6::bytes_type, std::array<u
 
 #ifdef __APPLE__
 /* Needed for cross-platform 'environ' */
-#include <sys/random.h>
 #include <crt_externs.h>
 #include <mach-o/dyld.h>
 #include <mach/mach.h>
@@ -1210,7 +1206,7 @@ void getNetworkTraffic(const IPAddress& ip,
 		struct if_msghdr* ifm = (struct if_msghdr*)next;
 		next += ifm->ifm_msglen;
 
-		if ((ifm->ifm_type = RTM_IFINFO2)) {
+		if (ifm->ifm_type == RTM_IFINFO2) {
 			struct if_msghdr2* if2m = (struct if_msghdr2*)ifm;
 			struct sockaddr_dl* sdl = (struct sockaddr_dl*)(if2m + 1);
 
@@ -1317,23 +1313,25 @@ DiskStatistics getDiskStatistics(std::string const& directory) {
 
 	DiskStatistics diskStats;
 
-	if ((number = (CFNumberRef)CFDictionaryGetValue(stats_dict, CFSTR(kIOBlockStorageDriverStatisticsReadsKey)))) {
+	number = (CFNumberRef)CFDictionaryGetValue(stats_dict, CFSTR(kIOBlockStorageDriverStatisticsReadsKey));
+	if (number) {
 		CFNumberGetValue(number, kCFNumberSInt64Type, &diskStats.reads);
 	}
 
-	if ((number = (CFNumberRef)CFDictionaryGetValue(stats_dict, CFSTR(kIOBlockStorageDriverStatisticsWritesKey)))) {
+	number = (CFNumberRef)CFDictionaryGetValue(stats_dict, CFSTR(kIOBlockStorageDriverStatisticsWritesKey));
+	if (number) {
 		CFNumberGetValue(number, kCFNumberSInt64Type, &diskStats.writes);
 	}
 
 	uint64_t nanoSecs;
-	if ((number =
-	         (CFNumberRef)CFDictionaryGetValue(stats_dict, CFSTR(kIOBlockStorageDriverStatisticsTotalReadTimeKey)))) {
+	number = (CFNumberRef)CFDictionaryGetValue(stats_dict, CFSTR(kIOBlockStorageDriverStatisticsTotalReadTimeKey));
+	if (number) {
 		CFNumberGetValue(number, kCFNumberSInt64Type, &nanoSecs);
 		diskStats.readMilliSecs += nanoSecs / 1000000;
 		diskStats.IOMilliSecs += nanoSecs / 1000000;
 	}
-	if ((number =
-	         (CFNumberRef)CFDictionaryGetValue(stats_dict, CFSTR(kIOBlockStorageDriverStatisticsTotalWriteTimeKey)))) {
+	number = (CFNumberRef)CFDictionaryGetValue(stats_dict, CFSTR(kIOBlockStorageDriverStatisticsTotalWriteTimeKey));
+	if (number) {
 		CFNumberGetValue(number, kCFNumberSInt64Type, &nanoSecs);
 		diskStats.writeMilliSecs += nanoSecs / 1000000;
 		diskStats.IOMilliSecs += nanoSecs / 1000000;
@@ -1843,7 +1841,6 @@ struct OffsetTimer {
 
 #elif defined(__APPLE__)
 
-#include <mach/mach.h>
 #include <mach/mach_time.h>
 
 struct OffsetTimer {
@@ -3142,8 +3139,8 @@ int setEnvironmentVar(const char* name, const char* value, int overwrite) {
 #define getcwd(buf, maxlen) _getcwd(buf, maxlen)
 #endif
 std::string getWorkingDirectory() {
-	char* buf;
-	if ((buf = getcwd(nullptr, 0)) == nullptr) {
+	char* buf = getcwd(nullptr, 0);
+	if (buf == nullptr) {
 		TraceEvent(SevWarnAlways, "GetWorkingDirectoryError").GetLastError();
 		throw platform_error();
 	}
@@ -4023,21 +4020,6 @@ void* checkThread(void* arg) {
 	return nullptr;
 #endif
 }
-
-#if defined(DTRACE_PROBES)
-void fdb_probe_actor_create(const char* name, unsigned long id) {
-	FDB_TRACE_PROBE(actor_create, name, id);
-}
-void fdb_probe_actor_destroy(const char* name, unsigned long id) {
-	FDB_TRACE_PROBE(actor_destroy, name, id);
-}
-void fdb_probe_actor_enter(const char* name, unsigned long id, int index) {
-	FDB_TRACE_PROBE(actor_enter, name, id, index);
-}
-void fdb_probe_actor_exit(const char* name, unsigned long id, int index) {
-	FDB_TRACE_PROBE(actor_exit, name, id, index);
-}
-#endif
 
 void throwExecPathError(Error e, char path[]) {
 	Severity sev = e.code() == error_code_io_error ? SevError : SevWarnAlways;

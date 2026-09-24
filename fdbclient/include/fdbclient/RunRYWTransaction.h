@@ -44,7 +44,7 @@ using RunRYWTransactionResult = decltype(std::declval<Function>()(Reference<Read
 // transaction is retried.
 template <class Function>
 Future<RunRYWTransactionResult<Function>> runRYWTransaction(Database cx, Function func, ExplicitVoid = {}) {
-	Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(cx));
+	auto tr = makeReference<ReadYourWritesTransaction>(cx);
 	while (true) {
 		Error err;
 		try {
@@ -65,7 +65,7 @@ Future<RunRYWTransactionResult<Function>> runRYWTransactionDebug(Database cx,
                                                                  StringRef name,
                                                                  Function func,
                                                                  ExplicitVoid = {}) {
-	Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(cx));
+	auto tr = makeReference<ReadYourWritesTransaction>(cx);
 	while (true) {
 		Error err;
 		try {
@@ -91,8 +91,8 @@ Future<RunRYWTransactionResult<Function>> runRYWTransactionDebug(Database cx,
 // The supplied function should be idempotent. Otherwise, outcome of this function will depend on how many times the
 // transaction is retried.
 template <class Function>
-Future<Void> runRYWTransactionVoid(Database cx, Function func) {
-	Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(cx));
+Future<Void> runRYWTransactionVoid(Database cx, Function func, const char* errorEvent = nullptr) {
+	auto tr = makeReference<ReadYourWritesTransaction>(cx);
 	while (true) {
 		Error err;
 		try {
@@ -102,13 +102,16 @@ Future<Void> runRYWTransactionVoid(Database cx, Function func) {
 		} catch (Error& e) {
 			err = e;
 		}
+		if (errorEvent != nullptr) {
+			TraceEvent(errorEvent).errorUnsuppressed(err);
+		}
 		co_await tr->onError(err);
 	}
 }
 
 template <class Function>
 Future<RunRYWTransactionResult<Function>> runRYWTransactionFailIfLocked(Database cx, Function func, ExplicitVoid = {}) {
-	Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(cx));
+	auto tr = makeReference<ReadYourWritesTransaction>(cx);
 	while (true) {
 		Error err;
 		try {
@@ -126,7 +129,7 @@ Future<RunRYWTransactionResult<Function>> runRYWTransactionFailIfLocked(Database
 
 template <class Function>
 Future<RunRYWTransactionResult<Function>> runRYWTransactionNoRetry(Database cx, Function func, ExplicitVoid = {}) {
-	Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(cx));
+	auto tr = makeReference<ReadYourWritesTransaction>(cx);
 	auto const result = co_await func(tr);
 	co_await tr->commit();
 	co_return result;

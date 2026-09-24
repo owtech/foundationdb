@@ -29,6 +29,7 @@ add_subdirectory(core)
 add_subdirectory(kvstore)
 add_subdirectory(logsystem)
 add_subdirectory(mocks3)
+add_subdirectory(cdcproxy)
 add_subdirectory(clustercontroller)
 add_subdirectory(backupworker)
 add_subdirectory(commitproxy)
@@ -46,9 +47,19 @@ add_subdirectory(tlog)
 add_subdirectory(worker)
 add_subdirectory(workloads)
 
+if(FDB_MEMORY_TRACKER)
+  add_fdbserver_unit_test(fdbserver_memorytracker_test MemoryTrackerTest.cpp
+    fdbserver_core)
+  target_sources(fdbserver_memorytracker_test PRIVATE MemoryTrackerTest.cpp GlobalNewDelete.cpp)
+endif()
+
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/workloads)
 
 add_flow_target(EXECUTABLE NAME fdbserver SRCS ${FDBSERVER_SRCS})
+if(FDB_REGISTER_UNIT_TESTS)
+  # CI also builds explicit server/package targets before invoking CTest.
+  add_dependencies(fdbserver unit_tests)
+endif()
 
 if (WITH_SWIFT)
   # Setup the Swift sources in FDBServer.
@@ -86,7 +97,7 @@ if (WITH_SWIFT)
   )
 
   # TODO: the TBD validation skip is because of swift_job_run_generic, though it seems weird why we need to do that?
-  target_compile_options(fdbserver_swift PRIVATE "$<$<COMPILE_LANGUAGE:Swift>:SHELL:-Xcc -std=c++20 -Xfrontend -validate-tbd-against-ir=none -Xcc -DNO_INTELLISENSE -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/flow/include/headeroverlay.yaml -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/fdbclient/include/headeroverlay.yaml -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/fdbserver/include/headeroverlay.yaml>")
+  target_compile_options(fdbserver_swift PRIVATE "$<$<COMPILE_LANGUAGE:Swift>:SHELL:-Xcc -std=c++20 -Xfrontend -validate-tbd-against-ir=none -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/flow/include/headeroverlay.yaml -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/fdbclient/include/headeroverlay.yaml -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/fdbserver/include/headeroverlay.yaml>")
 
   # Ensure that C++ code in fdbserver can import Swift using a compatibility header.
   include(SwiftToCXXInterop)
@@ -99,7 +110,7 @@ if (WITH_SWIFT)
      "${CMAKE_CURRENT_SOURCE_DIR}/swift_fdbserver_cxx_swift_value_conformance.swift"
      FLAGS
   -Xcc -fmodules-cache-path=${CLANG_MODULE_CACHE_PATH}
-  -Xcc -std=c++20 -Xcc -DNO_INTELLISENSE -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/flow/include/headeroverlay.yaml -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/fdbclient/include/headeroverlay.yaml -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/fdbserver/include/headeroverlay.yaml
+  -Xcc -std=c++20 -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/flow/include/headeroverlay.yaml -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/fdbclient/include/headeroverlay.yaml -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/fdbserver/include/headeroverlay.yaml
   # Important: This is needed to avoid including header that depends on this generated header.
   -Xcc -DFDBSERVER_FORWARD_DECLARE_SWIFT_APIS
   -Xcc -DFOUNDATIONDB_FDBSERVER_STREAM_SUPPORT_H
@@ -111,20 +122,18 @@ if (WITH_SWIFT)
     "${CMAKE_CURRENT_BINARY_DIR}/include/SwiftModules/FDBServer"
      FLAGS
   -Xcc -fmodules-cache-path=${CLANG_MODULE_CACHE_PATH}
-  -Xcc -std=c++20 -Xcc -DNO_INTELLISENSE -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/flow/include/headeroverlay.yaml -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/fdbclient/include/headeroverlay.yaml -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/fdbserver/include/headeroverlay.yaml
+  -Xcc -std=c++20 -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/flow/include/headeroverlay.yaml -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/fdbclient/include/headeroverlay.yaml -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/fdbserver/include/headeroverlay.yaml
   # Important: This is needed to avoid including the generated header while generating it.
   -DFDBSERVER_FORWARD_DECLARE_SWIFT_APIS
   -Xcc -DFDBSERVER_FORWARD_DECLARE_SWIFT_APIS
   )
 
-  add_dependencies(fdbserver_swift_to_cxx_conformance_header flow_swift flow_swift_header flow_actors fdbclient_actors fdbrpc_actors fdbserver_actors fdboptions)
+  add_dependencies(fdbserver_swift_to_cxx_conformance_header flow_swift flow_swift_header fdboptions)
   add_dependencies(fdbserver_swift_header fdbserver_swift_to_cxx_conformance_header)
   add_dependencies(fdbserver_swift fdbserver_swift_header)
 
   add_dependencies(fdbserver_swift flow_swift)
-  add_dependencies(fdbserver_swift flow_actors)
   add_dependencies(fdbserver_swift fdbclient_swift)
-  add_dependencies(fdbserver_swift fdbserver_actors)
   # This does not work! (see rdar://99107402)
   # target_link_libraries(flow PRIVATE flow_swift)
   add_dependencies(fdbserver fdbserver_swift)
@@ -168,6 +177,7 @@ target_link_libraries(fdbserver PRIVATE
   "$<LINK_LIBRARY:WHOLE_ARCHIVE,fdbserver_workloads>"
   fdbserver_worker
   fdbserver_backupworker
+  fdbserver_cdcproxy
   fdbserver_clustercontroller
   fdbserver_commitproxy
   fdbserver_consistencyscan
@@ -227,3 +237,8 @@ if(NOT OPEN_FOR_IDE)
 endif()
 
 target_link_libraries(fdbserver PUBLIC fdbctl)
+
+if(NOT FOUNDATIONDB_CROSS_COMPILING) # FIXME(swift): make this work when
+                                     # x-compiling.
+  add_subdirectory(bench EXCLUDE_FROM_ALL)
+endif()

@@ -70,7 +70,7 @@ if(USE_GPERFTOOLS)
 endif()
 
 add_compile_options(-DCMAKE_BUILD)
-add_compile_definitions(BOOST_ERROR_CODE_HEADER_ONLY BOOST_SYSTEM_NO_DEPRECATED BOOST_BIND_GLOBAL_PLACEHOLDERS)
+add_compile_definitions(BOOST_ERROR_CODE_HEADER_ONLY BOOST_SYSTEM_NO_DEPRECATED)
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
@@ -130,10 +130,6 @@ if(USE_CLANG_TIDY)
 
   string(REPLACE ";" " " _clang_tidy_command_display "${_clang_tidy_command}")
   message(STATUS "clang-tidy enabled for C/C++ compilation: ${_clang_tidy_command_display}")
-endif()
-
-if(NOT OPEN_FOR_IDE)
-  add_compile_definitions(NO_INTELLISENSE)
 endif()
 
 if(NOT WIN32)

@@ -18,7 +18,7 @@
  * limitations under the License.
  */
 
-#include "fdbclient/NativeAPI.actor.h"
+#include "fdbclient/NativeAPI.h"
 
 #include <functional>
 #include <iterator>
@@ -35,7 +35,6 @@
 #include "fdbclient/FDBTypes.h"
 #include "fdbrpc/MultiInterface.h"
 
-#include "fdbclient/AnnotateActor.h"
 #include "fdbclient/ClusterInterface.h"
 #include "fdbclient/CoordinationInterface.h"
 #include "fdbclient/CommitTransaction.h"
@@ -56,7 +55,7 @@
 #include "flow/IRandom.h"
 #include "flow/Trace.h"
 #include "flow/flow.h"
-#include "flow/genericactors.actor.h"
+#include "flow/genericactors.h"
 #include "flow/Platform.h"
 #include "fdbclient/Tracing.h"
 #include "flow/network.h"
@@ -224,6 +223,7 @@ void DatabaseContext::getLatestCommitVersion(const StorageServerInterface& ssi,
 	if (readVersion > ssVersionVectorCache.getMaxVersion()) {
 		TraceEvent(SevError, "ReadVersionExceedsVersionVectorMax")
 		    .detail("ReadVersion", readVersion)
+		    .setMaxFieldLength(495)
 		    .detail("VersionVector", ssVersionVectorCache.toString());
 		if (g_network->isSimulated()) {
 			ASSERT(false);
@@ -247,8 +247,11 @@ void DatabaseContext::getLatestCommitVersions(const Reference<LocationInfo>& loc
 	latestCommitVersions.clear();
 
 	if (info->readOptions.present() && info->readOptions.get().debugID.present()) {
-		g_traceBatch.addEvent(
-		    "TransactionDebug", info->readOptions.get().debugID.get().first(), "NativeAPI.getLatestCommitVersions");
+		g_traceBatch.addEvent("TransactionDebug",
+		                      info->readOptions.get().debugID.get().first(),
+		                      "NativeAPI.getLatestCommitVersions",
+		                      info->spanContext.traceID,
+		                      info->spanContext.spanID);
 	}
 
 	if (!info->readVersionObtainedFromGrvProxy) {
@@ -265,6 +268,7 @@ void DatabaseContext::getLatestCommitVersions(const Reference<LocationInfo>& loc
 		} else {
 			TraceEvent(SevError, "GetLatestCommitVersions")
 			    .detail("ReadVersion", info->readVersion())
+			    .setMaxFieldLength(495)
 			    .detail("VersionVector", ssVersionVectorCache.toString());
 			ASSERT(false);
 		}
@@ -614,13 +618,19 @@ struct TrInfoChunk {
 static const Key CLIENT_LATENCY_INFO_PREFIX = "client_latency/"_sr;
 static const Key CLIENT_LATENCY_INFO_CTR_PREFIX = "client_latency_counter/"_sr;
 
+static void resetClientStatusTransaction(Transaction* tr) {
+	tr->reset();
+	// Profiling maintenance must not generate more records for itself to persist.
+	tr->trState->trLogInfo.clear();
+}
+
 static Future<Void> transactionInfoCommitActor(Transaction* tr, std::vector<TrInfoChunk>* chunks) {
 	const Key clientLatencyAtomicCtr = CLIENT_LATENCY_INFO_CTR_PREFIX.withPrefix(fdbClientInfoPrefixRange.begin);
 	int retryCount = 0;
 	while (true) {
 		Error err;
 		try {
-			tr->reset();
+			resetClientStatusTransaction(tr);
 			tr->setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
 			tr->setOption(FDBTransactionOptions::LOCK_AWARE);
 			[[maybe_unused]] Future<Standalone<StringRef>> vstamp = tr->getVersionstamp();
@@ -654,7 +664,7 @@ static Future<Void> delExcessClntTxnEntriesActor(Transaction* tr, int64_t client
 	while (true) {
 		Error err;
 		try {
-			tr->reset();
+			resetClientStatusTransaction(tr);
 			tr->setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
 			tr->setOption(FDBTransactionOptions::LOCK_AWARE);
 			Optional<Value> ctrValue = co_await tr->get(KeyRef(clientLatencyAtomicCtr), Snapshot::True);
@@ -847,8 +857,12 @@ Future<Void> assertFailure(GrvProxyInterface remote, Future<ErrorOr<GetReadVersi
 Future<Void> attemptGRVFromOldProxies(std::vector<GrvProxyInterface> oldProxies,
                                       std::vector<GrvProxyInterface> newProxies) {
 	auto debugID = nondeterministicRandom()->randomUniqueID();
-	g_traceBatch.addEvent("AttemptGRVFromOldProxyDebug", debugID.first(), "NativeAPI.attemptGRVFromOldProxies.Start");
 	Span span("NAPI:VerifyCausalReadRisky"_loc);
+	g_traceBatch.addEvent("AttemptGRVFromOldProxyDebug",
+	                      debugID.first(),
+	                      "NativeAPI.attemptGRVFromOldProxies.Start",
+	                      span.context.traceID,
+	                      span.context.spanID);
 	std::vector<Future<Void>> replies;
 	replies.reserve(oldProxies.size());
 	GetReadVersionRequest req(
@@ -861,8 +875,8 @@ Future<Void> attemptGRVFromOldProxies(std::vector<GrvProxyInterface> oldProxies,
 			evt.detail(k.c_str(), proxies[i].id());
 		}
 	};
-	traceProxies(oldProxies, "OldProxy"s);
-	traceProxies(newProxies, "NewProxy"s);
+	traceProxies(oldProxies, std::string{ "OldProxy" });
+	traceProxies(newProxies, std::string{ "NewProxy" });
 	evt.log();
 	for (auto& i : oldProxies) {
 		req.reply = ReplyPromise<GetReadVersionReply>();

@@ -24,9 +24,9 @@
 
 #include "fdbclient/FDBTypes.h"
 #include "fdbrpc/DDSketch.h"
-#include "fdbclient/NativeAPI.actor.h"
+#include "fdbclient/NativeAPI.h"
 #include "fdbserver/core/TesterInterface.h"
-#include "fdbserver/core/WorkerInterface.actor.h"
+#include "fdbserver/core/WorkerInterface.h"
 #include "fdbserver/tester/workloads.h"
 #include "BulkSetup.h"
 #include "ReadWriteWorkload.h"

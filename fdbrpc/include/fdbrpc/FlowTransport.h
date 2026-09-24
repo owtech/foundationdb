@@ -24,10 +24,11 @@
 
 #include <algorithm>
 #include <map>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "fdbrpc/DDSketch.h"
-#include "fdbrpc/HealthMonitor.h"
-#include "flow/genericactors.actor.h"
+#include "flow/genericactors.h"
 #include "flow/network.h"
 #include "flow/FileIdentifier.h"
 #include "flow/ProtocolVersion.h"
@@ -37,8 +38,14 @@
 
 class IConnection;
 
-// WL: Well-known
-enum { WLTOKEN_ENDPOINT_NOT_FOUND = 0, WLTOKEN_PING_PACKET, WLTOKEN_UNAUTHORIZED_ENDPOINT, WLTOKEN_FIRST_AVAILABLE };
+// Applications own IDs starting at WLTOKEN_FIRST_AVAILABLE and reserve their
+// exclusive upper bound when creating a transport.
+enum {
+	WLTOKEN_ENDPOINT_NOT_FOUND = 0,
+	WLTOKEN_PING_PACKET = 1,
+	WLTOKEN_UNAUTHORIZED_ENDPOINT = 2,
+	WLTOKEN_FIRST_AVAILABLE = 3
+};
 
 class Endpoint {
 public:
@@ -52,7 +59,7 @@ public:
 	NetworkAddressList addresses;
 	Token token{};
 
-	Endpoint() {}
+	Endpoint() = default;
 	Endpoint(const NetworkAddressList& addresses, Token token) : addresses(addresses), token(token) {
 		choosePrimaryAddress();
 	}
@@ -293,7 +300,8 @@ public:
 	Endpoint loadedEndpoint(const UID& token);
 	Future<Void> loadedDisconnect();
 
-	HealthMonitor* healthMonitor();
+	// Returns peers whose recent failed connections have already been evicted from the transport peer map.
+	std::unordered_set<NetworkAddress> getRecentClosedPeers();
 
 	bool currentDeliveryPeerIsTrusted() const;
 	NetworkAddress currentDeliveryPeerAddress() const;

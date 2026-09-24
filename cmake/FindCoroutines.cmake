@@ -248,8 +248,6 @@ if(CXX_COROUTINES_HAVE_COROUTINES)
     ]] code @ONLY)
 
   # Try to compile a simple coroutines program without any compiler flags
-  set(CMAKE_REQUIRED_LIBRARIES ${CMAKE_THREAD_LIBS_INIT})
-
   check_cxx_source_compiles("${code}" CXX_COROUTINES_NO_AWAIT_NEEDED)
 
   set(can_link ${CXX_COROUTINES_NO_AWAIT_NEEDED})
@@ -260,8 +258,6 @@ if(CXX_COROUTINES_HAVE_COROUTINES)
     check_cxx_source_compiles("${code}" CXX_COROUTINES_AWAIT_NEEDED)
     set(can_link "${CXX_COROUTINES_AWAIT_NEEDED}")
   endif()
-
-  unset(CMAKE_REQUIRED_LIBRARIES)
 
   if(can_link)
     add_library(std::coroutines INTERFACE IMPORTED)

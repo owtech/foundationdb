@@ -23,13 +23,13 @@
 #include "fdbclient/Status.h"
 #include "fdbclient/StatusClient.h"
 #include "fdbclient/DatabaseContext.h"
-#include "fdbclient/NativeAPI.actor.h"
+#include "fdbclient/NativeAPI.h"
 #include <ctime>
 #include <climits>
 #include "fdbrpc/simulator.h"
 #include "flow/IAsyncFile.h"
 #include "flow/flow.h"
-#include "flow/genericactors.actor.h"
+#include "flow/genericactors.h"
 #include "flow/Hash3.h"
 #include <numeric>
 #include "fdbclient/ManagementAPI.h"
@@ -106,6 +106,19 @@ bool copyDefaultParameters(Reference<Task> source, Reference<Task> dest) {
 	}
 
 	return false;
+}
+
+Future<Key> addTaskWithOptionalDependency(Reference<ReadYourWritesTransaction> tr,
+                                          Reference<TaskBucket> taskBucket,
+                                          Reference<Task> task,
+                                          Key validationKey,
+                                          Reference<TaskFuture> waitFor) {
+	if (!waitFor) {
+		co_return taskBucket->addTask(tr, task, validationKey, task->params[BackupAgentBase::keyFolderId]);
+	}
+
+	co_await waitFor->onSetAddTask(tr, taskBucket, task, validationKey, task->params[BackupAgentBase::keyFolderId]);
+	co_return "OnSetAddTask"_sr;
 }
 
 template <class Tr>
@@ -188,26 +201,15 @@ struct BackupRangeTaskFunc : TaskFuncBase {
 		task->params[BackupAgentBase::keyBeginKey] = begin;
 		task->params[BackupAgentBase::keyEndKey] = end;
 
-		if (!waitFor) {
-			co_return taskBucket->addTask(tr,
-			                              task,
-			                              parentTask->params[Task::reservedTaskParamValidKey],
-			                              task->params[BackupAgentBase::keyFolderId]);
-		}
-
-		co_await waitFor->onSetAddTask(tr,
-		                               taskBucket,
-		                               task,
-		                               parentTask->params[Task::reservedTaskParamValidKey],
-		                               task->params[BackupAgentBase::keyFolderId]);
-		co_return "OnSetAddTask"_sr;
+		co_return co_await addTaskWithOptionalDependency(
+		    tr, taskBucket, task, parentTask->params[Task::reservedTaskParamValidKey], waitFor);
 	}
 
 	static Future<Void> _execute(Database cx,
 	                             Reference<TaskBucket> taskBucket,
 	                             Reference<FutureBucket> futureBucket,
 	                             Reference<Task> task) {
-		Reference<FlowLock> lock(new FlowLock(CLIENT_KNOBS->BACKUP_LOCK_BYTES));
+		auto lock = makeReference<FlowLock>(CLIENT_KNOBS->BACKUP_LOCK_BYTES);
 		Subspace conf = Subspace(databaseBackupPrefixRange.begin)
 		                    .get(BackupAgentBase::keyConfig)
 		                    .get(task->params[BackupAgentBase::keyConfigLogUid]);
@@ -582,19 +584,8 @@ struct FinishFullBackupTaskFunc : TaskFuncBase {
 
 		copyDefaultParameters(parentTask, task);
 
-		if (!waitFor) {
-			co_return taskBucket->addTask(tr,
-			                              task,
-			                              parentTask->params[Task::reservedTaskParamValidKey],
-			                              task->params[BackupAgentBase::keyFolderId]);
-		}
-
-		co_await waitFor->onSetAddTask(tr,
-		                               taskBucket,
-		                               task,
-		                               parentTask->params[Task::reservedTaskParamValidKey],
-		                               task->params[BackupAgentBase::keyFolderId]);
-		co_return "OnSetAddTask"_sr;
+		co_return co_await addTaskWithOptionalDependency(
+		    tr, taskBucket, task, parentTask->params[Task::reservedTaskParamValidKey], waitFor);
 	}
 
 	StringRef getName() const override { return name; };
@@ -642,7 +633,7 @@ struct EraseLogRangeTaskFunc : TaskFuncBase {
 
 		co_await checkTaskVersion(cx, task, EraseLogRangeTaskFunc::name, EraseLogRangeTaskFunc::version);
 
-		Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(taskBucket->src));
+		auto tr = makeReference<ReadYourWritesTransaction>(taskBucket->src);
 		while (true) {
 			Error err;
 			bool hasErr = false;
@@ -683,19 +674,8 @@ struct EraseLogRangeTaskFunc : TaskFuncBase {
 		    BinaryWriter::toValue(1, Unversioned()); // FIXME: remove in 6.X, only needed for 5.2 backward compatibility
 		task->params[DatabaseBackupAgent::keyEndVersion] = BinaryWriter::toValue(endVersion, Unversioned());
 
-		if (!waitFor) {
-			co_return taskBucket->addTask(tr,
-			                              task,
-			                              parentTask->params[Task::reservedTaskParamValidKey],
-			                              task->params[BackupAgentBase::keyFolderId]);
-		}
-
-		co_await waitFor->onSetAddTask(tr,
-		                               taskBucket,
-		                               task,
-		                               parentTask->params[Task::reservedTaskParamValidKey],
-		                               task->params[BackupAgentBase::keyFolderId]);
-		co_return "OnSetAddTask"_sr;
+		co_return co_await addTaskWithOptionalDependency(
+		    tr, taskBucket, task, parentTask->params[Task::reservedTaskParamValidKey], waitFor);
 	}
 
 	static Future<Void> _finish(Reference<ReadYourWritesTransaction> tr,
@@ -847,7 +827,7 @@ struct CopyLogRangeTaskFunc : TaskFuncBase {
 				if (nextVersionAfterBreak.present()) {
 					co_return nextVersionAfterBreak;
 				}
-				if (!isTimeoutOccurred && timer_monotonic() >= breakTime && lastKey.present()) {
+				if (!isTimeoutOccurred && g_network->timer_monotonic() >= breakTime && lastKey.present()) {
 					// timeout occurred
 					// continue to copy mutations with the
 					// same version before break because
@@ -899,7 +879,7 @@ struct CopyLogRangeTaskFunc : TaskFuncBase {
 		std::vector<Future<Void>> rc;
 		std::vector<Reference<FlowLock>> locks;
 		Version nextVersion = beginVersion;
-		double breakTime = timer_monotonic() + CLIENT_KNOBS->COPY_LOG_TASK_DURATION_SECONDS;
+		double breakTime = g_network->timer_monotonic() + CLIENT_KNOBS->COPY_LOG_TASK_DURATION_SECONDS;
 		int rangeN = 0;
 
 		while (true) {
@@ -965,19 +945,8 @@ struct CopyLogRangeTaskFunc : TaskFuncBase {
 		task->params[DatabaseBackupAgent::keyBeginVersion] = BinaryWriter::toValue(beginVersion, Unversioned());
 		task->params[DatabaseBackupAgent::keyEndVersion] = BinaryWriter::toValue(endVersion, Unversioned());
 
-		if (!waitFor) {
-			co_return taskBucket->addTask(tr,
-			                              task,
-			                              parentTask->params[Task::reservedTaskParamValidKey],
-			                              task->params[BackupAgentBase::keyFolderId]);
-		}
-
-		co_await waitFor->onSetAddTask(tr,
-		                               taskBucket,
-		                               task,
-		                               parentTask->params[Task::reservedTaskParamValidKey],
-		                               task->params[BackupAgentBase::keyFolderId]);
-		co_return "OnSetAddTask"_sr;
+		co_return co_await addTaskWithOptionalDependency(
+		    tr, taskBucket, task, parentTask->params[Task::reservedTaskParamValidKey], waitFor);
 	}
 
 	static Future<Void> _finish(Reference<ReadYourWritesTransaction> tr,
@@ -1127,19 +1096,8 @@ struct CopyLogsTaskFunc : TaskFuncBase {
 		task->params[BackupAgentBase::keyBeginVersion] = BinaryWriter::toValue(beginVersion, Unversioned());
 		task->params[DatabaseBackupAgent::keyPrevBeginVersion] = BinaryWriter::toValue(prevBeginVersion, Unversioned());
 
-		if (!waitFor) {
-			co_return taskBucket->addTask(tr,
-			                              task,
-			                              parentTask->params[Task::reservedTaskParamValidKey],
-			                              task->params[BackupAgentBase::keyFolderId]);
-		}
-
-		co_await waitFor->onSetAddTask(tr,
-		                               taskBucket,
-		                               task,
-		                               parentTask->params[Task::reservedTaskParamValidKey],
-		                               task->params[BackupAgentBase::keyFolderId]);
-		co_return "OnSetAddTask"_sr;
+		co_return co_await addTaskWithOptionalDependency(
+		    tr, taskBucket, task, parentTask->params[Task::reservedTaskParamValidKey], waitFor);
 	}
 
 	StringRef getName() const override { return name; };
@@ -1208,7 +1166,7 @@ struct FinishedFullBackupTaskFunc : TaskFuncBase {
 			}
 		}
 
-		Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(taskBucket->src));
+		auto tr = makeReference<ReadYourWritesTransaction>(taskBucket->src);
 		Key logUidValue = task->params[DatabaseBackupAgent::keyConfigLogUid];
 		Key destUidValue = task->params[BackupAgentBase::destUid];
 		Version backupUid =
@@ -1250,19 +1208,8 @@ struct FinishedFullBackupTaskFunc : TaskFuncBase {
 
 		copyDefaultParameters(parentTask, task);
 
-		if (!waitFor) {
-			co_return taskBucket->addTask(tr,
-			                              task,
-			                              parentTask->params[Task::reservedTaskParamValidKey],
-			                              task->params[BackupAgentBase::keyFolderId]);
-		}
-
-		co_await waitFor->onSetAddTask(tr,
-		                               taskBucket,
-		                               task,
-		                               parentTask->params[Task::reservedTaskParamValidKey],
-		                               task->params[BackupAgentBase::keyFolderId]);
-		co_return "OnSetAddTask"_sr;
+		co_return co_await addTaskWithOptionalDependency(
+		    tr, taskBucket, task, parentTask->params[Task::reservedTaskParamValidKey], waitFor);
 	}
 
 	static Future<Void> _finish(Reference<ReadYourWritesTransaction> tr,
@@ -1409,19 +1356,8 @@ struct CopyDiffLogsTaskFunc : TaskFuncBase {
 		task->params[DatabaseBackupAgent::keyBeginVersion] = BinaryWriter::toValue(beginVersion, Unversioned());
 		task->params[DatabaseBackupAgent::keyPrevBeginVersion] = BinaryWriter::toValue(prevBeginVersion, Unversioned());
 
-		if (!waitFor) {
-			co_return taskBucket->addTask(tr,
-			                              task,
-			                              parentTask->params[Task::reservedTaskParamValidKey],
-			                              task->params[BackupAgentBase::keyFolderId]);
-		}
-
-		co_await waitFor->onSetAddTask(tr,
-		                               taskBucket,
-		                               task,
-		                               parentTask->params[Task::reservedTaskParamValidKey],
-		                               task->params[BackupAgentBase::keyFolderId]);
-		co_return "OnSetAddTask"_sr;
+		co_return co_await addTaskWithOptionalDependency(
+		    tr, taskBucket, task, parentTask->params[Task::reservedTaskParamValidKey], waitFor);
 	}
 
 	StringRef getName() const override { return name; };
@@ -1611,7 +1547,7 @@ struct OldCopyLogRangeTaskFunc : TaskFuncBase {
 	                             Reference<TaskBucket> taskBucket,
 	                             Reference<FutureBucket> futureBucket,
 	                             Reference<Task> task) {
-		Reference<FlowLock> lock(new FlowLock(CLIENT_KNOBS->BACKUP_LOCK_BYTES));
+		auto lock = makeReference<FlowLock>(CLIENT_KNOBS->BACKUP_LOCK_BYTES);
 
 		co_await checkTaskVersion(cx, task, OldCopyLogRangeTaskFunc::name, OldCopyLogRangeTaskFunc::version);
 
@@ -1670,19 +1606,8 @@ struct OldCopyLogRangeTaskFunc : TaskFuncBase {
 		task->params[DatabaseBackupAgent::keyBeginVersion] = BinaryWriter::toValue(beginVersion, Unversioned());
 		task->params[DatabaseBackupAgent::keyEndVersion] = BinaryWriter::toValue(endVersion, Unversioned());
 
-		if (!waitFor) {
-			co_return taskBucket->addTask(tr,
-			                              task,
-			                              parentTask->params[Task::reservedTaskParamValidKey],
-			                              task->params[BackupAgentBase::keyFolderId]);
-		}
-
-		co_await waitFor->onSetAddTask(tr,
-		                               taskBucket,
-		                               task,
-		                               parentTask->params[Task::reservedTaskParamValidKey],
-		                               task->params[BackupAgentBase::keyFolderId]);
-		co_return "OnSetAddTask"_sr;
+		co_return co_await addTaskWithOptionalDependency(
+		    tr, taskBucket, task, parentTask->params[Task::reservedTaskParamValidKey], waitFor);
 	}
 
 	static Future<Void> _finish(Reference<ReadYourWritesTransaction> tr,
@@ -1724,7 +1649,7 @@ struct AbortOldBackupTaskFunc : TaskFuncBase {
 	                             Reference<FutureBucket> futureBucket,
 	                             Reference<Task> task) {
 		DatabaseBackupAgent srcDrAgent(taskBucket->src);
-		Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(cx));
+		auto tr = makeReference<ReadYourWritesTransaction>(cx);
 		Key tagNameKey;
 
 		while (true) {
@@ -1772,19 +1697,8 @@ struct AbortOldBackupTaskFunc : TaskFuncBase {
 
 		copyDefaultParameters(parentTask, task);
 
-		if (!waitFor) {
-			co_return taskBucket->addTask(tr,
-			                              task,
-			                              parentTask->params[Task::reservedTaskParamValidKey],
-			                              task->params[BackupAgentBase::keyFolderId]);
-		}
-
-		co_await waitFor->onSetAddTask(tr,
-		                               taskBucket,
-		                               task,
-		                               parentTask->params[Task::reservedTaskParamValidKey],
-		                               task->params[BackupAgentBase::keyFolderId]);
-		co_return "OnSetAddTask"_sr;
+		co_return co_await addTaskWithOptionalDependency(
+		    tr, taskBucket, task, parentTask->params[Task::reservedTaskParamValidKey], waitFor);
 	}
 
 	StringRef getName() const override { return name; };
@@ -1828,7 +1742,7 @@ struct CopyDiffLogsUpgradeTaskFunc : TaskFuncBase {
 
 		// Retrieve backupRanges
 		Standalone<VectorRef<KeyRangeRef>> backupRanges;
-		Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(cx));
+		auto tr = makeReference<ReadYourWritesTransaction>(cx);
 		while (true) {
 			Error err;
 			bool hasErr = false;
@@ -1857,7 +1771,7 @@ struct CopyDiffLogsUpgradeTaskFunc : TaskFuncBase {
 
 		// Set destUidValue and versionKey on src side
 		Key destUidValue(logUidValue);
-		Reference<ReadYourWritesTransaction> srcTr(new ReadYourWritesTransaction(taskBucket->src));
+		auto srcTr = makeReference<ReadYourWritesTransaction>(taskBucket->src);
 		while (true) {
 			Error err;
 			bool hasErr = false;
@@ -2066,19 +1980,8 @@ struct BackupRestorableTaskFunc : TaskFuncBase {
 
 		copyDefaultParameters(parentTask, task);
 
-		if (!waitFor) {
-			co_return taskBucket->addTask(tr,
-			                              task,
-			                              parentTask->params[Task::reservedTaskParamValidKey],
-			                              task->params[BackupAgentBase::keyFolderId]);
-		}
-
-		co_await waitFor->onSetAddTask(tr,
-		                               taskBucket,
-		                               task,
-		                               parentTask->params[Task::reservedTaskParamValidKey],
-		                               task->params[BackupAgentBase::keyFolderId]);
-		co_return "OnSetAddTask"_sr;
+		co_return co_await addTaskWithOptionalDependency(
+		    tr, taskBucket, task, parentTask->params[Task::reservedTaskParamValidKey], waitFor);
 	}
 
 	StringRef getName() const override { return name; };
@@ -2117,7 +2020,7 @@ struct StartFullBackupTaskFunc : TaskFuncBase {
 		    task->params[DatabaseBackupAgent::keyConfigBackupRanges], IncludeVersion());
 		Key beginVersionKey;
 
-		Reference<ReadYourWritesTransaction> srcTr(new ReadYourWritesTransaction(taskBucket->src));
+		auto srcTr = makeReference<ReadYourWritesTransaction>(taskBucket->src);
 		while (true) {
 			Error err;
 			bool hasErr = false;
@@ -2138,8 +2041,7 @@ struct StartFullBackupTaskFunc : TaskFuncBase {
 						if (uidRange == targetRange) {
 							destUidValue = it.value;
 							found = true;
-							CODE_PROBE(targetRange == getDefaultBackupSharedRange(),
-							           "DR mutation sharing with default backup");
+							CODE_PROBE(isDefaultBackup(backupRanges), "DR mutation sharing with default backup");
 							break;
 						}
 					}
@@ -2175,7 +2077,7 @@ struct StartFullBackupTaskFunc : TaskFuncBase {
 		}
 
 		while (true) {
-			Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(cx));
+			auto tr = makeReference<ReadYourWritesTransaction>(cx);
 			Error err;
 			bool hasErr = false;
 			try {
@@ -2211,7 +2113,7 @@ struct StartFullBackupTaskFunc : TaskFuncBase {
 			}
 		}
 
-		Reference<ReadYourWritesTransaction> srcTr2(new ReadYourWritesTransaction(taskBucket->src));
+		auto srcTr2 = makeReference<ReadYourWritesTransaction>(taskBucket->src);
 		while (true) {
 			Error err;
 			bool hasErr = false;
@@ -2254,7 +2156,7 @@ struct StartFullBackupTaskFunc : TaskFuncBase {
 			}
 		}
 
-		Reference<ReadYourWritesTransaction> srcTr3(new ReadYourWritesTransaction(taskBucket->src));
+		auto srcTr3 = makeReference<ReadYourWritesTransaction>(taskBucket->src);
 		while (true) {
 			Error err;
 			bool hasErr = false;
@@ -2352,25 +2254,11 @@ struct StartFullBackupTaskFunc : TaskFuncBase {
 		task->params[DatabaseBackupAgent::keyDatabasesInSync] =
 		    backupAction == DatabaseBackupAgent::PreBackupAction::NONE ? "t"_sr : "f"_sr;
 
-		if (!waitFor) {
-			co_return taskBucket->addTask(tr,
-			                              task,
-			                              Subspace(databaseBackupPrefixRange.begin)
-			                                  .get(BackupAgentBase::keyConfig)
-			                                  .get(logUid)
-			                                  .pack(BackupAgentBase::keyFolderId),
-			                              task->params[BackupAgentBase::keyFolderId]);
-		}
-
-		co_await waitFor->onSetAddTask(tr,
-		                               taskBucket,
-		                               task,
-		                               Subspace(databaseBackupPrefixRange.begin)
-		                                   .get(BackupAgentBase::keyConfig)
-		                                   .get(logUid)
-		                                   .pack(BackupAgentBase::keyFolderId),
-		                               task->params[BackupAgentBase::keyFolderId]);
-		co_return "OnSetAddTask"_sr;
+		Key validationKey = Subspace(databaseBackupPrefixRange.begin)
+		                        .get(BackupAgentBase::keyConfig)
+		                        .get(logUid)
+		                        .pack(BackupAgentBase::keyFolderId);
+		co_return co_await addTaskWithOptionalDependency(tr, taskBucket, task, validationKey, waitFor);
 	}
 
 	StringRef getName() const override { return name; };
@@ -2495,7 +2383,7 @@ public:
 		    .detail("LogUid", BinaryWriter::toValue(logUid, Unversioned()).printable());
 
 		while (true) {
-			Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(cx));
+			auto tr = makeReference<ReadYourWritesTransaction>(cx);
 
 			while (true) {
 				Error err;
@@ -2542,7 +2430,7 @@ public:
 		                    .pack(DatabaseBackupAgent::keyStateStatus);
 
 		while (true) {
-			Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(cx));
+			auto tr = makeReference<ReadYourWritesTransaction>(cx);
 			tr->setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
 			tr->setOption(FDBTransactionOptions::LOCK_AWARE);
 
@@ -2581,7 +2469,7 @@ public:
 		                    .pack(DatabaseBackupAgent::keyStateStatus);
 
 		while (true) {
-			Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(cx));
+			auto tr = makeReference<ReadYourWritesTransaction>(cx);
 			tr->setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
 			tr->setOption(FDBTransactionOptions::LOCK_AWARE);
 
@@ -2952,7 +2840,7 @@ public:
 	                                AbortOldBackup abortOldBackup,
 	                                DstOnly dstOnly,
 	                                WaitForDestUID waitForDestUID) {
-		Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(cx));
+		auto tr = makeReference<ReadYourWritesTransaction>(cx);
 		Key logUidValue;
 		Key destUidValue;
 		UID logUid;
@@ -3066,7 +2954,7 @@ public:
 
 		if (!dstOnly) {
 			Future<Void> partialTimeout = partial ? delay(30.0) : Never();
-			Reference<ReadYourWritesTransaction> srcTr(new ReadYourWritesTransaction(backupAgent->taskBucket->src));
+			auto srcTr = makeReference<ReadYourWritesTransaction>(backupAgent->taskBucket->src);
 
 			while (true) {
 				Error err;
@@ -3166,7 +3054,7 @@ public:
 	}
 
 	static Future<std::string> getStatus(DatabaseBackupAgent* backupAgent, Database cx, int errorLimit, Key tagName) {
-		Reference<ReadYourWritesTransaction> tr(new ReadYourWritesTransaction(cx));
+		auto tr = makeReference<ReadYourWritesTransaction>(cx);
 		tr->setOption(FDBTransactionOptions::LOCK_AWARE);
 		std::string statusText;
 		int retries = 0;
