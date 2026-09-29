@@ -1,5 +1,5 @@
 /*
- *RocksDBCheckpointUtils.cpp
+ * RocksDBCheckpointUtils.cpp
  *
  * This source file is part of the FoundationDB open source project
  *
@@ -18,7 +18,7 @@
  * limitations under the License.
  */
 
-#include "fdbserver/core/RocksDBCheckpointUtils.h"
+#include "fdbserver/checkpoint/RocksDBCheckpointUtils.h"
 
 #ifdef WITH_ROCKSDB
 #include <rocksdb/db.h>
@@ -508,10 +508,11 @@ void RocksDBColumnFamilyReader::Reader::action(RocksDBColumnFamilyReader::Reader
 		return;
 	}
 
-	a.done.send(Void());
 	TraceEvent(SevDebug, "RocksDBCheckpointReaderInitEnd", logId)
 	    .detail("Path", path)
 	    .detail("ColumnFamily", cf->GetName());
+	// Readiness lets another thread close the column family, so finish accessing it before publishing.
+	a.done.send(Void());
 }
 
 void RocksDBColumnFamilyReader::Reader::action(RocksDBColumnFamilyReader::Reader::CloseAction& a) {
@@ -891,7 +892,7 @@ RangeResult RocksDBSstFileReader::getRange(const KeyRange& range) {
 
 class RocksDBCheckpointByteSampleReader : public ICheckpointByteSampleReader {
 public:
-	explicit(false) RocksDBCheckpointByteSampleReader(const CheckpointMetaData& checkpoint);
+	explicit RocksDBCheckpointByteSampleReader(const CheckpointMetaData& checkpoint);
 	~RocksDBCheckpointByteSampleReader() override = default;
 
 	KeyValue next() override;
