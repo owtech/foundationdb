@@ -59,8 +59,8 @@ conflicts.
 
 For multi-version client support, use the separately named CPack versioned
 client RPMs. Their names have the form
-``foundationdb<version>-clients-1.versioned.<architecture>.rpm`` and their
-files are installed below ``/usr/lib/foundationdb-<version>/``. Non-release
+``foundationdb-<version>-clients-versioned-<version>-1.<architecture>.rpm`` and their
+files are installed below ``/usr/lib/foundationdb-<version>/``.
 builds may include build-time and prerelease text in the package name and
 directory. Install each versioned package with ``rpm -ivh`` so the packages
 can remain installed simultaneously. If a release does not publish its
