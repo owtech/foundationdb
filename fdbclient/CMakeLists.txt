@@ -74,10 +74,6 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/versions.h.cmake ${CMAKE_CURRENT_BINA
 add_dependencies(fdbclient fdboptions)
 target_link_libraries(fdbclient PUBLIC fdbrpc msgpack PRIVATE rapidxml)
 
-if(WITH_TLS)
-  target_link_libraries(fdbclient PRIVATE OpenSSL::Crypto)
-endif()
-
 add_flow_target(EXECUTABLE NAME s3client SRCS S3Client_cli.actor.cpp)
 target_include_directories(s3client PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
