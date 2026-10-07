@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Calculate versions
         id: vers
@@ -30,12 +30,12 @@ jobs:
       - name: Create Draft Release
         if: ${{ steps.vers.outputs.release_flag == 'ON' }}
         id: create_release
-        uses: actions/create-release@v1
+        uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: "${{ steps.vers.outputs.full_ver }}"
-          release_name: "v${{ steps.vers.outputs.full_ver }}"
+          name: "v${{ steps.vers.outputs.full_ver }}"
           draft: true
           prerelease: false
 
@@ -54,16 +54,16 @@ jobs:
             for: linux
             prepare: "debian-based"
             build_on: linux
-            use_image: ghcr.io/owtech/foundationdb-build:7.3.0-1.ow.build
-            parallel: 2
-
+            parallel: 5
+            image: foundationdb-build:8.0.0-0.ow.build
+            owner: ${GITHUB_REPOSITORY_OWNER@L}
     runs-on: ${{ matrix.run_on }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Set building repo
-        run: | 
+        run: |
           echo "use_image=ghcr.io/${{matrix.owner}}/${{matrix.image}}" >> "$GITHUB_ENV"
 
       - name: Build
@@ -97,7 +97,7 @@ jobs:
       #  run: ctest --output-on-failure -V
 
       - name: Upload result
-        uses: nanoufo/action-upload-artifacts-and-release-assets@v1.8
+        uses: nanoufo/action-upload-artifacts-and-release-assets@v2
         with:
           path: |
             ${{ env.BLD_DIR }}/linux/packages/*${{needs.calc_ver.outputs.full_ver}}*
@@ -109,15 +109,15 @@ jobs:
     needs: [calc_ver, build]
     runs-on: ubuntu-latest
     env:
-      RPM_IMAGE: oraclelinux:8
-      DEB_IMAGE: debian:10
+      RPM_IMAGE: oraclelinux:9
+      DEB_IMAGE: debian:12
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Download the foundationdb distro
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: ${{github.workspace}}/bld/download
 
@@ -153,10 +153,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Download the foundationdb distro
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: ${{github.workspace}}/bld/download
 
@@ -180,74 +180,12 @@ jobs:
           ${{github.workspace}}/packaging/docker/build-images-for-owtech.bash \
             ${{needs.calc_ver.outputs.full_ver}} \
             ${{github.workspace}}/bld/linux/packages \
-            ghcr.io/${{ github.repository_owner }}
+            ghcr.io/${GITHUB_REPOSITORY_OWNER@L}
 
   tests:
     needs: [calc_ver, build]
-    runs-on: ubuntu-latest
-    env:
-      JOSHUA_DB_VER: "6.3.15"
-      N_OF_TESTS: 600  # to fit in 360 minutes job run limit
-      JOSHUA_AGENT_URL: "docker.io/1inker"
-      JOSHUA_AGENT_TAG: "rhel8-20220816"
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          path: ${{github.workspace}}/src
-
-      - name: Install dependencies
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y sudo wget crudini git python3 python3-pip
-          sudo pip3 install wheel setuptools python-dateutil lxml boto3
-
-      - name: Install FoundationDb
-        shell: bash
-        run: |
-          mkdir deb
-          pushd deb
-          MY_ARCH=`dpkg-architecture -q DEB_BUILD_ARCH`
-          wget https://github.com/apple/foundationdb/releases/download/${{ env.JOSHUA_DB_VER }}/foundationdb-clients_${{ env.JOSHUA_DB_VER }}-1_${MY_ARCH}.deb https://github.com/apple/foundationdb/releases/download/${{ env.JOSHUA_DB_VER }}/foundationdb-server_${{ env.JOSHUA_DB_VER }}-1_${MY_ARCH}.deb
-          sudo apt-get install -y ./foundationdb-clients_${{ env.JOSHUA_DB_VER }}-1_${MY_ARCH}.deb ./foundationdb-server_${{ env.JOSHUA_DB_VER }}-1_${MY_ARCH}.deb
-          popd
-          sudo systemctl stop foundationdb
-          MY_IP=`hostname -I | awk '{print $1}'`
-          sudo sed -i s/127.0.0.1/$MY_IP/ /etc/foundationdb/fdb.cluster
-          sudo crudini --set /etc/foundationdb/foundationdb.conf fdbserver memory 4GiB
-          sudo systemctl start foundationdb
-          pip3 install 'foundationdb==${{ env.JOSHUA_DB_VER }}'
-
-      - name: Download the correctness package
-        uses: actions/download-artifact@v3
-        id: download_correctness
-        with:
-          name: correctness-${{needs.calc_ver.outputs.full_ver}}.tar.gz
-
-      - name: 'Echo download path'
-        run: echo ${{steps.download_correctness.outputs.download-path}}
-
-      - name: Display structure of downloaded files
-        run: ls -R
-        working-directory: ${{github.workspace}}
-
-      - name: Download joshua
-        shell: bash
-        run: |
-          git clone https://github.com/FoundationDB/fdb-joshua.git
-
-      - name: run joshua-agent
-        shell: bash
-        run: |
-          podman pull ${{ env.JOSHUA_AGENT_URL }}/joshua-agent:${{ env.JOSHUA_AGENT_TAG }}
-          podman create --name joshua-agent -v /etc/foundationdb:/etc/foundationdb -it joshua-agent:${{ env.JOSHUA_AGENT_TAG }}
-          podman start joshua-agent
-
-      - name: run tests
-        shell: bash
-        working-directory: ${{github.workspace}}/fdb-joshua
-        run: |
-          podman ps
-          ${{github.workspace}}/src/build-scripts/for-linux/test-joshua.bash ${{github.workspace}}/correctness-${{needs.calc_ver.outputs.full_ver}}.tar.gz ${{env.N_OF_TESTS}}
+    uses: ./.github/workflows/run-tests.yml
+    with:
+      full_ver: ${{needs.calc_ver.outputs.full_ver}}
+      build_run_id: ${{ github.run_id }}
+    secrets: inherit

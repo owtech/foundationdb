@@ -1,0 +1,95 @@
+name: Run Tests (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      full_ver:
+        description: 'Version of the build to test (e.g. 7.4.0-3.1.ow)'
+        required: true
+        type: string
+      build_run_id:
+        description: 'Run ID to download the correctness package from'
+        required: true
+        type: string
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    env:
+      JOSHUA_DB_VER: "7.1.57"
+      N_OF_TESTS: 500  # to fit in 360 minutes job run limit
+      JOSHUA_AGENT_TAG: "rockylinux9.6-20260309"
+      # parameter that controls the maximum lifetime of the Joshua agent (in seconds).
+      AGENT_TIMEOUT: 18000
+
+    steps:
+      - name: Set agent URL
+        run: |
+          echo "JOSHUA_AGENT_URL=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+          echo "Agent URL: ghcr.io/${GITHUB_REPOSITORY_OWNER,,}"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: ${{github.workspace}}/src
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sudo wget crudini git python3 python3-pip
+          sudo pip3 install wheel setuptools python-dateutil lxml boto3
+
+      - name: Install FoundationDb
+        shell: bash
+        run: |
+          mkdir deb
+          pushd deb
+          MY_ARCH=`dpkg-architecture -q DEB_BUILD_ARCH`
+          wget https://github.com/apple/foundationdb/releases/download/${{ env.JOSHUA_DB_VER }}/foundationdb-clients_${{ env.JOSHUA_DB_VER }}-1_${MY_ARCH}.deb https://github.com/apple/foundationdb/releases/download/${{ env.JOSHUA_DB_VER }}/foundationdb-server_${{ env.JOSHUA_DB_VER }}-1_${MY_ARCH}.deb
+          sudo apt-get install -y ./foundationdb-clients_${{ env.JOSHUA_DB_VER }}-1_${MY_ARCH}.deb ./foundationdb-server_${{ env.JOSHUA_DB_VER }}-1_${MY_ARCH}.deb
+          popd
+          sudo systemctl stop foundationdb
+          MY_IP=`hostname -I | awk '{print $1}'`
+          sudo sed -i s/127.0.0.1/$MY_IP/ /etc/foundationdb/fdb.cluster
+          sudo crudini --set /etc/foundationdb/foundationdb.conf fdbserver memory 4GiB
+          sudo systemctl start foundationdb
+          pip3 install 'foundationdb==${{ env.JOSHUA_DB_VER }}'
+
+      - name: Download the correctness package
+        uses: actions/download-artifact@v4
+        id: download_correctness
+        with:
+          name: correctness-${{ inputs.full_ver }}.tar.gz
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Echo download path
+        run: echo ${{steps.download_correctness.outputs.download-path}}
+
+      - name: Display structure of downloaded files
+        run: ls -R
+        working-directory: ${{github.workspace}}
+
+      - name: Download joshua
+        shell: bash
+        run: |
+          git clone https://github.com/FoundationDB/fdb-joshua.git
+
+      - name: run joshua-agent
+        shell: bash
+        run: |
+          podman pull ${{ env.JOSHUA_AGENT_URL }}/joshua-agent:${{ env.JOSHUA_AGENT_TAG }}
+          for i in 1 2 3 4; do
+            podman run -d \
+              -v /etc/foundationdb:/etc/foundationdb \
+              -e AGENT_TIMEOUT=${{ env.AGENT_TIMEOUT }} \
+              joshua-agent:${{ env.JOSHUA_AGENT_TAG }}
+          done
+
+      - name: run tests
+        shell: bash
+        working-directory: ${{github.workspace}}/fdb-joshua
+        run: |
+          podman ps
+          ${{github.workspace}}/src/build-scripts/for-linux/test-joshua.bash ${{github.workspace}}/correctness-${{ inputs.full_ver }}.tar.gz ${{env.N_OF_TESTS}}
