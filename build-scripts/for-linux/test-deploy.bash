@@ -3,15 +3,15 @@
 # Test deploying foundationdb on rpm-and deb-based linux
 # $1 - full Foundationdb version, ex. 7.1.29-0.ow.1
 # $2 - distr dir. Default is bld/linux/packages relative to the current dir
-# $3 - a rpm-based linux docker image. Default is oraclelinux:8
-# $4 - a deb-based linux docker image. Default is debian:10
+# $3 - a rpm-based linux docker image. Default is oraclelinux:9
+# $4 - a deb-based linux docker image. Default is debian:12
 
 set -e
 
 FULL_VERSION="$1"
 DISTR_DIR="$(readlink -f ${2:-bld/linux/packages})"
-RPM_IMAGE=${3:-oraclelinux:8}
-DEB_IMAGE=${4:-debian:10}
+RPM_IMAGE=${3:-oraclelinux:9}
+DEB_IMAGE=${4:-debian:12}
 
 CONTAINER_NAME="test_deploy"
 CONTAINER_DISTR_DIR="/mnt/distr"
@@ -79,33 +79,56 @@ MY_ARCH_DEB=$(dpkg-architecture -q DEB_HOST_ARCH)
 
 wait_for_systemd() {
   local CONTAINER_NAME="$1"
-  local TIMEOUT_SEC=60
+  local TIMEOUT_SEC=300
+  local PID1=""
+
   log "Waiting for systemd to start in container $CONTAINER_NAME..."
+
   while true; do
-    PID1=$($CONTAINER_ENGINE exec ${CONTAINER_NAME} ps -p 1 -o comm=)
+    # The debian images ship neither systemd nor procps, the preparing script
+    # installs both, so `ps` is unavailable while the installation is running.
+    # Read the name of PID 1 directly instead; failing polls are expected here
+    # and must not be fatal.
+    PID1=$($CONTAINER_ENGINE exec "${CONTAINER_NAME}" cat /proc/1/comm 2>/dev/null || true)
+
     if [[ "$PID1" == "systemd" ]]; then
       printf "\nsystemd is running (PID 1)\n"
       return 0
     fi
-    printf "\r\033[K[*] %s (%ds)" "$PID1" "$TIMEOUT_SEC"
+
+    # An exited container means the preparing script could not install systemd.
+    # Report it at once with the container logs, otherwise the reason is lost.
+    if ! $CONTAINER_ENGINE inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null | grep -qx true; then
+      err "Container $CONTAINER_NAME has exited before systemd was started."
+      $CONTAINER_ENGINE logs --tail 50 "${CONTAINER_NAME}" >&2 || true
+      return 1
+    fi
+
+    printf "\r\033[K[*] %s (%ds)" "${PID1:-starting}" "$TIMEOUT_SEC"
     sleep 1
-    ((TIMEOUT_SEC--))
-    if [[ $TIMEOUT_SEC -le 0 ]]; then
+    TIMEOUT_SEC=$((TIMEOUT_SEC - 1))
+    if (( TIMEOUT_SEC <= 0 )); then
       err "\nsystemd is not running in container (final state: $PID1)"
+      $CONTAINER_ENGINE logs --tail 50 "${CONTAINER_NAME}" >&2 || true
       return 1
     fi
   done
 }
 
 remove_container_if_exists() {
+  # Best effort: podman may fail here because the container is being removed
+  # concurrently, and such a failure must not abort the whole test run.
   if $CONTAINER_ENGINE ps -a --format "{{.Names}}" | grep -qx "${CONTAINER_NAME}"; then
-    $CONTAINER_ENGINE rm -f "${CONTAINER_NAME}"
+    $CONTAINER_ENGINE rm -f "${CONTAINER_NAME}" 2>/dev/null || true
   fi
 }
 
+# A failed test must not leave the container behind for the next scenario
+trap 'remove_container_if_exists' EXIT
+
 prepare_systemd_script() {
   case "$1" in
-    *debian:10*)
+      *debian:10*)
       cat <<'EOF'
 echo 'deb http://archive.debian.org/debian buster main' > /etc/apt/sources.list
 echo 'deb http://archive.debian.org/debian buster-updates main' >> /etc/apt/sources.list
@@ -115,7 +138,24 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y systemd systemd-sysv dbus proc
 exec /lib/systemd/systemd
 EOF
       ;;
-    *oraclelinux:8*)
+    # bullseye reached its end of life: the packages listed by the still
+    # published bullseye-security index are no longer in the pool, so
+    # installing systemd inside a debian:11 container fails. Use debian:12.
+    *debian:11*)
+      cat <<'EOF'
+apt-get update
+DEBIAN_FRONTEND=noninteractive apt-get install -y systemd systemd-sysv dbus procps
+exec /lib/systemd/systemd
+EOF
+      ;;
+    *debian:12*)
+      cat <<'EOF'
+apt-get update
+DEBIAN_FRONTEND=noninteractive apt-get install -y systemd systemd-sysv dbus procps
+exec /lib/systemd/systemd
+EOF
+      ;;
+    *oraclelinux:9*)
       echo 'exec /lib/systemd/systemd'
       ;;
     *)
@@ -171,7 +211,8 @@ get_pkg_type() {
 }
 
 exec_in_container() {
-  $CONTAINER_ENGINE exec -it "${CONTAINER_NAME}" /bin/bash -c "$1"
+  # No terminal is available when the script runs in CI, and none is needed
+  $CONTAINER_ENGINE exec "${CONTAINER_NAME}" /bin/bash -c "$1"
 }
 
 run_in_container() {

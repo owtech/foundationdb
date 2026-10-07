@@ -6,8 +6,6 @@
 # $4 - Paralllel threads
 # $5 - Source Dir. If not set then relative to the script dir
 
-#!/bin/bash
-
 get_oldest_java_path()
 {
   if [ -x "$(command -v update-java-alternatives)" ]
@@ -53,6 +51,7 @@ APP_PRMS="$APP_PRMS -DCMAKE_Swift_COMPILER=`$BASE_DIR/find-swift.bash`"
 
 # set oldest java
 JAVA_OLDEST_PATH=$(get_oldest_java_path)
+
 
 echo "env JAVA_HOME=$JAVA_OLDEST_PATH CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS $SRC_DIR"
 env JAVA_HOME=$JAVA_OLDEST_PATH CC=clang CXX=clang++ cmake -G Ninja $APP_PRMS $SRC_DIR
