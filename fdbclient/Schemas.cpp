@@ -632,6 +632,7 @@ const KeyRef JSONSchemas::statusSchema = R"statusSchema(
       },
       "active_tss_count":0,
       "degraded_processes":0,
+      "degraded_multi_region":true,
       "database_available":true,
       "database_lock_state": {
          "locked": true,
@@ -1008,16 +1009,6 @@ const KeyRef JSONSchemas::statusSchema = R"statusSchema(
              "disabled",
              "aggressive",
              "gradual"
-         ]},
-         "shard_metadata_format": {
-             "$enum":[
-             "original",
-             "encoded"
-         ]},
-         "shard_metadata_migration": {
-             "$enum":[
-             "enabled",
-             "disabled"
          ]}
       },
       "consistency_scan" : {
@@ -1560,6 +1551,7 @@ file is writable and has not been overwritten externally."
       },
       "maintenance_zone":"0ccb4e0fdbdb5583010f6b77d9d10ece",
       "maintenance_seconds_remaining":1.0,
+      "degraded_multi_region":true,
       "data":{
          "least_operating_space_bytes_log_server":0,
          "average_partition_size_bytes":0,

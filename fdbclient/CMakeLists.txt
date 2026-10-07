@@ -1,246 +1,192 @@
-set(FDBCLIENT_SRCS
-  ActorLineageProfiler.h
-  ActorLineageProfiler.cpp
-  AnnotateActor.cpp
-  AsyncFileS3BlobStore.actor.cpp
-  AsyncFileS3BlobStore.actor.h
-  AsyncTaskThread.actor.cpp
-  AsyncTaskThread.h
-  Atomic.h
-  AutoPublicAddress.cpp
-  BackupAgent.actor.h
-  BackupAgentBase.actor.cpp
-  BackupContainer.actor.cpp
-  BackupContainer.h
-  BackupContainerFileSystem.actor.cpp
-  BackupContainerFileSystem.h
-  BackupContainerLocalDirectory.actor.cpp
-  BackupContainerLocalDirectory.h
-  BackupContainerS3BlobStore.actor.cpp
-  BackupContainerS3BlobStore.h
-  ClientBooleanParams.cpp
-  ClientBooleanParams.h
-  BlobWorkerInterface.h
-  BlobGranuleReader.actor.cpp
-  BlobGranuleReader.actor.h
-  BlobGranuleCommon.h
-  BlobGranuleFiles.cpp
-  BlobGranuleFiles.h
-  BlobWorkerCommon.h
-  ClientKnobCollection.cpp
-  ClientKnobCollection.h
-  ClientKnobs.cpp
-  ClientKnobs.h
-  ClientLogEvents.h
-  ClientVersion.h
-  ClientWorkerInterface.h
-  ClusterConnectionFile.actor.cpp
-  ClusterConnectionFile.h
-  ClusterConnectionKey.actor.cpp
-  ClusterConnectionKey.actor.h
-  ClusterConnectionMemoryRecord.actor.cpp
-  ClusterConnectionMemoryRecord.h
-  ClusterInterface.h
-  CommitProxyInterface.h
-  CommitTransaction.h
-  ConfigKnobs.cpp
-  ConfigKnobs.h
-  ConfigTransactionInterface.cpp
-  ConfigTransactionInterface.h
-  ConvertUTF.h
-  CoordinationInterface.h
-  DatabaseBackupAgent.actor.cpp
-  DatabaseConfiguration.cpp
-  DatabaseConfiguration.h
-  DatabaseContext.h
-  EventTypes.actor.h
-  FDBOptions.h
-  FDBTypes.cpp
-  FDBTypes.h
-  FluentDSampleIngestor.cpp
-  FileBackupAgent.actor.cpp
-  GenericManagementAPI.actor.h
-  GlobalConfig.h
-  GlobalConfig.actor.h
-  GlobalConfig.actor.cpp
-  GrvProxyInterface.h
-  HighContentionPrefixAllocator.actor.h
-  HTTP.actor.cpp
-  IClientApi.h
-  IConfigTransaction.cpp
-  IConfigTransaction.h
-  ISingleThreadTransaction.cpp
-  ISingleThreadTransaction.h
-  JsonBuilder.cpp
-  JsonBuilder.h
-  KeyBackedTypes.h
-  KeyRangeMap.actor.cpp
-  KeyRangeMap.h
-  Knobs.h
-  IKnobCollection.cpp
-  IKnobCollection.h
-  LocalClientAPI.cpp
-  LocalClientAPI.h
-  ManagementAPI.actor.cpp
-  ManagementAPI.actor.h
-  MonitorLeader.actor.cpp
-  MonitorLeader.h
-  MultiVersionAssignmentVars.h
-  MultiVersionTransaction.actor.cpp
-  MultiVersionTransaction.h
-  MutationList.h
-  MutationLogReader.actor.cpp
-  MutationLogReader.actor.h
-  NameLineage.h
-  NameLineage.cpp
-  NativeAPI.actor.cpp
-  NativeAPI.actor.h
-  Notified.h
-  ParallelStream.actor.cpp
-  ParallelStream.actor.h
-  PaxosConfigTransaction.actor.cpp
-  PaxosConfigTransaction.h
-  PImpl.h
-  SimpleConfigTransaction.actor.cpp
-  SpecialKeySpace.actor.cpp
-  SpecialKeySpace.actor.h
-  ReadYourWrites.actor.cpp
-  ReadYourWrites.h
-  RestoreInterface.cpp
-  RestoreInterface.h
-  RunTransaction.actor.h
-  RYWIterator.cpp
-  RYWIterator.h
-  S3BlobStore.actor.cpp
-  Schemas.cpp
-  Schemas.h
-  ServerKnobCollection.cpp
-  ServerKnobCollection.h
-  ServerKnobs.cpp
-  ServerKnobs.h
-  SimpleConfigTransaction.h
-  SimpleIni.h
-  SnapshotCache.h
-  SpecialKeySpace.actor.cpp
-  SpecialKeySpace.actor.h
-  Status.h
-  StatusClient.actor.cpp
-  StatusClient.h
-  StorageServerInterface.cpp
-  StorageServerInterface.h
-  StorageCheckpoint.h
-  Subspace.cpp
-  Subspace.h
-  StackLineage.h
-  StackLineage.cpp
-  SystemData.cpp
-  SystemData.h
-  TagThrottle.actor.cpp
-  TagThrottle.actor.h
-  TaskBucket.actor.cpp
-  TaskBucket.h
-  Tenant.cpp
-  Tenant.h
-  TestKnobCollection.cpp
-  TestKnobCollection.h
-  ThreadSafeTransaction.cpp
-  ThreadSafeTransaction.h
-  Tuple.cpp
-  Tuple.h
-  VersionedMap.actor.h
-  VersionedMap.h
-  VersionedMap.cpp
-  VersionVector.h
-  WellKnownEndpoints.h
-  WriteMap.h
-  json_spirit/json_spirit_error_position.h
-  json_spirit/json_spirit_reader_template.h
-  json_spirit/json_spirit_value.h
-  json_spirit/json_spirit_writer_options.h
-  json_spirit/json_spirit_writer_template.h
-  libb64/cdecode.c
-  libb64/cencode.c
-  md5/md5.c
-  sha1/SHA1.cpp
-  zipf.c
-  zipf.h)
+fdb_find_sources(FDBCLIENT_SRCS)
+list(REMOVE_ITEM FDBCLIENT_SRCS LinkTest.cpp)
+list(REMOVE_ITEM FDBCLIENT_SRCS S3Client_cli.cpp)
+list(REMOVE_ITEM FDBCLIENT_SRCS fdbclient_test.cpp)
+list(APPEND FDBCLIENT_SRCS sha1/SHA1.cpp)
 
-set(options_srcs ${CMAKE_CURRENT_BINARY_DIR}/FDBOptions.g.cpp)
+message(STATUS "FDB version is ${FDB_VERSION}")
+message(STATUS "FDB package name is ${FDB_PACKAGE_NAME}")
 
-vexillographer_compile(TARGET fdboptions LANG cpp OUT ${CMAKE_CURRENT_BINARY_DIR}/FDBOptions.g
-  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/FDBOptions.g.h ${CMAKE_CURRENT_BINARY_DIR}/FDBOptions.g.cpp)
+if(NOT VEXILLOGRAPHER_COMMAND)
+  message(FATAL_ERROR "VEXILLOGRAPHER_COMMAND is undefined; ensure CompileVexillographer.cmake is included")
+endif()
+
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/include/fdbclient/)
+
+set(FDBOPTIONS_GEN_BASE ${CMAKE_CURRENT_BINARY_DIR}/include/fdbclient/FDBOptions.g)
+set(FDBOPTIONS_GEN_H    ${FDBOPTIONS_GEN_BASE}.h)
+set(FDBOPTIONS_GEN_CPP  ${FDBOPTIONS_GEN_BASE}.cpp)
+
+# Generate the C++ option bindings directly into the final include directory so
+# the header and source exist before their consumers compile.
+add_custom_command(
+  OUTPUT ${FDBOPTIONS_GEN_H} ${FDBOPTIONS_GEN_CPP}
+  COMMAND ${VEXILLOGRAPHER_COMMAND}
+          ${CMAKE_SOURCE_DIR}/fdbclient/vexillographer/fdb.options
+          cpp
+          ${FDBOPTIONS_GEN_BASE}
+  DEPENDS ${CMAKE_SOURCE_DIR}/fdbclient/vexillographer/fdb.options
+          ${VEXILLOGRAPHER_DEPENDS}
+  COMMENT "Generate FDBOptions (C++)"
+  VERBATIM)
+
+vexillographer_compile(
+  TARGET fdboptions_c
+  LANG c
+  OUT ${CMAKE_CURRENT_BINARY_DIR}/include/fdbclient/fdb_c_options.g.h
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/include/fdbclient/fdb_c_options.g.h)
+
+set(FDB_OPTIONS_H ${FDBOPTIONS_GEN_H} CACHE INTERNAL "FDB options header")
+set(options_srcs ${FDBOPTIONS_GEN_CPP})
+
+add_custom_target(fdboptions ALL
+  DEPENDS ${FDBOPTIONS_GEN_H}
+          ${FDBOPTIONS_GEN_CPP}
+          fdboptions_c)
+
+################################################################################
+# Build information
+################################################################################
+
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/BuildFlags.h.in ${CMAKE_CURRENT_BINARY_DIR}/include/fdbclient/BuildFlags.h)
+
 
 set(BUILD_AZURE_BACKUP OFF CACHE BOOL "Build Azure backup client")
 if(BUILD_AZURE_BACKUP)
-  add_compile_definitions(BUILD_AZURE_BACKUP)
-  set(FDBCLIENT_SRCS
-    ${FDBCLIENT_SRCS}
-    BackupContainerAzureBlobStore.actor.cpp
-    BackupContainerAzureBlobStore.h)
-
-  configure_file(azurestorage.cmake azurestorage-download/CMakeLists.txt)
-
-  execute_process(
-    COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" .
-    RESULT_VARIABLE results
-    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/azurestorage-download
-  )
-
-  if(results)
-    message(FATAL_ERROR "Configuration step for AzureStorage has Failed. ${results}")
-  endif()
-
-  execute_process(
-    COMMAND ${CMAKE_COMMAND} --build . --config Release
-    RESULT_VARIABLE results
-    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/azurestorage-download
-  )
-
-  if(results)
-    message(FATAL_ERROR "Build step for AzureStorage has Failed. ${results}")
-  endif()
-
-  add_subdirectory(
-    ${CMAKE_CURRENT_BINARY_DIR}/azurestorage-src
-    ${CMAKE_CURRENT_BINARY_DIR}/azurestorage-build
-  )
+  message(FATAL_ERROR
+    "BUILD_AZURE_BACKUP is unsupported: this source tree does not contain the Azure backup implementation.")
 endif()
 
 
 if(WITH_AWS_BACKUP)
-  add_compile_definitions(BUILD_AWS_BACKUP)
-
-  set(FDBCLIENT_SRCS
-    ${FDBCLIENT_SRCS}
-    FDBAWSCredentialsProvider.h)
-
+  add_compile_definitions(WITH_AWS_BACKUP)
   include(awssdk)
 endif()
 
 add_flow_target(STATIC_LIBRARY NAME fdbclient SRCS ${FDBCLIENT_SRCS} ADDL_SRCS ${options_srcs})
+target_include_directories(fdbclient
+  PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_BINARY_DIR}/include"
+  PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}")
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/versions.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/include/fdbclient/versions.h)
 add_dependencies(fdbclient fdboptions)
-target_link_libraries(fdbclient PUBLIC fdbrpc msgpack)
-if(WITH_TLS)
-  target_link_libraries(fdbclient PRIVATE OpenSSL::Crypto)
+target_link_libraries(fdbclient PUBLIC fdbrpc msgpack PRIVATE rapidxml)
+
+add_flow_target(EXECUTABLE NAME s3client SRCS S3Client_cli.cpp)
+target_include_directories(s3client PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${CMAKE_SOURCE_DIR}/flow/include"
+    "${CMAKE_BINARY_DIR}/flow/include"
+    "${CMAKE_SOURCE_DIR}/fdbrpc/include"
+    "${CMAKE_BINARY_DIR}/fdbrpc/include"
+    "${CMAKE_SOURCE_DIR}/contrib/md5/include"
+    "${CMAKE_SOURCE_DIR}/contrib/libb64/include"
+)
+
+target_link_libraries(s3client PRIVATE
+    fdbclient
+    fdbrpc
+    flow
+    msgpack
+    md5
+    libb64
+    stacktrace
+    fmt
+    crc32
+    eio
+    rapidxml
+    boost_target
+    boost_target_program_options
+)
+
+if(UNIX AND NOT APPLE)
+    target_link_libraries(s3client PRIVATE folly_memcpy)
+endif()
+
+if(${COROUTINE_IMPL} STREQUAL libcoro)
+    target_link_libraries(s3client PRIVATE coro)
+endif()
+
+add_dependencies(s3client fdboptions)
+
+# Setup the Swift sources in FDBClient.
+if(WITH_SWIFT)
+  include(FindSwiftLibs)
+  add_library(fdbclient_swift STATIC
+          notified_support.swift
+          )
+
+  target_include_directories(fdbclient_swift PUBLIC
+          "${CMAKE_BINARY_DIR}/flow/include"
+          "${CMAKE_BINARY_DIR}/flow/"
+          "${CMAKE_BINARY_DIR}/fdbclient/include"
+          "${CMAKE_SOURCE_DIR}/fdbrpc/include"
+          "${CMAKE_BINARY_DIR}/fdbrpc/include"
+          "${CMAKE_SOURCE_DIR}/contrib/md5/include"
+          "${CMAKE_SOURCE_DIR}/contrib/libb64/include"
+          "${CMAKE_SOURCE_DIR}/contrib/sqlite"
+          "${Boost_DIR}/../../../include"
+          "${msgpack_DIR}/include"
+          )
+
+  # Generate the module map for FDBClient.
+  include(GenerateModulemap)
+  set(FDBCLIENT_BINARY_DIR "${CMAKE_BINARY_DIR}/fdbclient")
+  generate_modulemap("${CMAKE_BINARY_DIR}/fdbclient/include" "FDBClient" fdbclient OMIT
+                     AsyncFileBlobStore.h RYWIterator.h SnapshotCache.h WriteMap.h)
+
+  # TODO: the TBD validation skip is because of swift_job_run_generic, though it seems weird why we need to do that?
+  target_compile_options(fdbclient_swift PRIVATE "$<$<COMPILE_LANGUAGE:Swift>:SHELL:-Xcc -std=c++20 -Xfrontend -validate-tbd-against-ir=none -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/flow/include/headeroverlay.yaml -Xcc -ivfsoverlay${CMAKE_BINARY_DIR}/fdbclient/include/headeroverlay.yaml>")
+
+  add_dependencies(fdbclient_swift flow_swift fdboptions)
+  # This does not work! (see rdar://99107402)
+  # target_link_libraries(flow PRIVATE flow_swift)
+  add_dependencies(fdbclient fdbclient_swift)
+
+  target_link_options(fdbclient_swift PUBLIC "$<TARGET_OBJECTS:flow_swift>")
+  target_link_options(fdbclient PRIVATE "$<TARGET_OBJECTS:flow_swift>")
+
+  target_link_options(fdbclient PRIVATE "$<TARGET_OBJECTS:fdbclient_swift>")
 endif()
 
 # Create a separate fdbclient library with sampling enabled. This lets
 # fdbserver retain sampling functionality in client code while disabling
 # sampling for pure clients.
 add_flow_target(STATIC_LIBRARY NAME fdbclient_sampling SRCS ${FDBCLIENT_SRCS} ADDL_SRCS ${options_srcs})
+target_include_directories(fdbclient_sampling
+  PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_BINARY_DIR}/include"
+  PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}")
 add_dependencies(fdbclient_sampling fdboptions)
-target_link_libraries(fdbclient_sampling PUBLIC fdbrpc_sampling msgpack)
+target_link_libraries(fdbclient_sampling PUBLIC fdbrpc_sampling msgpack PRIVATE rapidxml)
 target_compile_definitions(fdbclient_sampling PRIVATE -DENABLE_SAMPLING)
-if(WIN32)
-  add_dependencies(fdbclient_sampling_actors fdbclient_actors)
+
+add_flow_target(LINK_TEST NAME fdbclientlinktest SRCS LinkTest.cpp)
+target_link_libraries(fdbclientlinktest PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,fdbclient>" rapidxml) # re-link rapidxml due to private link interface
+
+add_flow_target(EXECUTABLE NAME fdbclient_test SRCS fdbclient_test.cpp)
+register_fdb_unit_tests(fdbclient_test SIMULATION)
+target_link_libraries(fdbclient_test PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,fdbclient>" rapidxml)
+
+if(NOT FOUNDATIONDB_CROSS_COMPILING) # FIXME(swift): make this work when
+                                     # x-compiling.
+  add_subdirectory(bench EXCLUDE_FROM_ALL)
 endif()
 
-if(BUILD_AZURE_BACKUP)
-  target_link_libraries(fdbclient PRIVATE curl uuid azure-storage-lite)
-  target_link_libraries(fdbclient_sampling PRIVATE curl uuid azure-storage-lite)
+if(WITH_AWS_BACKUP)
+  target_link_libraries(fdbclient PRIVATE awssdk_target)
+  target_link_libraries(fdbclient_sampling PRIVATE awssdk_target)
 endif()
 
-if(BUILD_AWS_BACKUP)
-  target_link_libraries(fdbclient PUBLIC awssdk_target)
-  target_link_libraries(fdbclient_sampling PUBLIC awssdk_target)
+if (NOT WIN32 AND NOT OPEN_FOR_IDE)
+  enable_testing()
+  add_test(NAME s3client_test COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/s3client_test.sh ${CMAKE_BINARY_DIR})
+  add_test(NAME gcs_client_test COMMAND ${CMAKE_COMMAND} -E env USE_MOCK_GCS=true ${CMAKE_CURRENT_SOURCE_DIR}/tests/s3client_test.sh ${CMAKE_BINARY_DIR})
+  add_test(NAME bulkload_test COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/bulkload_test.sh ${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR})
+  set_tests_properties(s3client_test gcs_client_test bulkload_test
+    PROPERTIES ENVIRONMENT "${SANITIZER_OPTIONS}")
 endif()

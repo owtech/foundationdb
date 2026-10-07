@@ -863,10 +863,12 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( COMMIT_PROXY_LIVENESS_TIMEOUT,                        20.0 );
 	init( COMMIT_PROXY_MAX_LIVENESS_TIMEOUT,                   600.0 ); if ( randomize && buggify() ) COMMIT_PROXY_MAX_LIVENESS_TIMEOUT = 20.0;
 
+	init( COMMIT_BATCH_RANDOMIZE_INTERVAL,                      false );
+	init( COMMIT_BATCH_MAX_IN_PROGRESS,                             0 );
 	init( COMMIT_TRANSACTION_BATCH_INTERVAL_FROM_IDLE,         0.0005 ); if( randomize && buggify() ) COMMIT_TRANSACTION_BATCH_INTERVAL_FROM_IDLE = 0.005;
 	init( COMMIT_TRANSACTION_BATCH_INTERVAL_MIN,                0.001 ); if( randomize && buggify() ) COMMIT_TRANSACTION_BATCH_INTERVAL_MIN = 0.1;
-	init( COMMIT_TRANSACTION_BATCH_INTERVAL_MAX,                0.020 );
-	init( COMMIT_TRANSACTION_BATCH_INTERVAL_LATENCY_FRACTION,     0.1 );
+	init( COMMIT_TRANSACTION_BATCH_INTERVAL_MAX,                0.200 );
+	init( COMMIT_TRANSACTION_BATCH_INTERVAL_LATENCY_FRACTION,     0.3 );
 	init( COMMIT_TRANSACTION_BATCH_INTERVAL_SMOOTHER_ALPHA,       0.1 );
 	init( COMMIT_TRANSACTION_BATCH_COUNT_MAX,                   32768 ); if( randomize && buggify() ) COMMIT_TRANSACTION_BATCH_COUNT_MAX = 1000; // Do NOT increase this number beyond 32768, as CommitIds only budget 2 bytes for storing transaction id within each batch
 	init( COMMIT_BATCHES_MEM_BYTES_HARD_LIMIT,              8LL << 30 ); if (randomize && buggify()) COMMIT_BATCHES_MEM_BYTES_HARD_LIMIT = deterministicRandom()->randomInt64(100LL << 20,  8LL << 30);
@@ -876,9 +878,9 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( ENABLE_READ_LOCK_ON_RANGE,                            false ); if (isSimulated) ENABLE_READ_LOCK_ON_RANGE = deterministicRandom()->coinflip();
 
 	// these settings disable batch bytes scaling.  Try COMMIT_TRANSACTION_BATCH_BYTES_MAX=1e6, COMMIT_TRANSACTION_BATCH_BYTES_SCALE_BASE=50000, COMMIT_TRANSACTION_BATCH_BYTES_SCALE_POWER=0.5?
-	init( COMMIT_TRANSACTION_BATCH_BYTES_MIN,                  100000 );
-	init( COMMIT_TRANSACTION_BATCH_BYTES_MAX,                  100000 ); if( randomize && buggify() ) { COMMIT_TRANSACTION_BATCH_BYTES_MIN = COMMIT_TRANSACTION_BATCH_BYTES_MAX = 1000000; }
-	init( COMMIT_TRANSACTION_BATCH_BYTES_SCALE_BASE,           100000 );
+	init( COMMIT_TRANSACTION_BATCH_BYTES_MIN,                  3000000 );
+	init( COMMIT_TRANSACTION_BATCH_BYTES_MAX,                  3000000 ); if( randomize && buggify() ) { COMMIT_TRANSACTION_BATCH_BYTES_MIN = COMMIT_TRANSACTION_BATCH_BYTES_MAX = 1000000; }
+	init( COMMIT_TRANSACTION_BATCH_BYTES_SCALE_BASE,           3000000 );
 	init( COMMIT_TRANSACTION_BATCH_BYTES_SCALE_POWER,             0.0 );
 
 	init( RESOLVER_COALESCE_TIME,                                1.0 );
@@ -1401,7 +1403,7 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	// Server request latency measurement
 	init( LATENCY_SKETCH_ACCURACY,                              0.01 );
 	init( FILE_LATENCY_SKETCH_ACCURACY,                         0.01 );
-	init( LATENCY_METRICS_LOGGING_INTERVAL,                     60.0 );
+	init( LATENCY_METRICS_LOGGING_INTERVAL,                     10.0 );
 
 	// Cluster recovery
 	init ( CLUSTER_RECOVERY_EVENT_NAME_PREFIX,              "Master" );

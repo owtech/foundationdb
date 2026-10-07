@@ -616,7 +616,7 @@ const UniqueOrderedOptionList<FDBTransactionOptions>& Database::getTransactionDe
 }
 
 void setNetworkOption(FDBNetworkOptions::Option option, Optional<StringRef> value) {
-	std::regex identifierRegex("^[a-zA-Z0-9_]*$");
+	std::regex identifierRegex("^[a-zA-Z0-9_-]*$");
 	switch (option) {
 	// SOMEDAY: If the network is already started, should these five throw an error?
 	case FDBNetworkOptions::TRACE_ENABLE:
