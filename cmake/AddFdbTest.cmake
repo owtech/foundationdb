@@ -407,11 +407,7 @@ function(prepare_binding_test_files build_directory target_name target_dependenc
     add_dependencies(${target_name} fdb_python_options)
   endif()
   if(WITH_JAVA_BINDING)
-    if(NOT FDB_RELEASE)
-      set(not_fdb_release_string "-SNAPSHOT")
-    else()
-      set(not_fdb_release_string "")
-    endif()
+    set(not_fdb_release_string "")
     add_custom_command(
       TARGET ${target_name}
       POST_BUILD

@@ -102,7 +102,8 @@ enum {
 	OPT_DEBUG_TLS,
 	OPT_API_VERSION,
 	OPT_MEMORY,
-	OPT_USE_FUTURE_PROTOCOL_VERSION
+	OPT_USE_FUTURE_PROTOCOL_VERSION,
+	OPT_ENCRYPT
 };
 
 CSimpleOpt::SOption g_rgOptions[] = { { OPT_CONNFILE, "-C", SO_REQ_SEP },
@@ -130,6 +131,7 @@ CSimpleOpt::SOption g_rgOptions[] = { { OPT_CONNFILE, "-C", SO_REQ_SEP },
 	                                  { OPT_API_VERSION, "--api-version", SO_REQ_SEP },
 	                                  { OPT_MEMORY, "--memory", SO_REQ_SEP },
 	                                  { OPT_USE_FUTURE_PROTOCOL_VERSION, "--use-future-protocol-version", SO_NONE },
+									  { OPT_ENCRYPT, "--encrypt", SO_REQ_SEP },
 	                                  TLS_OPTION_FLAGS,
 	                                  SO_END_OF_OPTIONS };
 
@@ -509,6 +511,11 @@ static void printProgramUsage(const char* name) {
 	       "  --use-future-protocol-version\n"
 	       "                 Use the simulated future protocol version to connect to the cluster.\n"
 	       "                 This option can be used testing purposes only!\n"
+	       "  --encrypt PASSWORD\n"
+	       "                 Encrypts the specified password and prints the encrypted password\n"
+	       "                 with the `encrypted:' prefix. The encrypted password can be used\n"
+	       "                 with --tls-password option. This option causes fdbcli to encrypt\n"
+	       "                 the password and exit.\n"
 	       "  -v, --version  Print FoundationDB CLI version information and exit.\n"
 	       "  -h, --help     Display this help and exit.\n");
 }
@@ -898,6 +905,7 @@ struct CLIOptions {
 	std::string tlsPassword;
 	bool tlsDisablePlainTextConnection = false;
 	uint64_t memLimit = 8uLL << 30;
+	Optional<std::string> encrypt;
 
 	std::vector<std::pair<std::string, std::string>> knobs;
 
@@ -1047,6 +1055,9 @@ struct CLIOptions {
 			knobs.emplace_back(knobName.get(), args.OptionArg());
 			break;
 		}
+		case OPT_ENCRYPT:
+			encrypt = args.OptionArg();
+			break;
 		case OPT_DEBUG_TLS:
 			debugTLS = true;
 			break;
@@ -2107,6 +2118,16 @@ int main(int argc, char** argv) {
 
 	// fdbcli connects to one cluster, so multiple client threads per version have no effect.
 	MultiVersionApi::api->ignoreEnvironmentVariableNetworkOption(FDBNetworkOptions::CLIENT_THREADS_PER_VERSION);
+
+	if (opt.encrypt.present()) {
+		std::string encrypted;
+		if (!TLSConfig::encodePassword(opt.encrypt.get(), encrypted)) {
+			fprintf(stderr, "ERROR: Failed to encrypt password\n");
+			return 1;
+		}
+		printf("%s\n", encrypted.c_str());
+		return 0;
+	}
 
 	if (opt.trace) {
 		if (opt.traceDir.empty())

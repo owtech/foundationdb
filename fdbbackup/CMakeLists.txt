@@ -20,8 +20,9 @@ target_include_directories(fdbdecode PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/includ
 target_link_libraries(fdbdecode PRIVATE fdbclient)
 
 if(NOT OPEN_FOR_IDE)
-  add_custom_target(stripped_fdbbackup ALL DEPENDS strip_only_fdbbackup)
-  fdb_install(TARGETS fdbbackup DESTINATION bin COMPONENT clients)
+    add_custom_target(stripped_fdbbackup ALL DEPENDS strip_only_fdbbackup strip_only_fdbconvert)
+    fdb_install(PROGRAMS ${CMAKE_BINARY_DIR}/packages/bin/fdbbackup DESTINATION bin COMPONENT clients)
+    fdb_install(PROGRAMS ${CMAKE_BINARY_DIR}/packages/bin/fdbconvert DESTINATION bin COMPONENT clients)
   symlink_files(
     LOCATION packages/bin
     SOURCE fdbbackup

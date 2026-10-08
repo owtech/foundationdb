@@ -195,7 +195,7 @@ class ClientConfigTest:
         self.tc.assertIsNotNone(self.status_json)
         self.tc.assertTrue("AvailableClients" in self.status_json)
         actual_clients = [
-            client["ReleaseVersion"] for client in self.status_json["AvailableClients"]
+            client["ReleaseVersion"].split("-")[0] for client in self.status_json["AvailableClients"]
         ]
         self.tc.assertEqual(set(expected_clients), set(actual_clients))
 
@@ -216,7 +216,7 @@ class ClientConfigTest:
             self.tc.assertEqual(0, len(matching_clients))
         else:
             self.tc.assertEqual(1, len(matching_clients))
-            self.tc.assertEqual(expected_client, matching_clients[0])
+            self.tc.assertEqual(expected_client, matching_clients[0].split("-")[0])
 
     def check_healthy_status_report(self):
         self.tc.assertIsNotNone(self.status_json)
@@ -858,7 +858,7 @@ class ClientTracingTests(unittest.TestCase):
             else:
                 pattern += "\d+"
             if version is not None:
-                pattern += "_v{}".format(version.replace(".", "_"))
+                pattern += "_v{}.*".format(version.replace(".", "_"))
             if thread_idx is not None:
                 pattern += "t{}".format(thread_idx)
             pattern += "\.\d+\.\w+\.\d+\.\d+\.{}$".format(self.test.trace_format)

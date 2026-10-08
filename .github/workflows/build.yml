@@ -1,0 +1,191 @@
+---
+name: Build
+
+on:
+  push:
+    branches: ["ow-fork-*"]
+    tags: ["*-*ow"]
+
+jobs:
+  calc_ver:
+    # calculate versions from git tags
+    runs-on: ubuntu-latest
+    outputs:
+      project_ver: ${{steps.vers.outputs.project_ver}}
+      build_ver: ${{steps.vers.outputs.build_ver}}
+      full_ver: ${{steps.vers.outputs.full_ver}}
+      release_flag: ${{steps.vers.outputs.release_flag}}
+      release_id: ${{ steps.create_release.outputs.id }}
+      release_upload_url: ${{ steps.create_release.outputs.upload_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Calculate versions
+        id: vers
+        shell: bash
+        run: ${{github.workspace}}/build-scripts/for-github/calc-version-from-git.bash
+
+      - name: Create Draft Release
+        if: ${{ steps.vers.outputs.release_flag == 'ON' }}
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: "${{ steps.vers.outputs.full_ver }}"
+          name: "v${{ steps.vers.outputs.full_ver }}"
+          draft: true
+          prerelease: false
+
+  build:
+    needs: [calc_ver]
+    env:
+      # There are not enough free 19 Gb mounted in "/" to build and create rpm and deb packages. 
+      # So, we use /mnt/bld which is mounted to a bigger space. In /mnt there is 66 Gb free space in github action server.
+      BLD_DIR: /mnt/bld
+
+
+    strategy:
+      matrix:
+        include:
+          - run_on: ubuntu-latest
+            for: linux
+            prepare: "debian-based"
+            build_on: linux
+            parallel: 5
+            image: foundationdb-build:8.0.0-0.ow.build
+            owner: ${GITHUB_REPOSITORY_OWNER@L}
+    runs-on: ${{ matrix.run_on }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Set building repo
+        run: |
+          echo "use_image=ghcr.io/${{matrix.owner}}/${{matrix.image}}" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: |
+          sudo mkdir -p ${{ env.BLD_DIR }}
+          sudo chmod 777 ${{ env.BLD_DIR }}
+
+          echo "=== Disk space before build ==="
+          df -h
+
+          podman run --rm \
+            --name build \
+            --mount=type=tmpfs,dst=/tmp \
+            --mount=type=tmpfs,dst=/var/tmp \
+            --security-opt label=disable \
+            --mount=type=bind,src=${{github.workspace}},dst=/home/runner/src,readonly \
+            --mount=type=bind,src=${{ env.BLD_DIR }},dst=/home/runner/bld \
+            $use_image \
+            /home/runner/src/build-scripts/for-${{ matrix.for }}/build-on-${{ matrix.build_on }}.bash \
+            ${{needs.calc_ver.outputs.project_ver}} \
+            ${{needs.calc_ver.outputs.build_ver}} \
+            ${{needs.calc_ver.outputs.release_flag}} \
+            ${{ matrix.parallel }}
+
+          echo "=== Disk space after building and creating packages ==="
+          df -h
+
+      # - name: Minimal tests
+      #  working-directory: ${{ env.BLD_DIR }}
+      #  shell: bash
+      #  run: ctest --output-on-failure -V
+
+      - name: Upload result
+        uses: nanoufo/action-upload-artifacts-and-release-assets@v2
+        with:
+          path: |
+            ${{ env.BLD_DIR }}/linux/packages/*${{needs.calc_ver.outputs.full_ver}}*
+          upload-release-files: ${{ needs.calc_ver.outputs.release_flag }}
+          release-upload-url: ${{ needs.calc_ver.outputs.release_upload_url }}
+          if-no-files-found: error
+
+  test_deploy:
+    needs: [calc_ver, build]
+    runs-on: ubuntu-latest
+    env:
+      RPM_IMAGE: oraclelinux:9
+      DEB_IMAGE: debian:12
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download the foundationdb distro
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{github.workspace}}/bld/download
+
+      - name: Make a normal distro directory from the downloaded artifacts
+        shell: bash
+        run: |
+          ls -Rl ${{github.workspace}}/bld/download
+          mkdir -p ${{github.workspace}}/bld/linux/packages
+          mv -v ${{github.workspace}}/bld/download/*/* ${{github.workspace}}/bld/linux/packages/
+
+      - name: Run tests
+        shell: bash
+        run: ${{github.workspace}}/build-scripts/for-linux/test-deploy.bash ${{ needs.calc_ver.outputs.full_ver }} ${{github.workspace}}/bld/linux/packages $RPM_IMAGE $DEB_IMAGE
+
+  release:
+    needs: [calc_ver, build]
+    if: ${{ needs.calc_ver.outputs.release_flag == 'ON' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: eregon/publish-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          release_id: ${{ needs.calc_ver.outputs.release_id }}
+
+  publish_images:
+    needs: [calc_ver, build]
+    if: ${{ needs.calc_ver.outputs.release_flag == 'ON' }}
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_REGISTRY: ghcr.io
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download the foundationdb distro
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{github.workspace}}/bld/download
+
+      - name: Listing the downloaded artifacts
+        # This is where you will update the personal access token to GITHUB_TOKEN
+        run: ls -Rl ${{github.workspace}}/bld/download
+
+      - name: Make a normal distro directory from downloaded artifacts
+        shell: bash
+        run: |
+          mkdir -p ${{github.workspace}}/bld/linux/packages
+          mv -v ${{github.workspace}}/bld/download/*/* ${{github.workspace}}/bld/linux/packages/
+
+      - name: Log in to registry
+        # This is where you will update the personal access token to GITHUB_TOKEN
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | podman login $DOCKER_REGISTRY -u $ --password-stdin
+
+      - name: Build and push images
+        shell: bash
+        run: |
+          ${{github.workspace}}/packaging/docker/build-images-for-owtech.bash \
+            ${{needs.calc_ver.outputs.full_ver}} \
+            ${{github.workspace}}/bld/linux/packages \
+            ghcr.io/${GITHUB_REPOSITORY_OWNER@L}
+
+  tests:
+    needs: [calc_ver, build]
+    uses: ./.github/workflows/run-tests.yml
+    with:
+      full_ver: ${{needs.calc_ver.outputs.full_ver}}
+      build_run_id: ${{ github.run_id }}
+    secrets: inherit

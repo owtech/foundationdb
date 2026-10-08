@@ -515,7 +515,7 @@ An |database-blurb1| Modifications to a database are performed via transactions.
    Returns a JSON string containing database client-side status information. If the Multi-version client API is disabled an empty string will be returned.
    At the top level the report describes the status of the Multi-Version Client database - its initialization state, the protocol version, the available client versions. The report schema is:
 
-   .. code-block::
+   .. code-block:: javascript
 
       {  "Healthy": <overall health status, true or false>,
          "InitializationState": <initializing|initialization_failed|created|incompatible|closed>,
@@ -535,7 +535,7 @@ An |database-blurb1| Modifications to a database are performed via transactions.
    The status of the actual version-specific database is embedded within the ``DatabaseStatus`` attribute. It lists the addresses of various FDB 
    server roles the client is aware of and their connection status. The schema of the ``DatabaseStatus`` object is:
    
-   .. code-block::
+   .. code-block:: javascript
 
       {  "Healthy" : <overall health status: true or false>,
          "ClusterID" : <UUID>,

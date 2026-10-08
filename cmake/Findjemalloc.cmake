@@ -41,6 +41,51 @@ This module will set the following variables in your project:
 include(FindPackageHandleStandardArgs)
 include(FindPackageMessage)
 
+macro(_get_version)
+  if(NOT DEFINED jemalloc_FIND_VERSION)
+    message(FATAL_ERROR "jemalloc_FIND_VERSION is required")
+    return()
+  endif()
+
+  # 1. Try dpkg first (Debian/Ubuntu systems)
+  if(EXISTS "/usr/bin/dpkg")
+    execute_process(
+        COMMAND bash -c "dpkg -l | grep jemalloc | awk '{print \$3}' | sort -V -r | head -n 1"
+        OUTPUT_VARIABLE jemalloc_VERSION
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(jemalloc_VERSION)
+      string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" jemalloc_VERSION "${jemalloc_VERSION}")
+      if(NOT jemalloc_VERSION VERSION_LESS jemalloc_FIND_VERSION)
+        message(STATUS "Found jemalloc (dpkg): ${jemalloc_VERSION}")
+        return()
+      endif()
+    endif()
+  endif() 
+
+  # 2. Fallback to header file
+  if(NOT jemalloc_VERSION AND jemalloc_INCLUDE_DIRS AND EXISTS "${jemalloc_INCLUDE_DIRS}/jemalloc.h")
+    file(STRINGS "${jemalloc_INCLUDE_DIRS}/jemalloc.h" JEMALLOC_FULL_VERSION
+         REGEX "^#define JEMALLOC_VERSION \"[0-9]+\\.[0-9]+\\.[0-9]+")
+    if(JEMALLOC_FULL_VERSION)
+      string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" jemalloc_VERSION "${JEMALLOC_FULL_VERSION}")
+      if(NOT jemalloc_VERSION VERSION_LESS jemalloc_FIND_VERSION)
+        message(STATUS "Found jemalloc (header): ${jemalloc_VERSION}")
+        return()
+      endif()
+    endif()
+  endif()
+
+  # If we get here, version requirements weren't met
+  if(jemalloc_VERSION)
+    message(FATAL_ERROR "jemalloc version ${jemalloc_VERSION} found, but ${jemalloc_FIND_VERSION} or higher is required")
+  else()
+    message(FATAL_ERROR "Could not determine jemalloc version (tried dpkg and header file)")
+  endif()
+
+endmacro()
+
 macro(_configure_use_jemalloc_config)
   # Configure per jemalloc_config
   execute_process(
@@ -140,6 +185,9 @@ if(NOT jemalloc_INCLUDE_DIRS)
   _finalize_find_package_jemalloc()
   return()
 endif()
+
+_get_version()
+
 find_library(
   jemalloc_LIBRARY
   NAMES libjemalloc.a

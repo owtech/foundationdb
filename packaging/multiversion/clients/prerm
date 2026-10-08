@@ -2,6 +2,6 @@
 
 case "${1:-remove}" in
     0|remove)
-        update-alternatives --remove fdbclients /usr/lib/foundationdb-@FDB_VERSION@@FDB_BUILDTIME_STRING@/bin/fdbcli
+        update-alternatives --remove fdbclients /usr/lib/foundationdb-@FDB_VERSION@/bin/fdbcli
         ;;
 esac
