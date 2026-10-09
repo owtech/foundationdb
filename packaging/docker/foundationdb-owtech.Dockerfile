@@ -104,11 +104,11 @@ RUN tar -xvf /mnt/distr/foundationdb-bins-${FDB_VERSION}.x86_64.tgz -C /usr/bin 
 WORKDIR /
 
 ## go-build
-FROM golang:1.22.2-bullseye AS go-build
+FROM golang:1.25.12-bookworm AS go-build
 
 COPY fdbkubernetesmonitor/ /fdbkubernetesmonitor
 WORKDIR /fdbkubernetesmonitor
-RUN go build -o /fdb-kubernetes-monitor *.go
+RUN CGO_ENABLED=0 go build -o /fdb-kubernetes-monitor *.go
 
 ## fdb-kubernetes-monitor
 FROM foundationdb-base as fdb-kubernetes-monitor
